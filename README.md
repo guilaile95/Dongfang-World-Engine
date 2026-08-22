@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-当前只做 **World Engine Commit Kernel / Step 2.6 Epistemic Claims Hardening**。
+Step 2、2.5、2.6、2.6.1 Foundation 已完成；当前实现 **Step 3 Context Builder MVP**。
 
 第一阶段验证目标是：
 
@@ -105,8 +105,10 @@ Candidate Event
 
 当前已实现的 Commit Kernel 支持 `character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`fact.assert`、`claim.record` 和 `world.time_advance` 七类 Candidate Event；所有提交都经过 Hard Validator 和同一 SQLite 事务，并可从初始 Seed 加 Event Log 重建关键状态。
 
+Context Builder MVP 通过只读 API 为指定观察者构造结构化上下文：确定性过滤观察者自己的 CharacterKnowledge、Claim 和最小 provenance，暴露自身状态、当前位置、同地点角色的安全公共投影以及观察者作为 source 的有向关系；预算截断发生在可见性过滤之后，并保留完整 Knowledge causal bundle。Objective Fact 不会因为存在于数据库中而进入角色上下文；任何未来的概率相关性排序也只能发生在这个确定性可见性边界之后。
+
 Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact、Claim 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
 
 Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 是唯一的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 
-本阶段仍不实现 Context Builder、LLM、Memory、RAG、Narrative、UI、Branch 或 Save。
+本阶段仍不实现 LLM、Memory、RAG、Narrative、UI、Branch、Save 或其他后续系统；Context Builder 也不执行任何 Event、State 或 World revision 写入。

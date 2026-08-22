@@ -75,9 +75,22 @@ Status: complete.
 
 Complete the Seed boundary before Context Builder by validating Character locations, Location parents, Fact/Claim subjects, and Relationship Event provenance deterministically within one Seed World. Rejected Seed inputs return `SEED_INVALID` before any write and leave no partial state.
 
-## Step 3 — LLM Candidate Generation
+## Step 3 — Context Builder MVP
 
-After Step 2 is proven, connect one model only to translate player input into Candidate Events. The model still has no direct write authority.
+Status: complete.
+
+Add the first read-only vertical-slice boundary on top of the completed Foundation:
+
+- observer-specific deterministic visibility filtering;
+- structured World envelope, self state, current Location, safe co-located Character projection, observer-directed Relationships;
+- Claim + CharacterKnowledge + minimal Event/Seed provenance bundles;
+- objective Fact / other-character Knowledge isolation;
+- configurable deterministic unit budget applied only after visibility filtering;
+- no Event append, State mutation, World revision change, LLM, Memory, RAG, or UI.
+
+## Step 4 — LLM Candidate Generation
+
+After the deterministic Context Builder boundary is proven, connect one model only to translate player input into Candidate Events. The model still has no direct write authority.
 
 ## Later
 

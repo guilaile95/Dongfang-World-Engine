@@ -307,6 +307,14 @@ Lore 是世界背景设定、初始规则和 Canon 约束，可以作为初始�
 
 本阶段不为 Lore 预先拆分大量表；只需确保 Lore 的来源可以被识别，并能与 Fact 的 `source` 或初始状态建立关系。
 
+### 2.15 Context Builder（只读观察者视图）
+
+Context Builder 不新增事实表，也不写入 Event、Materialized State 或 World revision。它从一个 World 的当前快照和 Event Log 构造结构化观察者上下文，包含 World envelope、observer 自身 Character、当前位置、同地点角色的安全公共投影、observer 自己的 `CharacterKnowledge + Claim + provenance` causal bundle，以及 observer 作为 source 的有向 Relationship。
+
+可见性过滤先于预算 packing。MVP budget 表示可选 context unit 的数量上限，不是固定 token 方案；core envelope、self 和当前位置始终保留，Knowledge bundle 以完整因果单元参与截断。Context Builder 不输出一般 Fact，不通过 Claim 与 Fact 的字段匹配泄露 Truth，不合并其他角色的认知或隐藏 Character 字段，也不输出 raw Event payload、actor/target 列表。
+
+确定性的 visibility gate 是后续任何概率相关性排序、Embedding、RAG 或 LLM 的前置边界；本 Slice 不实现这些能力。
+
 ## 3. 关键关系
 
 ```text
@@ -389,6 +397,7 @@ Player
 写入边界如下：
 
 - Context Builder 只读并按角色权限过滤上下文；
+- Context Builder 先执行确定性的 observer visibility gate，再进行有界 packing；它不产生任何事实写入；
 - Simulation LLM 只生成候选，不拥有事实写权限；
 - Validator 负责检查来源、时间、位置、知识权限、关系约束、Claim 跨 World 引用和互斥事实；
 - Commit Event 是进入事实层的唯一入口；
