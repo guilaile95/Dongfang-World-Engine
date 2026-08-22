@@ -246,7 +246,7 @@ Context Builder 不读取或输出一般 objective `Fact`，不通过 `(subject,
 
 Simulation Adapter 是 Context Builder 之后的非权威模型边界。它只接收已经过滤的 `CharacterContext`、与 observer 相同的 actor identity 和 intent，并通过可注入的 Model Client 产生 0..N 个有序 Proposal；它不能访问 `SqliteWorldStore`、原始 `WorldSnapshot` 或隐藏 Truth，也不能调用 `CommitKernel.commit()`。
 
-Proposal 只描述当前已支持 Candidate 类型的非权威草案，模型不得提供 `worldId` 或 `expectedWorldRevision`；这两个字段由未来 Turn Orchestrator 在每次提交前绑定。Adapter 对模型输出执行确定性 Zod 校验，结构错误最多触发一次 repair，transport/provider 错误不进入无限重试；无论成功、解析失败还是 transport 失败，都不能写入 Event、Materialized State 或 World revision。
+Proposal 只描述六类 actor-supported Candidate 类型的非权威草案；actor 模型暂不拥有 `fact.assert` 能力，即使 Kernel 为 trusted/system producer 保留该 Candidate capability。模型不得提供 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；这些 Event envelope/provenance 字段由未来 Turn Orchestrator 在每次提交前绑定。`world.time_advance.toTime` 仍是可提议的 Effect 字段，不等同于 `occurredAt`。Adapter 对模型输出执行严格确定性 Zod 校验，结构错误最多触发一次 repair，transport/provider 错误不进入无限重试；无论成功、解析失败还是 transport 失败，都不能写入 Event、Materialized State 或 World revision。
 
 ## 3. Invariants
 

@@ -5,11 +5,6 @@ const dateTime = z.string().min(1).refine((value) => Number.isFinite(Date.parse(
   message: "must be a parseable date-time",
 });
 
-const proposalBase = {
-  occurredAt: dateTime,
-  causeEventIds: z.array(z.string().min(1)).default([]),
-};
-
 const knowledgeSource = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("character"),
@@ -22,20 +17,17 @@ const knowledgeSource = z.discriminatedUnion("kind", [
 ]);
 
 const moveProposal = z.object({
-  ...proposalBase,
   type: z.literal("character.move"),
   actorId: z.string().min(1),
   toLocationId: z.string().min(1),
 }).strict();
 
 const dieProposal = z.object({
-  ...proposalBase,
   type: z.literal("character.die"),
   actorId: z.string().min(1),
 }).strict();
 
 const learnClaimProposal = z.object({
-  ...proposalBase,
   type: z.literal("character.learn_claim"),
   actorId: z.string().min(1),
   claimId: z.string().min(1),
@@ -45,7 +37,6 @@ const learnClaimProposal = z.object({
 
 const relationshipProposal = z
   .object({
-    ...proposalBase,
     type: z.literal("relationship.change"),
     sourceCharacterId: z.string().min(1),
     targetCharacterId: z.string().min(1),
@@ -70,30 +61,16 @@ const relationshipProposal = z
     }
   });
 
-const factProposal = z.object({
-  ...proposalBase,
-  type: z.literal("fact.assert"),
-  factId: z.string().min(1),
-  actorId: z.string().min(1).optional(),
-  subject: z.string().min(1),
-  predicate: z.string().min(1),
-  object: z.string().min(1),
-  validFrom: dateTime,
-  validTo: dateTime.optional(),
-}).strict();
-
 const claimProposal = z.object({
-  ...proposalBase,
   type: z.literal("claim.record"),
   claimId: z.string().min(1),
-  actorId: z.string().min(1).optional(),
+  actorId: z.string().min(1),
   subject: z.string().min(1),
   predicate: z.string().min(1),
   object: z.string().min(1),
 }).strict();
 
 const timeAdvanceProposal = z.object({
-  ...proposalBase,
   type: z.literal("world.time_advance"),
   toTime: dateTime,
 }).strict();
@@ -103,7 +80,6 @@ export const candidateProposalSchema = z.discriminatedUnion("type", [
   dieProposal,
   learnClaimProposal,
   relationshipProposal,
-  factProposal,
   claimProposal,
   timeAdvanceProposal,
 ]);
@@ -180,8 +156,8 @@ export class SimulationAdapterError extends Error {
 
 export const DEFAULT_SIMULATION_INSTRUCTIONS = [
   "Return JSON only with the shape { proposals: [...] }.",
-  "Use only the seven supported proposal types.",
-  "Do not include worldId or expectedWorldRevision; the future Turn Orchestrator owns them.",
+  "Use only the six actor-supported proposal types.",
+  "Do not include worldId, expectedWorldRevision, occurredAt, or causeEventIds; the future Turn Orchestrator owns the Event envelope.",
   "Do not include prose, hidden reasoning, raw world data, or unrequested effects.",
 ].join(" ");
 
@@ -376,10 +352,9 @@ function validateProposalActorAuthority(proposals: CandidateProposal[], actorCha
           throw new OutputValidationFailure("Relationship proposal source must match the SimulationRequest actor", 1);
         }
         break;
-      case "fact.assert":
       case "claim.record":
-        if (proposal.actorId !== undefined && proposal.actorId !== actorCharacterId) {
-          throw new OutputValidationFailure("Optional proposal actor must match the SimulationRequest actor", 1);
+        if (proposal.actorId !== actorCharacterId) {
+          throw new OutputValidationFailure("Claim proposal actor must match the SimulationRequest actor", 1);
         }
         break;
       case "world.time_advance":

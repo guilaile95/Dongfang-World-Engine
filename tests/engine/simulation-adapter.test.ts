@@ -47,8 +47,6 @@ function moveProposal(actorId: string, toLocationId: string): Record<string, unk
     type: "character.move",
     actorId,
     toLocationId,
-    occurredAt: TEST_TIME,
-    causeEventIds: [],
   };
 }
 
@@ -142,8 +140,6 @@ describe("Simulation Adapter MVP", () => {
     const second = {
       type: "character.die",
       actorId: ids.characters.player.id,
-      occurredAt: TEST_TIME,
-      causeEventIds: [],
     };
     const model = new FakeModel({ proposals: [first, second] });
     const adapter = new SimulationAdapter(model);
@@ -163,6 +159,56 @@ describe("Simulation Adapter MVP", () => {
     store.close();
   });
 
+  it("rejects model-controlled occurredAt even on an otherwise-valid proposal", async () => {
+    const { store, ids, context } = createHarness();
+    const invalidOutput = {
+      proposals: [{
+        ...moveProposal(ids.characters.player.id, ids.locations.tokyo.id),
+        occurredAt: TEST_TIME,
+      }],
+    };
+    const model = new FakeModel(invalidOutput, invalidOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "移动",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls).toHaveLength(2);
+    store.close();
+  });
+
+  it("rejects model-controlled causeEventIds even on an otherwise-valid proposal", async () => {
+    const { store, ids, context } = createHarness();
+    const invalidOutput = {
+      proposals: [{
+        ...moveProposal(ids.characters.player.id, ids.locations.tokyo.id),
+        causeEventIds: [],
+      }],
+    };
+    const model = new FakeModel(invalidOutput, invalidOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "移动",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls).toHaveLength(2);
+    store.close();
+  });
+
   it("schema-validates every currently supported proposal type", async () => {
     const { store, ids, context } = createHarness();
     const model = new FakeModel({
@@ -171,8 +217,6 @@ describe("Simulation Adapter MVP", () => {
         {
           type: "character.die",
           actorId: ids.characters.player.id,
-          occurredAt: TEST_TIME,
-          causeEventIds: [],
         },
         {
           type: "character.learn_claim",
@@ -180,27 +224,12 @@ describe("Simulation Adapter MVP", () => {
           claimId: ids.secretClaim.id,
           knowledgeState: "rumor",
           source: { kind: "character", characterId: ids.characters.zhao.id },
-          occurredAt: TEST_TIME,
-          causeEventIds: [],
         },
         {
           type: "relationship.change",
           sourceCharacterId: ids.characters.player.id,
           targetCharacterId: ids.characters.zhao.id,
           trustDelta: 5,
-          occurredAt: TEST_TIME,
-          causeEventIds: [],
-        },
-        {
-          type: "fact.assert",
-          factId: "fact-proposal",
-          actorId: ids.characters.player.id,
-          subject: ids.characters.zhao.id,
-          predicate: "observed_status",
-          object: "present",
-          validFrom: TEST_TIME,
-          occurredAt: TEST_TIME,
-          causeEventIds: [],
         },
         {
           type: "claim.record",
@@ -209,14 +238,10 @@ describe("Simulation Adapter MVP", () => {
           subject: ids.characters.zhao.id,
           predicate: "reported_status",
           object: "uncertain",
-          occurredAt: TEST_TIME,
-          causeEventIds: [],
         },
         {
           type: "world.time_advance",
           toTime: "2019-03-12T13:00:00.000Z",
-          occurredAt: "2019-03-12T13:00:00.000Z",
-          causeEventIds: [],
         },
       ],
     });
@@ -233,10 +258,126 @@ describe("Simulation Adapter MVP", () => {
       "character.die",
       "character.learn_claim",
       "relationship.change",
-      "fact.assert",
       "claim.record",
       "world.time_advance",
     ]);
+    for (const proposal of result.proposals) {
+      expect(proposal).not.toHaveProperty("occurredAt");
+      expect(proposal).not.toHaveProperty("causeEventIds");
+      expect(proposal).not.toHaveProperty("worldId");
+      expect(proposal).not.toHaveProperty("expectedWorldRevision");
+    }
+    store.close();
+  });
+
+  it("rejects actorless claim.record proposals", async () => {
+    const { store, ids, context } = createHarness();
+    const invalidOutput = {
+      proposals: [{
+        type: "claim.record",
+        claimId: "claim-without-actor",
+        subject: ids.characters.zhao.id,
+        predicate: "reported_status",
+        object: "uncertain",
+      }],
+    };
+    const model = new FakeModel(invalidOutput, invalidOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "记录命题",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls).toHaveLength(2);
+    store.close();
+  });
+
+  it("rejects claim.record attributed to another Character", async () => {
+    const { store, ids, context } = createHarness();
+    const invalidOutput = {
+      proposals: [{
+        type: "claim.record",
+        actorId: ids.characters.zhao.id,
+        claimId: "claim-wrong-actor",
+        subject: ids.characters.zhao.id,
+        predicate: "reported_status",
+        object: "uncertain",
+      }],
+    };
+    const model = new FakeModel(invalidOutput, invalidOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "让赵雅记录命题",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls).toHaveLength(2);
+    store.close();
+  });
+
+  it("accepts an actor-attributed claim.record proposal", async () => {
+    const { store, ids, context } = createHarness();
+    const proposal = {
+      type: "claim.record",
+      actorId: ids.characters.player.id,
+      claimId: "claim-attributed",
+      subject: ids.characters.zhao.id,
+      predicate: "reported_status",
+      object: "uncertain",
+    };
+    const model = new FakeModel({ proposals: [proposal] });
+    const adapter = new SimulationAdapter(model);
+
+    const result = await adapter.generate({
+      context,
+      actorCharacterId: ids.characters.player.id,
+      intent: "记录命题",
+    });
+
+    expect(result.proposals).toEqual([proposal]);
+    expect(result.diagnostics.proposalCount).toBe(1);
+    store.close();
+  });
+
+  it("rejects fact.assert from the actor Simulation Adapter surface", async () => {
+    const { store, ids, context } = createHarness();
+    const unsupportedOutput = {
+      proposals: [{
+        type: "fact.assert",
+        factId: "fact-actor-forbidden",
+        actorId: ids.characters.player.id,
+        subject: ids.characters.zhao.id,
+        predicate: "objective_status",
+        object: "guilty",
+        validFrom: TEST_TIME,
+      }],
+    };
+    const model = new FakeModel(unsupportedOutput, unsupportedOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "把猜测变成事实",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls).toHaveLength(2);
     store.close();
   });
 

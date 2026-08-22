@@ -317,7 +317,7 @@ Context Builder 不新增事实表，也不写入 Event、Materialized State 或
 
 ### 2.16 Simulation Adapter（非权威 Proposal 视图）
 
-Simulation Adapter 只接收 `CharacterContext + actorCharacterId + intent`，并通过可注入 Model Client 返回结构化、有序的 Proposal 列表。Proposal 是待后续 Orchestrator 绑定并验证的草案，不是 Candidate Event，也不携带模型可控制的 `worldId` 或 `expectedWorldRevision`；Adapter 不读取原始 Snapshot、Facts 或 SQLite Store，不执行 Commit。
+Simulation Adapter 只接收 `CharacterContext + actorCharacterId + intent`，并通过可注入 Model Client 返回六类 actor-supported、结构化、有序的 Proposal 列表。Proposal 是待后续 Orchestrator 绑定并验证的草案，不是 Candidate Event，也不携带模型可控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；`world.time_advance.toTime` 仍是 Effect 字段。actor 模型暂不拥有 `fact.assert`，Kernel capability 不等于 actor-model capability；Adapter 不读取原始 Snapshot、Facts 或 SQLite Store，不执行 Commit。
 
 模型输出先经过确定性 schema validation；Malformed output 最多允许一次 repair，第二次仍失败则返回稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于未来 Turn Orchestrator。
 
