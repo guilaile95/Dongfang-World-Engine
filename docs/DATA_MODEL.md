@@ -319,7 +319,17 @@ Context Builder 不新增事实表，也不写入 Event、Materialized State 或
 
 Simulation Adapter 只接收 `CharacterContext + actorCharacterId + intent`，并通过可注入 Model Client 返回六类 actor-supported、结构化、有序的 Proposal 列表。Proposal 是待后续 Orchestrator 绑定并验证的草案，不是 Candidate Event，也不携带模型可控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；`world.time_advance.toTime` 仍是 Effect 字段。actor 模型暂不拥有 `fact.assert`，Kernel capability 不等于 actor-model capability；Adapter 不读取原始 Snapshot、Facts 或 SQLite Store，不执行 Commit。
 
-模型输出先经过确定性 schema validation；Malformed output 最多允许一次 repair，第二次仍失败则返回稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于未来 Turn Orchestrator。
+模型输出先经过确定性 schema validation；Malformed output 最多允许一次 repair，第二次仍失败则返回稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于 Turn Orchestrator。
+
+### 2.17 Turn Orchestrator（可信 Commit 绑定）
+
+Turn Orchestrator 接收 `world_id + actor_character_id + intent`，自行调用 Context Builder 取得当前观察者视图，再调用 Simulation Adapter 取得非权威 Proposal。它不接受调用方提供的执行 Context，也不向模型暴露原始 WorldSnapshot、Store 或 CommitKernel。
+
+Orchestrator 为每个 Proposal 在提交时绑定可信 envelope：`world_id`、当前 expected `world_revision`、普通事件的 `occurred_at = World.current_time` 和 `cause_event_ids = []`。`world.time_advance.to_time` 是唯一仍由 Proposal 描述的时间 Effect；提交成功后，后续 Proposal 使用提交返回 Snapshot 的新 `current_time`。下一项的 `expected_world_revision` 必须来自本轮前一项成功 Event 的 `world_revision`，不能从外部最新 revision 静默续接。
+
+在首个 Commit 前，完整 Proposal plan 必须通过 actor Proposal schema 与 actor ownership 预校验；后续项出现 malformed、Kernel-only 类型或其他 actor attribution 问题时，整个 Turn 返回 `proposal_invalid`，不产生前缀写入。Plan 同时受确定性的 execution cap 约束，MVP 默认最多 8 项并允许通过 Orchestrator 配置覆盖；超过上限返回稳定 `PROPOSAL_LIMIT_EXCEEDED`，不改变 Event、State 或 World revision。
+
+有序执行采用 committed-prefix 结果：零 Proposal 为 `empty`，全部成功为 `success`，首项失败为 `rejected`，前缀成功后失败为 `partial`。首个 Commit 前发现 stale 最多允许一次 Context 重建与重新 Simulation；再次 stale 则返回稳定 stale 结果且不提交本轮 Event。已有前缀后不自动重模拟、不回滚、不继续后续项，Kernel rejection 也不会隐式生成 `action.failed` Event。actor Proposal surface 仍不包含 `fact.assert`，即使 Kernel 对 trusted/system producer 支持该 Candidate。
 
 ## 3. 关键关系
 

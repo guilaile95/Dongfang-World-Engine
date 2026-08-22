@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation 与 Step 3 Context Builder MVP 已完成；当前实现 **Step 4 Simulation Adapter MVP**。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP 与 Step 4 Simulation Adapter MVP 已完成；当前实现 **Step 5 Turn Orchestrator MVP**。
 
 第一阶段验证目标是：
 
@@ -107,7 +107,9 @@ Candidate Event
 
 Context Builder MVP 通过只读 API 为指定观察者构造结构化上下文：确定性过滤观察者自己的 CharacterKnowledge、Claim 和最小 provenance，暴露自身状态、当前位置、同地点角色的安全公共投影以及观察者作为 source 的有向关系；预算截断发生在可见性过滤之后，并保留完整 Knowledge causal bundle。Objective Fact 不会因为存在于数据库中而进入角色上下文；任何未来的概率相关性排序也只能发生在这个确定性可见性边界之后。
 
-Simulation Adapter MVP 只接收已经过滤的 `CharacterContext`、匹配该 Context observer 的 actor 和自然语言 intent，通过窄的可注入 Model Client 生成 0..N 个有序、经 Zod 校验的六类 actor Candidate Proposal；actor 模型暂不能生成 `fact.assert`。Proposal 不是已提交 Truth，不包含模型控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`，Adapter 不读取 Store、不调用 CommitKernel，也不执行 proposal；最多允许一次结构修复，revision 绑定与顺序提交属于未来 Turn Orchestrator。Kernel 仍可为 trusted/system producer 保留 `fact.assert` 能力，Kernel capability 不等于 actor-model capability。
+Simulation Adapter MVP 只接收已经过滤的 `CharacterContext`、匹配该 Context observer 的 actor 和自然语言 intent，通过窄的可注入 Model Client 生成 0..N 个有序、经 Zod 校验的六类 actor Candidate Proposal；actor 模型暂不能生成 `fact.assert`。Proposal 不是已提交 Truth，不包含模型控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`，Adapter 不读取 Store、不调用 CommitKernel，也不执行 proposal；最多允许一次结构修复。Kernel 仍可为 trusted/system producer 保留 `fact.assert` 能力，Kernel capability 不等于 actor-model capability。
+
+Turn Orchestrator MVP 接收 `worldId + actorCharacterId + intent`，自行构造当前角色 Context，调用 Simulation Adapter，再由自身为每个 Proposal 绑定可信的 World、revision、当前世界时间和空 cause provenance，并按顺序通过 CommitKernel 提交。首次 Commit 前会对整个 Proposal plan 做 schema 与 actor authority 预校验；单回合 Proposal 数量受小型、可配置的 execution cap 限制，越界或非法 plan 都不会产生部分写入。多 Proposal 使用已成功提交事件返回的 revision chaining；首次提交前世界变更最多触发一次 Context 重建与重新模拟，产生 committed prefix 后不再自动重模拟，失败结果保留已提交前缀且不会自动创建 `action.failed` Event。
 
 Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact、Claim 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
 

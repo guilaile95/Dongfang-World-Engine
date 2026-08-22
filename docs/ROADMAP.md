@@ -105,7 +105,24 @@ Add the first non-authoritative model boundary on top of the completed Context B
 
 ## Step 5 — Turn Orchestrator / Candidate Commit Binding
 
-The future Turn Orchestrator will bind current `worldId` and `expectedWorldRevision` for each proposal, commit in order through the existing Kernel, read the new revision, and then process the next proposal. The Simulation Adapter remains non-authoritative.
+Status: complete.
+
+Build the first authoritative runtime bridge on top of the Context Builder and hardened Simulation Adapter:
+
+- Orchestrator constructs `CharacterContext` from `worldId + actorCharacterId + intent` instead of accepting an arbitrary execution Context;
+- model Proposals remain non-authoritative and cannot provide Event envelope fields;
+- the complete Proposal plan is schema/actor-authority prevalidated before the first Commit;
+- a small configurable per-turn Proposal execution cap rejects oversized plans with zero writes;
+- Orchestrator binds trusted `worldId`, `expectedWorldRevision`, authoritative `occurredAt`, and conservative `causeEventIds = []`;
+- every write goes through the existing Commit Kernel;
+- ordered Proposal execution chains the revision returned by the previous successful Commit;
+- `world.time_advance` advances time, and later Proposal timestamps use the resulting authoritative World time;
+- zero/complete/rejected/partial/stale Turn results preserve committed-prefix semantics;
+- before any turn Event commits, stale Context may trigger at most one rebuild and re-simulation;
+- after a committed prefix, stale or Kernel rejection stops the turn without re-simulation, rollback, or automatic `action.failed` Event;
+- actor Proposal execution keeps `fact.assert` unavailable.
+
+Step 5 deliberately does not include a real LLM Provider, Narrator, NPC Scheduler, Memory/RAG, new Event types, or UI.
 
 ## Later
 
