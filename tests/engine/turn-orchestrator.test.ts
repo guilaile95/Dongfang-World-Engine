@@ -13,6 +13,7 @@ import {
   type TurnCommitKernel,
   type TurnContextBuilder,
   type TurnSimulationAdapter,
+  type TurnOrchestratorOptions,
 } from "../../src/engine/turn-orchestrator.js";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
 import type { CharacterRecord, LocationRecord, SeedRecord, WorldRecord } from "../../src/domain/types.js";
@@ -68,13 +69,17 @@ function createOrchestrator(
   planner: TurnSimulationAdapter,
   commitKernel: TurnCommitKernel,
   contextBuilder: TurnContextBuilder = new ContextBuilder(store),
+  options: TurnOrchestratorOptions = {},
 ): TurnOrchestrator {
-  return new TurnOrchestrator({
-    stateReader: store,
-    contextBuilder,
-    simulationAdapter: planner,
-    commitKernel,
-  });
+  return new TurnOrchestrator(
+    {
+      stateReader: store,
+      contextBuilder,
+      simulationAdapter: planner,
+      commitKernel,
+    },
+    options,
+  );
 }
 
 function makePlan(...proposals: CandidateProposal[]): SimulationPlan {
@@ -266,6 +271,83 @@ describe("Turn Orchestrator MVP", () => {
       causeEventIds: [],
     });
     expect(store.listEvents(ids.world.id)).toHaveLength(1);
+    store.close();
+  });
+
+  it("prevalidates the whole plan before committing any proposal", async () => {
+    const store = new SqliteWorldStore();
+    const ids = seedTestWorld(store);
+    const beforeSnapshot = store.getSnapshot(ids.world.id);
+    const rawKernel = createKernel(store, "turn");
+    const commitKernel = new RecordingCommitKernel((input) => rawKernel.commit(input));
+    const forbiddenFactAssert = {
+      type: "fact.assert",
+      factId: "fact-actor-forbidden",
+      actorId: ids.characters.player.id,
+      subject: ids.characters.zhao.id,
+      predicate: "objective_status",
+      object: "guilty",
+      validFrom: TEST_TIME,
+    } as never;
+    const planner = new FakePlanner(() => makePlan(
+      makeMove(ids.characters.player.id, ids.locations.tokyo.id),
+      forbiddenFactAssert,
+    ));
+
+    const result = await createOrchestrator(store, planner, commitKernel).runActorTurn({
+      worldId: ids.world.id,
+      actorCharacterId: ids.characters.player.id,
+      intent: "合法移动后尝试越权事实写入",
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.rejection).toMatchObject({
+      kind: "proposal_invalid",
+      code: "MODEL_OUTPUT_INVALID",
+      proposalIndex: 1,
+    });
+    expect(result.committedEvents).toEqual([]);
+    expect(commitKernel.inputs).toHaveLength(0);
+    expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    expect(store.getSnapshot(ids.world.id)).toEqual(beforeSnapshot);
+    store.close();
+  });
+
+  it("rejects a plan above the configured execution cap before Kernel invocation", async () => {
+    const store = new SqliteWorldStore();
+    const ids = seedTestWorld(store);
+    const beforeSnapshot = store.getSnapshot(ids.world.id);
+    const rawKernel = createKernel(store, "turn");
+    const commitKernel = new RecordingCommitKernel((input) => rawKernel.commit(input));
+    const maxProposalsPerTurn = 2;
+    const planner = new FakePlanner(() => makePlan(
+      makeMove(ids.characters.player.id, ids.locations.tokyo.id),
+      makeMove(ids.characters.player.id, ids.locations.beijing.id),
+      makeMove(ids.characters.player.id, ids.locations.office.id),
+    ));
+
+    const result = await createOrchestrator(
+      store,
+      planner,
+      commitKernel,
+      new ContextBuilder(store),
+      { maxProposalsPerTurn },
+    ).runActorTurn({
+      worldId: ids.world.id,
+      actorCharacterId: ids.characters.player.id,
+      intent: "超出单回合 Proposal 安全上限",
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.rejection).toMatchObject({
+      kind: "execution_limit",
+      code: "PROPOSAL_LIMIT_EXCEEDED",
+      proposalIndex: null,
+    });
+    expect(result.committedEvents).toEqual([]);
+    expect(commitKernel.inputs).toHaveLength(0);
+    expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    expect(store.getSnapshot(ids.world.id)).toEqual(beforeSnapshot);
     store.close();
   });
 

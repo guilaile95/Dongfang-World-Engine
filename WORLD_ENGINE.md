@@ -261,6 +261,8 @@ Turn Orchestrator 是从非权威 Proposal 到权威 Commit 的最小运行桥�
 
 `world.time_advance.toTime` 仍由 Proposal 描述并由 Kernel 校验；成功推进后，后续 Proposal 使用新 Materialized State 的 `currentTime`。所有持久化变化必须经过现有 CommitKernel，Orchestrator 不直接写 Event、State 或 revision，也不能将 actor `fact.assert` 加回可执行 Proposal surface。
 
+在首个 Proposal Commit 前，Orchestrator 会对完整 SimulationPlan 的每一项执行严格 schema 校验和 actor ownership 校验；任何后续项非法都会使整个 Turn 以 `proposal_invalid` 拒绝，且不会提交前面的合法项。Plan 还受确定性的 Proposal execution cap 约束（MVP 默认上限为 8，可通过 Orchestrator 配置覆盖）；超过上限返回稳定的 `PROPOSAL_LIMIT_EXCEEDED`，不产生 Event、State 或 revision 变化。
+
 有序 Proposal 按 committed-prefix 语义执行：零 Proposal 返回 `empty`；全部成功返回 `success`；首项 Kernel rejection 返回 `rejected`；已有成功提交后停止并返回 `partial`，不回滚前缀、不继续后续 Proposal，也不自动创建 `action.failed` Event。下一项只使用本次前一项成功 Commit 返回的 revision，不会静默采用其他写入者产生的更新 revision。
 
 由于 Simulation 是异步的，Orchestrator 在首个 Commit 前检查 Context revision；若 World 已变化，最多重建一次 Context 并重新 Simulation。第二次仍陈旧时返回稳定 stale 结果且不提交本轮 Event。首项发生 `STALE_WORLD_STATE` 也共享这一次重试额度；一旦已有 committed prefix，任何 stale 或其他 Kernel rejection 都只返回前缀，不自动重模拟。

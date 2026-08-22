@@ -111,6 +111,8 @@ Build the first authoritative runtime bridge on top of the Context Builder and h
 
 - Orchestrator constructs `CharacterContext` from `worldId + actorCharacterId + intent` instead of accepting an arbitrary execution Context;
 - model Proposals remain non-authoritative and cannot provide Event envelope fields;
+- the complete Proposal plan is schema/actor-authority prevalidated before the first Commit;
+- a small configurable per-turn Proposal execution cap rejects oversized plans with zero writes;
 - Orchestrator binds trusted `worldId`, `expectedWorldRevision`, authoritative `occurredAt`, and conservative `causeEventIds = []`;
 - every write goes through the existing Commit Kernel;
 - ordered Proposal execution chains the revision returned by the previous successful Commit;

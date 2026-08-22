@@ -35,12 +35,19 @@ export interface TurnOrchestratorDependencies {
   commitKernel: TurnCommitKernel;
 }
 
+export const DEFAULT_MAX_PROPOSALS_PER_TURN = 8;
+
+export interface TurnOrchestratorOptions {
+  maxProposalsPerTurn?: number;
+}
+
 export type TurnStatus = "empty" | "success" | "rejected" | "partial" | "stale";
 
 export type TurnRejectionKind =
   | "context"
   | "simulation"
   | "proposal_invalid"
+  | "execution_limit"
   | "stale_context"
   | "kernel_rejection"
   | "stale_after_partial"
@@ -83,8 +90,31 @@ interface ExecutionStaleBeforeCommit {
 
 type ExecutionResult = ExecutionSuccess | ExecutionRejection | ExecutionStaleBeforeCommit;
 
+interface PlanValidationSuccess {
+  ok: true;
+  proposals: CandidateProposal[];
+}
+
+interface PlanValidationFailure {
+  ok: false;
+  rejection: TurnRejection;
+}
+
+type PlanValidationResult = PlanValidationSuccess | PlanValidationFailure;
+
 export class TurnOrchestrator {
-  public constructor(private readonly dependencies: TurnOrchestratorDependencies) {}
+  private readonly maxProposalsPerTurn: number;
+
+  public constructor(
+    private readonly dependencies: TurnOrchestratorDependencies,
+    options: TurnOrchestratorOptions = {},
+  ) {
+    const maxProposalsPerTurn = options.maxProposalsPerTurn ?? DEFAULT_MAX_PROPOSALS_PER_TURN;
+    if (!Number.isSafeInteger(maxProposalsPerTurn) || maxProposalsPerTurn < 1) {
+      throw new RangeError("maxProposalsPerTurn must be a positive safe integer");
+    }
+    this.maxProposalsPerTurn = maxProposalsPerTurn;
+  }
 
   public async runActorTurn(input: RunActorTurnInput): Promise<TurnResult> {
     let contextBuilds = 0;
@@ -112,10 +142,10 @@ export class TurnOrchestrator {
         );
       }
 
-      let plan: SimulationPlan;
+      let rawPlan: unknown;
       try {
         simulationAttempts += 1;
-        plan = await this.dependencies.simulationAdapter.generate({
+        rawPlan = await this.dependencies.simulationAdapter.generate({
           context,
           actorCharacterId: input.actorCharacterId,
           intent: input.intent,
@@ -132,7 +162,7 @@ export class TurnOrchestrator {
         );
       }
 
-      if (!Array.isArray(plan.proposals)) {
+      if (!isRecord(rawPlan) || !Array.isArray(rawPlan.proposals)) {
         return this.resultForFailure(
           input,
           "rejected",
@@ -149,7 +179,20 @@ export class TurnOrchestrator {
         );
       }
 
-      if (plan.proposals.length === 0) {
+      const planValidation = this.validatePlan(rawPlan.proposals, input.actorCharacterId);
+      if (!planValidation.ok) {
+        return this.resultForFailure(
+          input,
+          "rejected",
+          planValidation.rejection,
+          [],
+          this.readState(input.worldId),
+          contextBuilds,
+          simulationAttempts,
+        );
+      }
+
+      if (planValidation.proposals.length === 0) {
         return {
           status: "empty",
           worldId: input.worldId,
@@ -202,7 +245,7 @@ export class TurnOrchestrator {
 
       const execution = this.executePlan(
         input,
-        plan.proposals,
+        planValidation.proposals,
         context.world.revision,
         beforeCommitState,
       );
@@ -251,6 +294,49 @@ export class TurnOrchestrator {
     }
   }
 
+  private validatePlan(proposals: unknown[], actorCharacterId: string): PlanValidationResult {
+    if (proposals.length > this.maxProposalsPerTurn) {
+      return {
+        ok: false,
+        rejection: {
+          kind: "execution_limit",
+          code: "PROPOSAL_LIMIT_EXCEEDED",
+          message: `Turn contains ${proposals.length} proposals; the maximum is ${this.maxProposalsPerTurn}`,
+          proposalIndex: null,
+        },
+      };
+    }
+
+    const parsedProposals: CandidateProposal[] = [];
+    let firstRejection: TurnRejection | null = null;
+    for (const [proposalIndex, proposal] of proposals.entries()) {
+      const parsedProposal = candidateProposalSchema.safeParse(proposal);
+      if (!parsedProposal.success) {
+        firstRejection ??= {
+          kind: "proposal_invalid",
+          code: "MODEL_OUTPUT_INVALID",
+          message: "Simulation proposal failed the actor proposal schema",
+          proposalIndex,
+        };
+        continue;
+      }
+      if (!isActorOwnedProposal(parsedProposal.data, actorCharacterId)) {
+        firstRejection ??= {
+          kind: "proposal_invalid",
+          code: "MODEL_OUTPUT_INVALID",
+          message: "Simulation proposal is not attributed to the turn actor",
+          proposalIndex,
+        };
+        continue;
+      }
+      parsedProposals.push(parsedProposal.data);
+    }
+
+    return firstRejection
+      ? { ok: false, rejection: firstRejection }
+      : { ok: true, proposals: parsedProposals };
+  }
+
   private executePlan(
     input: RunActorTurnInput,
     proposals: CandidateProposal[],
@@ -262,34 +348,6 @@ export class TurnOrchestrator {
     let lastState: WorldSnapshot | null = initialState;
 
     for (const [proposalIndex, proposal] of proposals.entries()) {
-      const parsedProposal = candidateProposalSchema.safeParse(proposal);
-      if (!parsedProposal.success) {
-        return {
-          kind: "rejected",
-          rejection: {
-            kind: "proposal_invalid",
-            code: "MODEL_OUTPUT_INVALID",
-            message: "Simulation proposal failed the actor proposal schema",
-            proposalIndex,
-          },
-          committedEvents,
-          state: lastState,
-        };
-      }
-      if (!isActorOwnedProposal(parsedProposal.data, input.actorCharacterId)) {
-        return {
-          kind: "rejected",
-          rejection: {
-            kind: "proposal_invalid",
-            code: "MODEL_OUTPUT_INVALID",
-            message: "Simulation proposal is not attributed to the turn actor",
-            proposalIndex,
-          },
-          committedEvents,
-          state: lastState,
-        };
-      }
-
       const authoritativeState = proposalIndex === 0
         ? initialState
         : this.readState(input.worldId);
@@ -308,7 +366,7 @@ export class TurnOrchestrator {
       }
 
       const candidate = bindTrustedCandidate(
-        parsedProposal.data,
+        proposal,
         input.worldId,
         expectedRevision,
         authoritativeState.world.currentTime,
@@ -367,6 +425,10 @@ export class TurnOrchestrator {
       return null;
     }
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function bindTrustedCandidate(
