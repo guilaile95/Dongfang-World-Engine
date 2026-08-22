@@ -319,7 +319,7 @@ Context Builder 不新增事实表，也不写入 Event、Materialized State 或
 
 Simulation Adapter 只接收 `CharacterContext + actorCharacterId + intent`，并通过可注入 Model Client 返回六类 actor-supported、结构化、有序的 Proposal 列表。Proposal 是待后续 Orchestrator 绑定并验证的草案，不是 Candidate Event，也不携带模型可控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；`world.time_advance.toTime` 仍是 Effect 字段。actor 模型暂不拥有 `fact.assert`，Kernel capability 不等于 actor-model capability；Adapter 不读取原始 Snapshot、Facts 或 SQLite Store，不执行 Commit。
 
-模型输出先经过确定性 schema validation；Malformed output 最多允许一次 repair，第二次仍失败则返回稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于 Turn Orchestrator。
+模型输出先经过确定性 schema validation；system instruction 明确声明顶层 `{ "proposals": [...] }`、空 Proposal 合法、六类 Proposal 精确字段、actor ownership 和禁止的 authority 字段。Malformed output 最多允许一次 repair；repair 只收到固定上限内的 schema issue path/code/message，或 invalid JSON / actor mismatch 的具体原因。第二次仍失败则返回包含最后安全 validation summary 的稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于 Turn Orchestrator。
 
 ### 2.17 Turn Orchestrator（可信 Commit 绑定）
 
@@ -330,6 +330,12 @@ Orchestrator 为每个 Proposal 在提交时绑定可信 envelope：`world_id`�
 在首个 Commit 前，完整 Proposal plan 必须通过 actor Proposal schema 与 actor ownership 预校验；后续项出现 malformed、Kernel-only 类型或其他 actor attribution 问题时，整个 Turn 返回 `proposal_invalid`，不产生前缀写入。Plan 同时受确定性的 execution cap 约束，MVP 默认最多 8 项并允许通过 Orchestrator 配置覆盖；超过上限返回稳定 `PROPOSAL_LIMIT_EXCEEDED`，不改变 Event、State 或 World revision。
 
 有序执行采用 committed-prefix 结果：零 Proposal 为 `empty`，全部成功为 `success`，首项失败为 `rejected`，前缀成功后失败为 `partial`。首个 Commit 前发现 stale 最多允许一次 Context 重建与重新 Simulation；再次 stale 则返回稳定 stale 结果且不提交本轮 Event。已有前缀后不自动重模拟、不回滚、不继续后续项，Kernel rejection 也不会隐式生成 `action.failed` Event。actor Proposal surface 仍不包含 `fact.assert`，即使 Kernel 对 trusted/system producer 支持该 Candidate。
+
+### 2.18 Real-model transport（非权威模型连接）
+
+Real-model transport 不新增 World 数据表或权威字段。它只是现有 `SimulationModelClient` 的一个 OpenAI-compatible HTTP 实现：`SimulationModelRequest.instructions` 进入 system message，`context` 与 `intent` 组成 user payload，provider 的 assistant content 原样交回 Simulation Adapter。Transport 不接触 raw Snapshot、SQLite、Event、State 或 revision，也不解析、授权或提交 Proposal。
+
+HTTP/network/timeout/provider response 错误属于 transport boundary；模型 JSON 的解析、repair、actor Proposal surface 和权限仍由 Simulation Adapter 负责。真实模型调用只通过开发者 opt-in 的单回合 headless smoke 触发，CI 使用 fake fetch 并保持 credential-free、deterministic。该 Slice 不引入 provider router、fallback、复杂 retry、Memory、RAG 或 Narrative。
 
 ## 3. 关键关系
 

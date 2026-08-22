@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ContextBuilder } from "../../src/engine/context-builder.js";
 import {
+  DEFAULT_SIMULATION_INSTRUCTIONS,
+  MAX_SIMULATION_VALIDATION_DIAGNOSTICS,
   SimulationAdapter,
   SimulationAdapterError,
   type SimulationAdapterErrorCode,
@@ -69,6 +71,54 @@ async function expectAdapterError(
 }
 
 describe("Simulation Adapter MVP", () => {
+  it("publishes an explicit provider-agnostic contract for all actor Proposal types", () => {
+    expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain('{"proposals":[...]}');
+    expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain('{"proposals":[]}');
+    expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain("JSON only");
+    expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain("markdown code fences");
+    expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain("prose");
+
+    for (const type of [
+      "character.move",
+      "character.die",
+      "character.learn_claim",
+      "relationship.change",
+      "claim.record",
+      "world.time_advance",
+    ]) {
+      expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain(type);
+    }
+    for (const field of [
+      "actorId",
+      "toLocationId",
+      "claimId",
+      "knowledgeState",
+      "source",
+      "sourceCharacterId",
+      "eventId",
+      "targetCharacterId",
+      "trustDelta",
+      "hostilityDelta",
+      "closenessDelta",
+      "relationshipType",
+      "subject",
+      "predicate",
+      "object",
+      "toTime",
+    ]) {
+      expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain(field);
+    }
+    for (const forbiddenField of [
+      "worldId",
+      "expectedWorldRevision",
+      "occurredAt",
+      "causeEventIds",
+      "fact.assert",
+    ]) {
+      expect(DEFAULT_SIMULATION_INSTRUCTIONS).toContain(forbiddenField);
+    }
+  });
+
   it("uses only the supplied filtered CharacterContext and can return zero proposals", async () => {
     const { store, ids, context } = createHarness();
     const model = new FakeModel({ proposals: [] });
@@ -181,6 +231,121 @@ describe("Simulation Adapter MVP", () => {
 
     expect(error.diagnostics.attempts).toBe(2);
     expect(model.calls).toHaveLength(2);
+    store.close();
+  });
+
+  it("passes bounded schema paths, codes, and messages to one repair attempt", async () => {
+    const { store, ids, context } = createHarness();
+    const rawSecret = "RAW_MODEL_OUTPUT_SECRET";
+    const malformedOutput = {
+      proposals: [{
+        type: "character.move",
+        actorId: 123,
+        rawSecret,
+      }],
+    };
+    const validOutput = { proposals: [moveProposal(ids.characters.player.id, ids.locations.tokyo.id)] };
+    const model = new FakeModel(malformedOutput, validOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const result = await adapter.generate({
+      context,
+      actorCharacterId: ids.characters.player.id,
+      intent: "移动到东京",
+    });
+
+    expect(result.proposals).toEqual(validOutput.proposals);
+    const repairReason = model.calls[1]!.repair?.reason ?? "";
+    expect(repairReason).toContain("proposals.0.actorId");
+    expect(repairReason).toContain("invalid_type");
+    expect(repairReason).toContain("expected string");
+    expect(repairReason).not.toContain(rawSecret);
+    expect(repairReason).not.toContain("SimulationModelRequest");
+    store.close();
+  });
+
+  it("limits schema repair diagnostics to a small fixed number", async () => {
+    const { store, ids, context } = createHarness();
+    const malformedOutput = {
+      proposals: Array.from({ length: 20 }, () => ({ type: "character.move" })),
+    };
+    const validOutput = { proposals: [moveProposal(ids.characters.player.id, ids.locations.tokyo.id)] };
+    const model = new FakeModel(malformedOutput, validOutput);
+    const adapter = new SimulationAdapter(model);
+
+    await adapter.generate({
+      context,
+      actorCharacterId: ids.characters.player.id,
+      intent: "修复多个 schema 问题",
+    });
+
+    const repairReason = model.calls[1]!.repair?.reason ?? "";
+    expect((repairReason.match(/proposals\./g) ?? [])).toHaveLength(MAX_SIMULATION_VALIDATION_DIAGNOSTICS);
+    expect(repairReason).toContain("additional validation issue(s) omitted");
+    store.close();
+  });
+
+  it("gives actor authority failures an actionable repair reason", async () => {
+    const { store, ids, context } = createHarness();
+    const invalidOutput = {
+      proposals: [moveProposal(ids.characters.zhao.id, ids.locations.tokyo.id)],
+    };
+    const validOutput = { proposals: [moveProposal(ids.characters.player.id, ids.locations.tokyo.id)] };
+    const model = new FakeModel(invalidOutput, validOutput);
+    const adapter = new SimulationAdapter(model);
+
+    await adapter.generate({
+      context,
+      actorCharacterId: ids.characters.player.id,
+      intent: "让其他角色移动",
+    });
+
+    const repairReason = model.calls[1]!.repair?.reason ?? "";
+    expect(repairReason).toContain("proposals.0.actorId");
+    expect(repairReason).toContain("Proposal actor must match context.observer.id");
+    store.close();
+  });
+
+  it("keeps invalid JSON repair and final errors explicit", async () => {
+    const { store, ids, context } = createHarness();
+    const model = new FakeModel("not-json", "still-not-json");
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "返回 JSON",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(model.calls[1]!.repair?.reason).toBe("Model output was not valid JSON");
+    expect(error.message).toContain("Model output was not valid JSON");
+    expect(error.context.validationSummary).toBe("Model output was not valid JSON");
+    store.close();
+  });
+
+  it("includes the final sanitized validation summary in MODEL_OUTPUT_INVALID", async () => {
+    const { store, ids, context } = createHarness();
+    const malformedOutput = { proposals: [{ type: "character.move" }] };
+    const model = new FakeModel(malformedOutput, malformedOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "重复返回 malformed proposal",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.message).toContain("proposals.0.actorId");
+    expect(error.message).toContain("proposals.0.toLocationId");
+    expect(error.context.validationSummary).toContain("proposals.0.actorId");
+    expect(error.context).not.toHaveProperty("rawOutput");
+    expect(error.context).not.toHaveProperty("prompt");
     store.close();
   });
 

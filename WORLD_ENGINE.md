@@ -248,6 +248,8 @@ Simulation Adapter 是 Context Builder 之后的非权威模型边界。它只�
 
 Proposal 只描述六类 actor-supported Candidate 类型的非权威草案；actor 模型暂不拥有 `fact.assert` 能力，即使 Kernel 为 trusted/system producer 保留该 Candidate capability。模型不得提供 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；这些 Event envelope/provenance 字段由未来 Turn Orchestrator 在每次提交前绑定。`world.time_advance.toTime` 仍是可提议的 Effect 字段，不等同于 `occurredAt`。Adapter 对模型输出执行严格确定性 Zod 校验，结构错误最多触发一次 repair，transport/provider 错误不进入无限重试；无论成功、解析失败还是 transport 失败，都不能写入 Event、Materialized State 或 World revision。
 
+Model-facing contract 不是一句模糊的“使用六类 Proposal”，而是 provider-agnostic 的明确输出协议：顶层只能是 `{ "proposals": [...] }`，允许 `{ "proposals": [] }`，禁止 code fence、解释文本和额外字段，并逐项列出 `character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`claim.record`、`world.time_advance` 的必需/可选字段。`actorId` 或 `sourceCharacterId` 必须匹配 `context.observer.id`；`relationship.change` 至少包含一个合法 change field；`character.learn_claim.source` 只能是 character 或 event 结构。Schema failure 的 repair feedback 只暴露固定上限内的 issue path、code、message；JSON parse failure 和 actor authority failure 使用明确、可执行的短原因，不暴露 raw model output、prompt、provider response、API Key 或 hidden reasoning。
+
 ### 2.12 Turn Orchestrator MVP
 
 Turn Orchestrator 是从非权威 Proposal 到权威 Commit 的最小运行桥接层。调用方只提供 `worldId`、`actorCharacterId`、intent 和可选 Context budget；Orchestrator 自己通过 Context Builder 构造观察者上下文，再把上下文交给 Simulation Adapter。调用方和模型都不能提供用于执行的任意 raw Context。
@@ -266,6 +268,14 @@ Turn Orchestrator 是从非权威 Proposal 到权威 Commit 的最小运行桥�
 有序 Proposal 按 committed-prefix 语义执行：零 Proposal 返回 `empty`；全部成功返回 `success`；首项 Kernel rejection 返回 `rejected`；已有成功提交后停止并返回 `partial`，不回滚前缀、不继续后续 Proposal，也不自动创建 `action.failed` Event。下一项只使用本次前一项成功 Commit 返回的 revision，不会静默采用其他写入者产生的更新 revision。
 
 由于 Simulation 是异步的，Orchestrator 在首个 Commit 前检查 Context revision；若 World 已变化，最多重建一次 Context 并重新 Simulation。第二次仍陈旧时返回稳定 stale 结果且不提交本轮 Event。首项发生 `STALE_WORLD_STATE` 也共享这一次重试额度；一旦已有 committed prefix，任何 stale 或其他 Kernel rejection 都只返回前缀，不自动重模拟。
+
+### 2.13 Minimal Real-Model Transport and Headless Smoke
+
+Step 6 的 real-model boundary 只实现一个窄的 OpenAI-compatible Chat Completions `SimulationModelClient`。它接收现有 `SimulationModelRequest`，把 `instructions` 放入 system message，把经过 Context Builder 的 `context` 与 intent 放入 user message，并只把 provider 返回的 assistant content 交回 Simulation Adapter。Transport 不读取 SQLite 或 raw `WorldSnapshot`，不构造 Context，不调用 CommitKernel，不解析或授权 Proposal，也不拥有 `fact.assert` 能力。
+
+Transport 只负责一次 HTTP 请求、响应映射和一个小的 timeout safety setting。HTTP、network、timeout 或 malformed provider response 都以稳定 transport error 抛出；不实现 provider fallback、retry chain、复杂 backoff 或 provider-specific world logic。Simulation Adapter 仍独自拥有 JSON/Zod 解析和最多一次 repair，CI 使用 injected fake fetch，不调用真实模型。
+
+`npm run smoke:real-model` 是开发者 opt-in 的单回合 headless smoke。它使用内存测试 World，经过正常 Context Builder、Simulation Adapter、Turn Orchestrator 和 Commit Kernel，最后只输出 status、rejection、提交 Event type/revision/time 和最终 World revision。需要 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL`，可选 `DWE_SMOKE_INTENT`；程序不会打印 API Key、原始 prompt、provider raw response 或 hidden reasoning。该 smoke 不属于 GitHub Actions CI。
 
 ## 3. Invariants
 

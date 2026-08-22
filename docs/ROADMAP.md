@@ -97,6 +97,8 @@ Add the first non-authoritative model boundary on top of the completed Context B
 - accept only an already-filtered `CharacterContext`, matching actor identity, and intent;
 - inject one narrow model client/transport boundary;
 - validate 0..N ordered proposal drafts against the six-type actor Candidate surface;
+- publish the provider-agnostic top-level Proposal contract, exact six-type fields, actor ownership, and forbidden authority fields;
+- provide one bounded actionable repair summary and preserve the final sanitized validation reason;
 - keep Kernel-only capabilities such as `fact.assert` unavailable to actor proposals until a deterministic authority contract exists;
 - keep Event envelope/provenance (`occurredAt`, `causeEventIds`) and revision binding outside model output;
 - reject model-controlled `worldId` / `expectedWorldRevision` metadata;
@@ -123,6 +125,23 @@ Build the first authoritative runtime bridge on top of the Context Builder and h
 - actor Proposal execution keeps `fact.assert` unavailable.
 
 Step 5 deliberately does not include a real LLM Provider, Narrator, NPC Scheduler, Memory/RAG, new Event types, or UI.
+
+## Step 6 — Minimal Real-Model Transport and Headless Smoke
+
+Status: complete.
+
+Add the first narrow real-model connectivity proof without changing authority:
+
+- implement one OpenAI-compatible Chat Completions `SimulationModelClient` using native `fetch`;
+- map only existing model instructions, filtered CharacterContext and intent into the request;
+- return only assistant content to the existing Simulation Adapter;
+- keep JSON/Zod validation, one repair attempt, actor Proposal restrictions, Orchestrator binding and Kernel Commit unchanged;
+- surface HTTP, network, timeout and malformed provider responses without provider fallback or retry chains;
+- add fake-fetch HTTP and one-turn end-to-end tests with no real credentials;
+- add an opt-in `npm run smoke:real-model` using an in-memory test World and the normal Context Builder → Simulation Adapter → Turn Orchestrator → Commit Kernel path;
+- keep GitHub Actions credential-free and real-model/API independent.
+
+Step 6 deliberately does not include Narrator, Scheduler, Item, Memory/RAG, provider framework, fallback chain, complex retry, UI, or production deployment.
 
 ## Later
 
