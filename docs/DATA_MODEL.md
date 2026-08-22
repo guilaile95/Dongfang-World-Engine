@@ -1,6 +1,6 @@
 # World Engine Data Model
 
-本文档描述“数据库应该如何表示一个世界”的概念模型。它只冻结实体、权威边界和关键关系，不在 MVP 阶段提前设计完整 SQL Migration、索引方案或具体数据库产品。
+本文档描述“数据库应该如何表示一个世界”的概念模型。它只冻结实体、权威边界和关键关系，不在 MVP 阶段提前设计完整 SQL Migration、索引方案或供应商专属能力。当前 Commit Kernel 的物理实现使用 SQLite + Drizzle ORM。
 
 核心原则：当前状态便于读取，Append-only Event Log 解释状态如何形成；客观 Fact 与每个角色的 CharacterKnowledge 分离；Memory 是可替换的召回接口，不是 Truth。
 
@@ -79,11 +79,11 @@ Fact
   object
   valid_from
   valid_to
-  source
-  confidence
+  source_event_id
+  source_type
 ```
 
-`subject`、`predicate`、`object` 可以先保持概念级表示，不在此阶段锁定具体序列化格式。`source` 应能指向初始 Lore、已提交 Event 或其他可审计来源；`confidence` 表达事实记录的可信程度，但不能替代 Validator 的提交状态。
+`subject`、`predicate`、`object` 可以先保持概念级表示，不在此阶段锁定具体序列化格式。`source_event_id` 应能指向产生该 Fact 的已提交 Event；初始 Lore Fact 可以使用 `source_type = initial_lore` 且没有事件来源。Fact 是已确认的客观世界事实，因此不设置 `confidence`；不确定性属于 CharacterKnowledge、Lore / Claim 或 Candidate Event。
 
 同一事实在时间线上发生变化时，应保留可解释的历史，而不是直接抹掉旧事实。对于互斥谓词，当前有效区间不能同时存在互相矛盾的记录。
 
@@ -96,10 +96,35 @@ CharacterKnowledge
   character_id
   fact_id
   knowledge_state
-  source
+  source_type
+  source_character_id
+  source_event_id
   learned_at
-  confidence
 ```
+
+`source_type` 的 MVP 值为：
+
+```text
+initial
+character
+event
+```
+
+Candidate Event 使用结构化来源：
+
+```json
+{ "kind": "character", "characterId": "character-zhao" }
+```
+
+或：
+
+```json
+{ "kind": "event", "eventId": "event-123" }
+```
+
+`character` 来源表示另一个角色把信息告诉当前角色；Hard Validator 必须确认来源角色属于同一个 World，并且自身拥有该 Fact。来源角色的 `knowledge_state` 不要求是 `confirmed`，`rumor` 也可以传播 `rumor`。`event` 来源表示当前角色实际参与了该 Event；Hard Validator 必须确认来源 Event 属于同一个 World、时间不晚于学习 Event、角色位于该 Event 的 `actor_ids` 或 `target_ids`，且 Event 的结构化载荷确实关联该 Fact。
+
+Seed State 可以使用 `source_type = initial`，此时 `source_character_id` 和 `source_event_id` 都为空。普通角色不能仅因为 Fact 存在或数据库中存在某个 `fact.assert` Event 就自动获得知识。
 
 `knowledge_state` 可以考虑以下概念状态：
 
@@ -111,7 +136,7 @@ believed
 confirmed
 ```
 
-但 MVP 不应过早把枚举设计死。关键是保留“认知状态”和“认知来源”，使系统可以表达一个角色不知道、听说、怀疑、相信或确认某件事。
+但 MVP 不应过早把枚举设计死。关键是保留“认知状态”和结构化“认知来源”，使系统可以表达一个角色不知道、听说、怀疑、相信或确认某件事。
 
 角色知识可以由亲历事件、他人告知、文件、观察或传闻产生。每种来源都需要由事件、权限规则或初始设定支持，NPC 不能通过 LLM 上下文意外获得不应知道的 Fact。
 
@@ -123,6 +148,7 @@ Event 是 Append-only 的已提交世界事件，用来回答“世界为什么�
 Event
   id
   world_id
+  sequence（物理层提交序号）
   event_time
   type
   location_id
@@ -133,9 +159,11 @@ Event
   created_at
 ```
 
-`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
+`sequence` 是物理层提交顺序，`event_time` 是世界内时间；两者不是同一个概念。`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
 
-Event 一旦 Commit，不应被后续叙事直接修改或删除。若发生纠正、撤销或反转，应追加新的、具有因果关系的 Event。
+每一个成功 Commit 的 Event 都会使 `World.current_time = max(previous_current_time, event_time)`。因此 `world.time_advance` 不是唯一能够推动世界时钟的 Event；它用于没有其他事件发生但世界仍继续流逝的情况。`cause_event_ids` 中的 Event 时间不能晚于当前 Event；Knowledge 的 `event` 来源也不能晚于学习 Event。`fact.assert.valid_from` 可以描述历史有效时间，但不能让 World Clock 倒退。
+
+Event 一旦 Commit，不应被后续叙事直接修改或删除。物理层使用内部 `sequence` 保留提交顺序，保证 Event Log 可以确定性重放。若发生纠正、撤销或反转，应追加新的、具有因果关系的 Event。
 
 ### 2.7 Relationship
 
@@ -143,16 +171,16 @@ Event 一旦 Commit，不应被后续叙事直接修改或删除。若发生纠�
 
 ```text
 Relationship
-  character_a
-  character_b
+  source_character_id
+  target_character_id
   trust
   hostility
   closeness
   relationship_type
-  updated_by_event
+  updated_by_event_id
 ```
 
-关系方向、维度和单位可以后续扩展。重大关系变化必须指向 `updated_by_event`，不能由聊天文本或 Memory 直接覆盖。
+关系必须有方向：`A → B` 与 `B → A` 是两条不同状态。关系方向、维度和单位可以后续扩展。重大关系变化必须指向 `updated_by_event_id`，不能由聊天文本或 Memory 直接覆盖。
 
 ### 2.8 Item / Asset
 
@@ -179,7 +207,6 @@ Session / Save
   id
   world_id
   player_character_id
-  branch_id
   save_point
   created_at
 ```
@@ -188,11 +215,10 @@ Session / Save
 
 - 当前玩家；
 - 当前世界；
-- 当前分支；
 - 存档；
 - 恢复。
 
-Session / Save 是运行入口和恢复指针，不应成为另一套独立事实源。恢复时应能定位到已提交状态和相应 Event 位置。
+当前 MVP 只有单一权威时间线，暂不实现 `branch_id` 或从旧存档恢复后创建新时间线。未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。Session / Save 是运行入口和恢复指针，不应成为另一套独立事实源。
 
 ### 2.10 Memory
 
@@ -232,9 +258,9 @@ World
  ├── Character ──< CharacterKnowledge >── Fact
  ├── Location
  ├── Event ──< cause_event_ids >── Event
- ├── Relationship ──> Character + updated_by_event
+ ├── Relationship ──> Character + updated_by_event_id
  ├── Item / Asset ──> Character / Location
- ├── Session / Save ──> World + Player Character + Branch
+ ├── Session / Save ──> World + Player Character
  └── Lore / Canon
 
 Event ──> 更新 ──> World / Character / Fact / Relationship / Item 当前状态
@@ -307,6 +333,7 @@ Player
 
 本阶段不提前设计几十张表，也不实现完整 SQL Migration。优先验证以下最小闭环：
 
+
 1. 一个 World；
 2. 一个玩家 Character；
 3. 少量 NPC Character；
@@ -318,4 +345,4 @@ Player
 9. Memory 只作为可替换召回接口；
 10. 连续运行 30～50 轮后，可以从 Event 解释当前事实、时间、位置、人物认知和因果。
 
-第一阶段明确不绑定腾讯 Agent Memory 或其他具体供应商，不引入复杂 RAG、数据库依赖或大规模模拟。先证明模型边界和提交语义稳定，再决定哪些实体需要物理拆表、索引或外部服务。
+当前 Slice 已将 World、Character、Location、Fact、CharacterKnowledge、Relationship 和 Event 物理化到 SQLite，并实现六类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。
