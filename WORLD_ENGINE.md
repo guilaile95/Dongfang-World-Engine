@@ -242,6 +242,12 @@ Context Builder 不读取或输出一般 objective `Fact`，不通过 `(subject,
 
 任何未来的概率相关性排序都必须在上述确定性 visibility gate 之后运行；本 Slice 不实现概率 reranking、Embedding、RAG 或 LLM。
 
+### 2.11 Simulation Adapter MVP
+
+Simulation Adapter 是 Context Builder 之后的非权威模型边界。它只接收已经过滤的 `CharacterContext`、与 observer 相同的 actor identity 和 intent，并通过可注入的 Model Client 产生 0..N 个有序 Proposal；它不能访问 `SqliteWorldStore`、原始 `WorldSnapshot` 或隐藏 Truth，也不能调用 `CommitKernel.commit()`。
+
+Proposal 只描述当前已支持 Candidate 类型的非权威草案，模型不得提供 `worldId` 或 `expectedWorldRevision`；这两个字段由未来 Turn Orchestrator 在每次提交前绑定。Adapter 对模型输出执行确定性 Zod 校验，结构错误最多触发一次 repair，transport/provider 错误不进入无限重试；无论成功、解析失败还是 transport 失败，都不能写入 Event、Materialized State 或 World revision。
+
 ## 3. Invariants
 
 以下是不变量。任何产生状态 Delta 的路径，包括玩家行动、后台事件、脚本和 LLM 候选，都必须经过这些规则的检查：
