@@ -32,6 +32,22 @@ export interface PublicCharacterProjection {
   alive: boolean;
 }
 
+export interface ContextClaimProjection {
+  id: string;
+  subject: string;
+  predicate: string;
+  object: string;
+}
+
+export interface ContextRelationshipProjection {
+  sourceCharacterId: string;
+  targetCharacterId: string;
+  trust: number;
+  hostility: number;
+  closeness: number;
+  relationshipType: string;
+}
+
 export interface ContextKnowledgeProvenance {
   sourceType: KnowledgeRecord["sourceType"];
   sourceCharacterId: string | null;
@@ -42,7 +58,7 @@ export interface ContextKnowledgeProvenance {
 }
 
 export interface ContextKnowledgeBundle {
-  claim: ClaimRecord;
+  claim: ContextClaimProjection;
   knowledge: KnowledgeRecord;
   provenance: ContextKnowledgeProvenance;
 }
@@ -53,7 +69,7 @@ export interface CharacterContext {
   location: LocationRecord | null;
   coLocatedCharacters: PublicCharacterProjection[];
   knowledge: ContextKnowledgeBundle[];
-  relationships: RelationshipRecord[];
+  relationships: ContextRelationshipProjection[];
   packing: {
     budget: number;
     visibleUnits: number;
@@ -65,7 +81,7 @@ export interface CharacterContext {
 type ContextUnit =
   | { kind: "knowledge"; value: ContextKnowledgeBundle }
   | { kind: "coLocatedCharacter"; value: PublicCharacterProjection }
-  | { kind: "relationship"; value: RelationshipRecord };
+  | { kind: "relationship"; value: ContextRelationshipProjection };
 
 export class ContextBuilder {
   public constructor(private readonly store: SqliteWorldStore) {}
@@ -124,7 +140,7 @@ export class ContextBuilder {
           ? null
           : eventById.get(knowledge.sourceEventId) ?? null;
         return {
-          claim: { ...claim },
+          claim: toClaimProjection(claim),
           knowledge: { ...knowledge },
           provenance: {
             sourceType: knowledge.sourceType,
@@ -144,7 +160,7 @@ export class ContextBuilder {
     const observerRelationships = snapshot.relationships
       .filter((relationship) => relationship.sourceCharacterId === observer.id)
       .sort((first, second) => compareIds(first.targetCharacterId, second.targetCharacterId))
-      .map((relationship) => ({ ...relationship }));
+      .map(toRelationshipProjection);
 
     const visibleUnits: ContextUnit[] = [
       ...knowledgeBundles.map((value) => ({ kind: "knowledge" as const, value })),
@@ -154,7 +170,7 @@ export class ContextBuilder {
     const packedUnits = visibleUnits.slice(0, budget);
     const packedKnowledge: ContextKnowledgeBundle[] = [];
     const packedCoLocatedCharacters: PublicCharacterProjection[] = [];
-    const packedRelationships: RelationshipRecord[] = [];
+    const packedRelationships: ContextRelationshipProjection[] = [];
     for (const unit of packedUnits) {
       switch (unit.kind) {
         case "knowledge":
@@ -222,5 +238,25 @@ function toPublicCharacterProjection(character: CharacterRecord): PublicCharacte
     name: character.name,
     type: character.type,
     alive: character.alive,
+  };
+}
+
+function toClaimProjection(claim: ClaimRecord): ContextClaimProjection {
+  return {
+    id: claim.id,
+    subject: claim.subject,
+    predicate: claim.predicate,
+    object: claim.object,
+  };
+}
+
+function toRelationshipProjection(relationship: RelationshipRecord): ContextRelationshipProjection {
+  return {
+    sourceCharacterId: relationship.sourceCharacterId,
+    targetCharacterId: relationship.targetCharacterId,
+    trust: relationship.trust,
+    hostility: relationship.hostility,
+    closeness: relationship.closeness,
+    relationshipType: relationship.relationshipType,
   };
 }

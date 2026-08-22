@@ -171,6 +171,81 @@ describe("Context Builder MVP", () => {
     store.close();
   });
 
+  it("does not leak Claim database provenance through a later Character knowledge chain", () => {
+    const { store, ids, builder } = createHarness();
+    const kernel = createKernel(store);
+    const hiddenClaimEvent = expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "claim.record",
+      worldId: ids.world.id,
+      claimId: "claim-hidden-provenance",
+      actorId: ids.characters.npcA.id,
+      subject: ids.characters.npcA.id,
+      predicate: "private_allegation",
+      object: "hidden-value",
+      occurredAt: TEST_TIME,
+    }));
+    expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "character.learn_claim",
+      worldId: ids.world.id,
+      actorId: ids.characters.npcA.id,
+      claimId: "claim-hidden-provenance",
+      knowledgeState: "rumor",
+      source: { kind: "event", eventId: hiddenClaimEvent.id },
+      occurredAt: TEST_TIME,
+    }));
+    expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "character.learn_claim",
+      worldId: ids.world.id,
+      actorId: ids.characters.npcB.id,
+      claimId: "claim-hidden-provenance",
+      knowledgeState: "rumor",
+      source: { kind: "character", characterId: ids.characters.npcA.id },
+      occurredAt: TEST_TIME,
+    }));
+    expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "character.learn_claim",
+      worldId: ids.world.id,
+      actorId: ids.characters.player.id,
+      claimId: "claim-hidden-provenance",
+      knowledgeState: "rumor",
+      source: { kind: "character", characterId: ids.characters.npcB.id },
+      occurredAt: TEST_TIME,
+    }));
+
+    const context = builder.buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.player.id,
+      budget: 10,
+    });
+    const bundle = context.knowledge.find((candidate) => candidate.claim.id === "claim-hidden-provenance");
+
+    expect(bundle?.claim).toEqual({
+      id: "claim-hidden-provenance",
+      subject: ids.characters.npcA.id,
+      predicate: "private_allegation",
+      object: "hidden-value",
+    });
+    expect(bundle?.knowledge).toEqual(expect.objectContaining({
+      characterId: ids.characters.player.id,
+      claimId: "claim-hidden-provenance",
+      knowledgeState: "rumor",
+    }));
+    expect(bundle?.provenance).toEqual(expect.objectContaining({
+      sourceType: "character",
+      sourceCharacterId: ids.characters.npcB.id,
+      sourceEventId: null,
+      sourceSeedId: null,
+    }));
+    expect(bundle?.claim).not.toHaveProperty("sourceEventId");
+    expect(bundle?.claim).not.toHaveProperty("sourceSeedId");
+    expect(bundle?.claim).not.toHaveProperty("recordedAt");
+    const serialized = JSON.stringify(context);
+    expect(serialized).not.toContain(hiddenClaimEvent.id);
+    expect(serialized).not.toContain(`"sourceSeedId":"${ids.seed.id}"`);
+    expect(serialized).not.toContain("recordedAt");
+    store.close();
+  });
+
   it("includes only safe Event provenance metadata for a known Claim", () => {
     const { store, ids, builder } = createHarness();
     const kernel = createKernel(store);
@@ -285,11 +360,16 @@ describe("Context Builder MVP", () => {
     });
 
     expect(context.relationships).toHaveLength(1);
-    expect(context.relationships[0]).toEqual(expect.objectContaining({
+    expect(context.relationships[0]).toEqual({
       sourceCharacterId: ids.characters.player.id,
       targetCharacterId: ids.characters.zhao.id,
       trust: 20,
-    }));
+      hostility: 0,
+      closeness: 0,
+      relationshipType: "unknown",
+    });
+    expect(context.relationships[0]).not.toHaveProperty("updatedByEventId");
+    expect(JSON.stringify(context.relationships)).not.toContain("context-event-0001");
     expect(context.relationships.some((relationship) => relationship.sourceCharacterId === ids.characters.zhao.id)).toBe(false);
     store.close();
   });
