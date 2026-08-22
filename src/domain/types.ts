@@ -8,6 +8,12 @@ export type EventType =
   | "fact.assert"
   | "world.time_advance";
 
+export type KnowledgeSource =
+  | { kind: "character"; characterId: string }
+  | { kind: "event"; eventId: string };
+
+export type KnowledgeSourceType = "initial" | "character" | "event";
+
 export interface WorldRecord {
   id: string;
   name: string;
@@ -50,6 +56,8 @@ export interface KnowledgeRecord {
   characterId: string;
   factId: string;
   knowledgeState: string;
+  sourceType: KnowledgeSourceType;
+  sourceCharacterId: string | null;
   sourceEventId: string | null;
   learnedAt: string;
 }

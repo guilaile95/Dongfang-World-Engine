@@ -13,7 +13,7 @@ export const TEST_TIME = "2019-03-12T12:00:00.000Z";
 export interface TestWorldIds {
   world: WorldRecord;
   locations: Record<"beijing" | "tokyo" | "office", LocationRecord>;
-  characters: Record<"player" | "zhao" | "npcA", CharacterRecord>;
+  characters: Record<"player" | "zhao" | "npcA" | "npcB" | "npcC", CharacterRecord>;
   secretFact: FactRecord;
 }
 
@@ -78,7 +78,27 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
       identity: "调查员",
       currentGoal: "追踪异常线索",
     },
-  } satisfies Record<"player" | "zhao" | "npcA", CharacterRecord>;
+    npcB: {
+      id: "character-npc-b",
+      worldId: TEST_WORLD_ID,
+      name: "NPC-B",
+      type: "npc",
+      alive: true,
+      locationId: locations.beijing.id,
+      identity: "档案分析员",
+      currentGoal: "核对传闻来源",
+    },
+    npcC: {
+      id: "character-npc-c",
+      worldId: TEST_WORLD_ID,
+      name: "NPC-C",
+      type: "npc",
+      alive: true,
+      locationId: locations.beijing.id,
+      identity: "旁观者",
+      currentGoal: "保持低调",
+    },
+  } satisfies Record<"player" | "zhao" | "npcA" | "npcB" | "npcC", CharacterRecord>;
   const secretFact: FactRecord = {
     id: "fact-001",
     worldId: TEST_WORLD_ID,
@@ -95,6 +115,8 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
       characterId: characters.zhao.id,
       factId: secretFact.id,
       knowledgeState: "confirmed",
+      sourceType: "initial",
+      sourceCharacterId: null,
       sourceEventId: null,
       learnedAt: TEST_TIME,
     },
@@ -102,6 +124,8 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
       characterId: characters.npcA.id,
       factId: secretFact.id,
       knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
       sourceEventId: null,
       learnedAt: TEST_TIME,
     },

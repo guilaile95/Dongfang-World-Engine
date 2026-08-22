@@ -90,7 +90,7 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): C
         actorId: candidate.actorId,
         factId: candidate.factId,
         knowledgeState: candidate.knowledgeState,
-        sourceEventId: candidate.sourceEventId,
+        source: candidate.source ?? null,
       });
     case "relationship.change":
       return makeEvent(
@@ -110,8 +110,9 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): C
         },
       );
     case "fact.assert":
-      return makeEvent(candidate, id, createdAt, eventTime, [], [candidate.factId], {
+      return makeEvent(candidate, id, createdAt, eventTime, candidate.actorId ? [candidate.actorId] : [], [candidate.factId], {
         factId: candidate.factId,
+        actorId: candidate.actorId ?? null,
         subject: candidate.subject,
         predicate: candidate.predicate,
         object: candidate.object,

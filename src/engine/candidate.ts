@@ -24,13 +24,24 @@ const dieCandidate = z.object({
   actorId: z.string().min(1),
 });
 
+const knowledgeSource = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("character"),
+    characterId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    eventId: z.string().min(1),
+  }),
+]);
+
 const learnFactCandidate = z.object({
   ...base,
   type: z.literal("character.learn_fact"),
   actorId: z.string().min(1),
   factId: z.string().min(1),
   knowledgeState: z.string().min(1),
-  sourceEventId: z.string().min(1).optional(),
+  source: knowledgeSource.optional(),
 });
 
 const relationshipCandidate = z
@@ -63,6 +74,7 @@ const factCandidate = z.object({
   ...base,
   type: z.literal("fact.assert"),
   factId: z.string().min(1),
+  actorId: z.string().min(1).optional(),
   subject: z.string().min(1),
   predicate: z.string().min(1),
   object: z.string().min(1),

@@ -170,6 +170,8 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       characterId: knowledge.characterId,
       factId: knowledge.factId,
       knowledgeState: knowledge.knowledgeState,
+      sourceType: knowledge.sourceType as KnowledgeRecord["sourceType"],
+      sourceCharacterId: knowledge.sourceCharacterId,
       sourceEventId: knowledge.sourceEventId,
       learnedAt: knowledge.learnedAt,
     })),

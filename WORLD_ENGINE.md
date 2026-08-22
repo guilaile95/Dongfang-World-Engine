@@ -108,6 +108,19 @@ NPC B 知道
 
 NPC 只能获得其知识权限允许进入 Context 的信息。这个边界最终必须由程序实现，不能依赖一句 Prompt：“NPC 不要知道自己不该知道的东西。”
 
+当前 MVP 的知识来源必须是结构化 Provenance：
+
+```text
+character.learn_fact
+  source = { kind: "character", characterId }
+  或
+  source = { kind: "event", eventId }
+```
+
+`character` 来源表示另一个角色把 Fact 告诉当前角色。Hard Validator 必须确认来源角色属于同一个 World、不是当前学习者，并且来源角色自身拥有该 Fact；来源角色的 `rumor` 可以传播为 `rumor`，不要求来源状态为 `confirmed`。
+
+`event` 来源表示当前学习者从亲自参与或观察到的 Event 中获得 Fact。Hard Validator 必须确认来源 Event 属于同一个 World、`eventTime` 不晚于学习 Event、学习者存在于来源 Event 的 `actorIds` 或 `targetIds`，并且来源 Event 的结构化载荷确实关联目标 Fact。Fact 的存在、某个无关的 `fact.assert` Event 或数据库中的传播记录，都不能自动授予其他角色知识。
+
 ### 2.5 LLM Proposes, Engine Validates
 
 LLM 不能直接修改数据库。正确流程是：
@@ -275,6 +288,16 @@ COMMIT
 任意一步失败都必须 Rollback，不能出现“角色已经移动但 Event 写入失败”或“Event 已写入但当前状态未更新”的半提交状态。
 
 已提交 Event 是 Append-only：不得 UPDATE 核心内容，不得 DELETE；纠正或逆转必须追加具有因果关系的新 Event。
+
+世界时间规则如下：
+
+- 每一个成功 Commit 的 Event 都推进 `World.current_time = max(previousWorldTime, event.eventTime)`；
+- `world.time_advance` 仍用于没有其他事件发生但世界时间继续流逝的情况，不是唯一的时钟推进入口；
+- Hard Validator 拒绝 `eventTime < currentWorldTime`；
+- `cause_event_ids` 引用的 Event 时间不得晚于当前 Candidate 的 `eventTime`；
+- Knowledge 的 `event` 来源时间不得晚于 `character.learn_fact` 的 `eventTime`；
+- `sequence` 只表示提交顺序，`eventTime` 表示世界内时间，二者不等价；
+- `fact.assert.validFrom` 可以描述历史有效时间，但不能让 World Clock 倒退。
 
 当前 MVP 只支持单一权威时间线。Session / Save 不实现从旧存档分叉新时间线；未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。
 

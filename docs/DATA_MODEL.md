@@ -96,10 +96,35 @@ CharacterKnowledge
   character_id
   fact_id
   knowledge_state
-  source
+  source_type
+  source_character_id
+  source_event_id
   learned_at
-  confidence
 ```
+
+`source_type` 的 MVP 值为：
+
+```text
+initial
+character
+event
+```
+
+Candidate Event 使用结构化来源：
+
+```json
+{ "kind": "character", "characterId": "character-zhao" }
+```
+
+或：
+
+```json
+{ "kind": "event", "eventId": "event-123" }
+```
+
+`character` 来源表示另一个角色把信息告诉当前角色；Hard Validator 必须确认来源角色属于同一个 World，并且自身拥有该 Fact。来源角色的 `knowledge_state` 不要求是 `confirmed`，`rumor` 也可以传播 `rumor`。`event` 来源表示当前角色实际参与了该 Event；Hard Validator 必须确认来源 Event 属于同一个 World、时间不晚于学习 Event、角色位于该 Event 的 `actor_ids` 或 `target_ids`，且 Event 的结构化载荷确实关联该 Fact。
+
+Seed State 可以使用 `source_type = initial`，此时 `source_character_id` 和 `source_event_id` 都为空。普通角色不能仅因为 Fact 存在或数据库中存在某个 `fact.assert` Event 就自动获得知识。
 
 `knowledge_state` 可以考虑以下概念状态：
 
@@ -111,7 +136,7 @@ believed
 confirmed
 ```
 
-但 MVP 不应过早把枚举设计死。关键是保留“认知状态”和“认知来源”，使系统可以表达一个角色不知道、听说、怀疑、相信或确认某件事。
+但 MVP 不应过早把枚举设计死。关键是保留“认知状态”和结构化“认知来源”，使系统可以表达一个角色不知道、听说、怀疑、相信或确认某件事。
 
 角色知识可以由亲历事件、他人告知、文件、观察或传闻产生。每种来源都需要由事件、权限规则或初始设定支持，NPC 不能通过 LLM 上下文意外获得不应知道的 Fact。
 
@@ -134,7 +159,9 @@ Event
   created_at
 ```
 
-`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
+`sequence` 是物理层提交顺序，`event_time` 是世界内时间；两者不是同一个概念。`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
+
+每一个成功 Commit 的 Event 都会使 `World.current_time = max(previous_current_time, event_time)`。因此 `world.time_advance` 不是唯一能够推动世界时钟的 Event；它用于没有其他事件发生但世界仍继续流逝的情况。`cause_event_ids` 中的 Event 时间不能晚于当前 Event；Knowledge 的 `event` 来源也不能晚于学习 Event。`fact.assert.valid_from` 可以描述历史有效时间，但不能让 World Clock 倒退。
 
 Event 一旦 Commit，不应被后续叙事直接修改或删除。物理层使用内部 `sequence` 保留提交顺序，保证 Event Log 可以确定性重放。若发生纠正、撤销或反转，应追加新的、具有因果关系的 Event。
 

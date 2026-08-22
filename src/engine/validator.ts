@@ -3,6 +3,7 @@ import type { CandidateEvent } from "./candidate.js";
 import { normalizeTime } from "./candidate.js";
 import { KernelError } from "./errors.js";
 import {
+  characterKnowledge,
   characters,
   events,
   facts,
@@ -43,6 +44,13 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
         worldId: candidate.worldId,
       });
     }
+    if (Date.parse(cause.eventTime) > Date.parse(eventTime)) {
+      throw new KernelError("INVALID_TIME", "Cause Event cannot occur after the Candidate Event", {
+        causeEventId,
+        causeEventTime: cause.eventTime,
+        eventTime,
+      });
+    }
   }
 
   switch (candidate.type) {
@@ -53,7 +61,7 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
       validateDeath(tx, candidate);
       return;
     case "character.learn_fact":
-      validateKnowledge(tx, candidate);
+      validateKnowledge(tx, candidate, eventTime);
       return;
     case "relationship.change":
       validateRelationship(tx, candidate);
@@ -110,7 +118,11 @@ function validateDeath(tx: any, candidate: Extract<CandidateEvent, { type: "char
   }
 }
 
-function validateKnowledge(tx: any, candidate: Extract<CandidateEvent, { type: "character.learn_fact" }>): void {
+function validateKnowledge(
+  tx: any,
+  candidate: Extract<CandidateEvent, { type: "character.learn_fact" }>,
+  eventTime: string,
+): void {
   const character = findCharacter(tx, candidate.actorId);
   const fact = findFact(tx, candidate.factId);
   if (!character) {
@@ -125,22 +137,69 @@ function validateKnowledge(tx: any, candidate: Extract<CandidateEvent, { type: "
       factId: candidate.factId,
     });
   }
-  if (!candidate.sourceEventId) {
-    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Learning a Fact requires a source Event", {
+  if (!candidate.source) {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Learning a Fact requires structured provenance", {
       characterId: candidate.actorId,
       factId: candidate.factId,
     });
   }
 
-  const sourceEvent = findEvent(tx, candidate.sourceEventId);
+  if (candidate.source.kind === "character") {
+    const sourceCharacter = findCharacter(tx, candidate.source.characterId);
+    if (!sourceCharacter) {
+      throw new KernelError("CHARACTER_NOT_FOUND", "Knowledge source Character does not exist", {
+        sourceCharacterId: candidate.source.characterId,
+      });
+    }
+    if (sourceCharacter.worldId !== candidate.worldId) {
+      throw new KernelError("CROSS_WORLD_REFERENCE", "Knowledge source Character belongs to another World", {
+        sourceCharacterId: candidate.source.characterId,
+      });
+    }
+    if (sourceCharacter.id === character.id) {
+      throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "A Character cannot be its own knowledge source", {
+        characterId: character.id,
+        factId: candidate.factId,
+      });
+    }
+    const sourceKnowledge = tx
+      .select()
+      .from(characterKnowledge)
+      .where(and(eq(characterKnowledge.characterId, sourceCharacter.id), eq(characterKnowledge.factId, fact.id)))
+      .get();
+    if (!sourceKnowledge) {
+      throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Character does not know the requested Fact", {
+        sourceCharacterId: sourceCharacter.id,
+        factId: fact.id,
+      });
+    }
+    return;
+  }
+
+  const sourceEvent = findEvent(tx, candidate.source.eventId);
   if (!sourceEvent) {
     throw new KernelError("EVENT_NOT_FOUND", "Knowledge source Event does not exist", {
-      sourceEventId: candidate.sourceEventId,
+      sourceEventId: candidate.source.eventId,
     });
   }
   if (sourceEvent.worldId !== candidate.worldId) {
     throw new KernelError("CROSS_WORLD_REFERENCE", "Knowledge source Event belongs to another World", {
-      sourceEventId: candidate.sourceEventId,
+      sourceEventId: candidate.source.eventId,
+    });
+  }
+  if (Date.parse(sourceEvent.eventTime) > Date.parse(eventTime)) {
+    throw new KernelError("INVALID_TIME", "Knowledge source Event cannot occur after the learn Event", {
+      sourceEventId: candidate.source.eventId,
+      sourceEventTime: sourceEvent.eventTime,
+      eventTime,
+    });
+  }
+  const sourceActorIds = parseStringArray(sourceEvent.actorIds);
+  const sourceTargetIds = parseStringArray(sourceEvent.targetIds);
+  if (!sourceActorIds.includes(character.id) && !sourceTargetIds.includes(character.id)) {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Learner did not participate in the source Event", {
+      sourceEventId: candidate.source.eventId,
+      characterId: character.id,
     });
   }
   const sourcePayload = JSON.parse(sourceEvent.payload) as Record<string, unknown>;
@@ -149,7 +208,7 @@ function validateKnowledge(tx: any, candidate: Extract<CandidateEvent, { type: "
     sourcePayload.factId === candidate.factId;
   if (!sourceSupportsFact) {
     throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Event does not establish the requested Fact", {
-      sourceEventId: candidate.sourceEventId,
+      sourceEventId: candidate.source.eventId,
       factId: candidate.factId,
     });
   }
@@ -195,6 +254,19 @@ function validateRelationship(
 }
 
 function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.assert" }>): void {
+  if (candidate.actorId) {
+    const actor = findCharacter(tx, candidate.actorId);
+    if (!actor) {
+      throw new KernelError("CHARACTER_NOT_FOUND", "Fact assertion actor does not exist", {
+        characterId: candidate.actorId,
+      });
+    }
+    if (actor.worldId !== candidate.worldId) {
+      throw new KernelError("CROSS_WORLD_REFERENCE", "Fact assertion actor belongs to another World", {
+        characterId: candidate.actorId,
+      });
+    }
+  }
   const subjectCharacter = findCharacter(tx, candidate.subject);
   const subjectLocation = findLocation(tx, candidate.subject);
   const subjectWorld = tx.select().from(worlds).where(eq(worlds.id, candidate.subject)).get();
@@ -235,6 +307,14 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
       });
     }
   }
+}
+
+function parseStringArray(value: string): string[] {
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
+    throw new KernelError("VALIDATION_FAILED", "Event participant list is malformed");
+  }
+  return parsed;
 }
 
 function intervalsOverlap(

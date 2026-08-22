@@ -58,6 +58,8 @@ export const characterKnowledge = sqliteTable(
     characterId: text("character_id").notNull().references(() => characters.id),
     factId: text("fact_id").notNull().references(() => facts.id),
     knowledgeState: text("knowledge_state").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceCharacterId: text("source_character_id").references(() => characters.id),
     sourceEventId: text("source_event_id").references(() => events.id),
     learnedAt: text("learned_at").notNull(),
   },
@@ -144,6 +146,8 @@ CREATE TABLE IF NOT EXISTS character_knowledge (
   character_id TEXT NOT NULL REFERENCES characters(id),
   fact_id TEXT NOT NULL REFERENCES facts(id),
   knowledge_state TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_character_id TEXT REFERENCES characters(id),
   source_event_id TEXT REFERENCES events(id),
   learned_at TEXT NOT NULL,
   PRIMARY KEY (character_id, fact_id)

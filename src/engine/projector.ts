@@ -18,29 +18,26 @@ export function projectEvent(tx: any, event: CommittedEvent): void {
         .set({ locationId: stringValue(payload.toLocationId) })
         .where(eq(characters.id, stringValue(payload.actorId)))
         .run();
-      return;
+      break;
     case "character.die":
       tx.update(characters)
         .set({ alive: false })
         .where(eq(characters.id, stringValue(payload.actorId)))
         .run();
-      return;
+      break;
     case "character.learn_fact":
       projectKnowledge(tx, event);
-      return;
+      break;
     case "relationship.change":
       projectRelationship(tx, event);
-      return;
+      break;
     case "fact.assert":
       projectFact(tx, event);
-      return;
+      break;
     case "world.time_advance":
-      tx.update(worlds)
-        .set({ currentTime: event.eventTime })
-        .where(eq(worlds.id, event.worldId))
-        .run();
-      return;
+      break;
   }
+  advanceWorldClock(tx, event);
 }
 
 function projectKnowledge(tx: any, event: CommittedEvent): void {
@@ -52,17 +49,20 @@ function projectKnowledge(tx: any, event: CommittedEvent): void {
     .from(characterKnowledge)
     .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.factId, factId)))
     .get();
+  const provenance = provenanceValues(payload.source);
   const values = {
     characterId,
     factId,
     knowledgeState: stringValue(payload.knowledgeState),
-    sourceEventId: stringValue(payload.sourceEventId),
+    ...provenance,
     learnedAt: event.eventTime,
   };
   if (existing) {
     tx.update(characterKnowledge)
       .set({
         knowledgeState: values.knowledgeState,
+        sourceType: values.sourceType,
+        sourceCharacterId: values.sourceCharacterId,
         sourceEventId: values.sourceEventId,
         learnedAt: values.learnedAt,
       })
@@ -144,6 +144,9 @@ export function rebuildState(initial: WorldSnapshot, eventLog: CommittedEvent[])
 
 function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void {
   const payload = event.payload;
+  if (Date.parse(event.eventTime) > Date.parse(state.world.currentTime)) {
+    state.world.currentTime = event.eventTime;
+  }
   switch (event.type) {
     case "character.move": {
       const character = state.characters.find((value) => value.id === stringValue(payload.actorId));
@@ -163,11 +166,12 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       const characterId = stringValue(payload.actorId);
       const factId = stringValue(payload.factId);
       const existing = state.knowledge.find((value) => value.characterId === characterId && value.factId === factId);
+      const provenance = provenanceValues(payload.source);
       const next = {
         characterId,
         factId,
         knowledgeState: stringValue(payload.knowledgeState),
-        sourceEventId: stringValue(payload.sourceEventId),
+        ...provenance,
         learnedAt: event.eventTime,
       };
       if (existing) {
@@ -232,9 +236,44 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       return;
     }
     case "world.time_advance":
-      state.world.currentTime = event.eventTime;
       return;
   }
+}
+
+function advanceWorldClock(tx: any, event: CommittedEvent): void {
+  const world = tx.select().from(worlds).where(eq(worlds.id, event.worldId)).get();
+  if (world && Date.parse(event.eventTime) > Date.parse(world.currentTime)) {
+    tx.update(worlds)
+      .set({ currentTime: event.eventTime })
+      .where(eq(worlds.id, event.worldId))
+      .run();
+  }
+}
+
+function provenanceValues(value: unknown): {
+  sourceType: "character" | "event";
+  sourceCharacterId: string | null;
+  sourceEventId: string | null;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Projector expected structured knowledge provenance");
+  }
+  const source = value as Record<string, unknown>;
+  if (source.kind === "character") {
+    return {
+      sourceType: "character",
+      sourceCharacterId: stringValue(source.characterId),
+      sourceEventId: null,
+    };
+  }
+  if (source.kind === "event") {
+    return {
+      sourceType: "event",
+      sourceCharacterId: null,
+      sourceEventId: stringValue(source.eventId),
+    };
+  }
+  throw new Error("Projector received an unknown knowledge provenance kind");
 }
 
 function stringValue(value: unknown): string {
