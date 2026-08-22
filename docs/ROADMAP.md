@@ -143,6 +143,24 @@ Add the first narrow real-model connectivity proof without changing authority:
 
 Step 6 deliberately does not include Narrator, Scheduler, Item, Memory/RAG, provider framework, fallback chain, complex retry, UI, or production deployment.
 
+## Step 7 — Minimal Narrator and Narrated Smoke
+
+Status: complete.
+
+Add the first player-facing projection without creating a second authority path:
+
+- rebuild the same observer-scoped `CharacterContext` after Turn execution;
+- build a deterministic `NarrativeEnvelope` from the rebuilt Context and `TurnResult`, never from raw `TurnResult.state`;
+- project only an explicit allowlist of committed actor outcomes;
+- expose only safe rejection `kind/code`, not internal diagnostics or Event provenance;
+- inject one narrow `NarrativeModelClient` boundary using the existing OpenAI-compatible chat transport;
+- keep Narrator input free of raw WorldSnapshot, Store, CommitKernel, general Facts and other-character private Knowledge;
+- validate only non-empty, bounded plain text; do not add a second LLM critic;
+- keep narrative text out of authoritative World tables;
+- add fake HTTP narrated end-to-end coverage and an opt-in real narrated smoke, without real-model CI.
+
+Step 7 deliberately does not include Item, the closed-inn fixture, NPC Scheduler, Memory/RAG, lore retrieval, branching/save, UI, provider framework, or multi-agent execution.
+
 ## Later
 
 Narrator, Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.

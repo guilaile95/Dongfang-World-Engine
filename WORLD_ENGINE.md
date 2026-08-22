@@ -277,6 +277,14 @@ Transport 只负责一次 HTTP 请求、响应映射和一个小的 timeout safe
 
 `npm run smoke:real-model` 是开发者 opt-in 的单回合 headless smoke。它使用内存测试 World，经过正常 Context Builder、Simulation Adapter、Turn Orchestrator 和 Commit Kernel，最后只输出 status、rejection、提交 Event type/revision/time 和最终 World revision。需要 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL`，可选 `DWE_SMOKE_INTENT`；程序不会打印 API Key、原始 prompt、provider raw response 或 hidden reasoning。该 smoke 不属于 GitHub Actions CI。
 
+### 2.14 Minimal Narrator and Narrative Projection
+
+Narrative 是已提交 Turn 的 observer-scoped 展示投影，不是第二个 Simulation Engine，也不是事实写入入口。`NarrativeEnvelopeBuilder` 在 Turn 完成后为同一 actor、同一 World 重新构造 `CharacterContext`，并把本次 Turn 的 committed actor Event 转成显式 allowlist projection。它不使用 `TurnResult.state` 或 raw `WorldSnapshot`，不转发 raw Event payload、Event id、cause provenance、World revision、一般 Fact 或其他角色的私有 Knowledge/currentGoal/identity。
+
+Narrator 只接收 `NarrativeEnvelope` 与明确的负边界指令，输出有界的 player-facing plain text。Narrator 不能访问 Store、SQLite、CommitKernel 或 mutation capability；`fact.assert` 等非 actor outcome 不进入 narrative projection。空 Turn 只能从 observer-visible context 描述观察/停顿；rejected、stale、partial 只能描述实际 committed prefix 与安全 rejection status。Narrative text 不持久化到 Event、World State 或 Truth 表。
+
+Step 7 的 narrated smoke 使用同一个窄 OpenAI-compatible chat transport，经过 Simulation → Turn Orchestrator → Envelope → Narrator 的完整单回合链路。它是开发者 opt-in 的 real-model review gate，不属于 CI，不引入 provider router、fallback、第二个 critic 或复杂 retry。
+
 ## 3. Invariants
 
 以下是不变量。任何产生状态 Delta 的路径，包括玩家行动、后台事件、脚本和 LLM 候选，都必须经过这些规则的检查：
