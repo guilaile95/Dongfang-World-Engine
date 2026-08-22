@@ -144,6 +144,7 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
     }
   };
   const charactersById = new Set(input.characters.map((character) => character.id));
+  const locationsById = new Set(input.locations.map((location) => location.id));
   const claimsById = new Set((input.claims ?? []).map((claim) => claim.id));
 
   if (input.seed.worldId !== worldId) {
@@ -151,17 +152,31 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
   }
   for (const location of input.locations) {
     requireWorld("Location", location.id, location.worldId);
+    if (location.parentId !== null && !locationsById.has(location.parentId)) {
+      invalid("Location parent references a Location outside the Seed", {
+        locationId: location.id,
+        parentId: location.parentId,
+      });
+    }
   }
   for (const character of input.characters) {
     requireWorld("Character", character.id, character.worldId);
+    if (character.locationId !== null && !locationsById.has(character.locationId)) {
+      invalid("Character location references a Location outside the Seed", {
+        characterId: character.id,
+        locationId: character.locationId,
+      });
+    }
   }
   for (const fact of input.facts ?? []) {
     requireWorld("Fact", fact.id, fact.worldId);
+    validateSeedSubject(fact.subject, worldId, charactersById, locationsById, "Fact", fact.id, invalid);
     validateSeedReference(fact.sourceSeedId, input.seed.id, "Fact", fact.id, invalid);
     validateEventReference(tx, fact.sourceEventId, worldId, "Fact", fact.id, invalid);
   }
   for (const claim of input.claims ?? []) {
     requireWorld("Claim", claim.id, claim.worldId);
+    validateSeedSubject(claim.subject, worldId, charactersById, locationsById, "Claim", claim.id, invalid);
     validateSeedReference(claim.sourceSeedId, input.seed.id, "Claim", claim.id, invalid);
     validateEventReference(tx, claim.sourceEventId, worldId, "Claim", claim.id, invalid);
   }
@@ -197,6 +212,21 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
         targetCharacterId: relationship.targetCharacterId,
       });
     }
+    validateEventReference(tx, relationship.updatedByEventId, worldId, "Relationship", relationship.sourceCharacterId, invalid);
+  }
+}
+
+function validateSeedSubject(
+  subject: string,
+  worldId: string,
+  charactersById: Set<string>,
+  locationsById: Set<string>,
+  kind: string,
+  id: string,
+  invalid: (message: string, context?: Record<string, unknown>) => never,
+): void {
+  if (subject !== worldId && !charactersById.has(subject) && !locationsById.has(subject)) {
+    invalid(`${kind} subject is not an entity in the Seed World`, { id, subject });
   }
 }
 

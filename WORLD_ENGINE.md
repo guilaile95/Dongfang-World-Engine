@@ -129,6 +129,8 @@ Candidate 的知识状态在当前 MVP 限定为 `unknown`、`rumor`、`suspecte
 
 `SqliteWorldStore.seedWorld()` 在写入前确定性验证 Seed、World、Location、Character、Fact、Claim、PredicatePolicy、CharacterKnowledge 和 Relationship 的 World 归属；Knowledge 的 Character/Claim 引用必须来自同一 Seed Input，存在的 `source_seed_id` 必须指向当前 Seed。任何失败都返回稳定的 `SEED_INVALID`，并且整个 Seed transaction 不产生部分写入。
 
+Seed 内嵌引用也必须可解析且同世界：Character 的 `locationId`、Location 的 `parentId`、Fact/Claim 的 `subject`（Character、Location 或当前 World），以及 Relationship 的 `updatedByEventId`。未知或跨世界引用同样以 `SEED_INVALID` 拒绝。
+
 Step 2.6 的硬边界是：
 
 ```text

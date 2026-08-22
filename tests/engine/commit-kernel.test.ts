@@ -3,13 +3,14 @@ import { CommitKernel, type CommitResult } from "../../src/engine/commit-kernel.
 import { KernelError } from "../../src/engine/errors.js";
 import { TEST_TIME, seedTestWorld } from "../../src/testkit/world-builder.js";
 import { rebuildState } from "../../src/engine/projector.js";
-import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
+import { SqliteWorldStore, type SeedWorldInput } from "../../src/persistence/sqlite-store.js";
 import type {
   CharacterRecord,
   ClaimRecord,
   CommittedEvent,
   FactRecord,
   KnowledgeRecord,
+  LocationRecord,
   SeedRecord,
   WorldRecord,
   WorldSnapshot,
@@ -124,6 +125,7 @@ function seedForeignWorld(store: SqliteWorldStore): {
   seed: SeedRecord;
   character: CharacterRecord;
   claim: ClaimRecord;
+  location: LocationRecord;
 } {
   const world: WorldRecord = {
     id: "world-foreign",
@@ -139,13 +141,20 @@ function seedForeignWorld(store: SqliteWorldStore): {
     sourceRef: "tests/engine/commit-kernel.test.ts",
     metadata: JSON.stringify({ name: "foreign-world-fixture", version: 1 }),
   };
+  const location: LocationRecord = {
+    id: "location-foreign",
+    worldId: world.id,
+    name: "Foreign Location",
+    parentId: null,
+    type: "city",
+  };
   const character: CharacterRecord = {
     id: "character-foreign",
     worldId: world.id,
     name: "Foreign Character",
     type: "npc",
     alive: true,
-    locationId: null,
+    locationId: location.id,
     identity: "foreign",
     currentGoal: "test isolation",
   };
@@ -162,11 +171,89 @@ function seedForeignWorld(store: SqliteWorldStore): {
   store.seedWorld({
     world,
     seed,
-    locations: [],
+    locations: [location],
     characters: [character],
     claims: [claim],
   });
-  return { world, seed, character, claim };
+  return { world, seed, character, claim, location };
+}
+
+function createSeedInput(suffix: string): SeedWorldInput {
+  const world: WorldRecord = {
+    id: `world-seed-${suffix}`,
+    name: `Seed World ${suffix}`,
+    currentTime: TEST_TIME,
+    revision: 0,
+    status: "active",
+  };
+  const seed: SeedRecord = {
+    id: `seed-world-${suffix}-v1`,
+    worldId: world.id,
+    sourceType: "test_fixture",
+    sourceRef: "tests/engine/commit-kernel.test.ts",
+    metadata: JSON.stringify({ name: `seed-world-${suffix}`, version: 1 }),
+  };
+  const location: LocationRecord = {
+    id: `location-seed-${suffix}`,
+    worldId: world.id,
+    name: `Seed Location ${suffix}`,
+    parentId: null,
+    type: "city",
+  };
+  const characterA: CharacterRecord = {
+    id: `character-seed-${suffix}-a`,
+    worldId: world.id,
+    name: `Seed Character ${suffix} A`,
+    type: "npc",
+    alive: true,
+    locationId: location.id,
+    identity: "seed-a",
+    currentGoal: "test seed integrity",
+  };
+  const characterB: CharacterRecord = {
+    ...characterA,
+    id: `character-seed-${suffix}-b`,
+    name: `Seed Character ${suffix} B`,
+  };
+  const fact: FactRecord = {
+    id: `fact-seed-${suffix}`,
+    worldId: world.id,
+    subject: characterA.id,
+    predicate: "seed_fact",
+    object: "valid",
+    validFrom: TEST_TIME,
+    validTo: null,
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    sourceType: "initial_lore",
+  };
+  const claim: ClaimRecord = {
+    id: `claim-seed-${suffix}`,
+    worldId: world.id,
+    subject: characterA.id,
+    predicate: "seed_claim",
+    object: "valid",
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    recordedAt: TEST_TIME,
+  };
+  return {
+    world,
+    seed,
+    locations: [location],
+    characters: [characterA, characterB],
+    facts: [fact],
+    claims: [claim],
+    relationships: [{
+      sourceCharacterId: characterA.id,
+      targetCharacterId: characterB.id,
+      trust: 0,
+      hostility: 0,
+      closeness: 0,
+      relationshipType: "test",
+      updatedByEventId: null,
+    }],
+  };
 }
 
 describe("World Engine Commit Kernel", () => {
@@ -817,6 +904,78 @@ describe("World Engine Commit Kernel", () => {
     expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(worldC.id)).toEqual({ count: 0 });
     expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM facts WHERE id = ?").get(crossSeedFact.id)).toEqual({ count: 0 });
     expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM claims WHERE id = ?").get(crossSeedClaim.id)).toEqual({ count: 0 });
+    store.close();
+  });
+
+  it("enforces Seed location, subject, and relationship Event referential integrity", () => {
+    const store = new SqliteWorldStore();
+    const foreign = seedForeignWorld(store);
+    insertRawEventForTemporalValidation(store, {
+      id: "foreign-relationship-event",
+      worldId: foreign.world.id,
+      eventTime: TEST_TIME,
+      type: "claim.record",
+      actorIds: [foreign.character.id],
+      targetIds: [foreign.claim.id],
+      payload: { claimId: foreign.claim.id },
+    });
+
+    const cases: Array<{ suffix: string; mutate: (input: SeedWorldInput) => void }> = [
+      {
+        suffix: "character-location",
+        mutate: (input) => {
+          input.characters[0] = { ...input.characters[0]!, locationId: foreign.location.id };
+        },
+      },
+      {
+        suffix: "location-parent",
+        mutate: (input) => {
+          input.locations[0] = { ...input.locations[0]!, parentId: foreign.location.id };
+        },
+      },
+      {
+        suffix: "fact-subject",
+        mutate: (input) => {
+          input.facts![0] = { ...input.facts![0]!, subject: foreign.character.id };
+        },
+      },
+      {
+        suffix: "claim-subject",
+        mutate: (input) => {
+          input.claims![0] = { ...input.claims![0]!, subject: foreign.location.id };
+        },
+      },
+      {
+        suffix: "relationship-event",
+        mutate: (input) => {
+          input.relationships![0] = { ...input.relationships![0]!, updatedByEventId: "foreign-relationship-event" };
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const input = createSeedInput(testCase.suffix);
+      testCase.mutate(input);
+      expectSeedFailure(() => store.seedWorld(input), "SEED_INVALID");
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(input.world.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM seeds WHERE id = ?").get(input.seed.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM locations WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM characters WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM facts WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM claims WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+      expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM relationships WHERE source_character_id = ?").get(input.characters[0]!.id)).toEqual({ count: 0 });
+    }
+
+    const valid = createSeedInput("valid-references");
+    store.seedWorld(valid);
+    const snapshot = store.getSnapshot(valid.world.id);
+    expect(snapshot.locations).toHaveLength(1);
+    expect(snapshot.characters).toHaveLength(2);
+    expect(snapshot.facts).toHaveLength(1);
+    expect(snapshot.claims).toHaveLength(1);
+    expect(snapshot.relationships).toHaveLength(1);
+    expect(snapshot.characters[0]!.locationId).toBe(valid.locations[0]!.id);
+    expect(snapshot.locations[0]!.parentId).toBeNull();
     store.close();
   });
 
