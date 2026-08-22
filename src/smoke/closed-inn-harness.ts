@@ -52,7 +52,7 @@ export interface ClosedInnRunResult {
   fixture: ClosedInnFixtureIds;
   traces: TurnExecutionTrace[];
   finalWorldRevision: number;
-  assertionsPassed: boolean;
+  replayConsistent: boolean;
 }
 
 export function canonicalSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
@@ -76,7 +76,7 @@ export function canonicalSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
 export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   {
     actorId: "character-player",
-    intent: "在客栈大堂观察周围环境，向店小二阿宝询问匕首失踪的线索",
+    intent: "在客栈大堂观察周围环境与在场人员，尝试向店小二阿宝询问客栈情况。",
   },
   {
     actorId: "character-npc-a",
@@ -84,7 +84,7 @@ export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   },
   {
     actorId: "character-player",
-    intent: "在大堂梳理从阿宝处获知的信息，并尝试向账房赵先生了解情况",
+    intent: "根据当前合法可见的信息，在大堂尝试与账房赵先生交流。",
   },
   {
     actorId: "character-npc-b",
@@ -96,7 +96,7 @@ export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   },
   {
     actorId: "character-player",
-    intent: "在大堂向账房赵先生说明店小二阿宝提供的地窖线索，澄清二楼客房的误会",
+    intent: "根据当前合法可见的信息，在大堂与账房赵先生交流并说明自己掌握的情况。",
   },
   {
     actorId: "character-npc-a",
@@ -112,7 +112,7 @@ export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   },
   {
     actorId: "character-player",
-    intent: "在大堂总结掌握的全部线索，决定下一步对策",
+    intent: "在大堂整理当前合法掌握的全部线索，决定下一步行动。",
   },
 ];
 
@@ -203,7 +203,7 @@ export async function runClosedInnTurns(options: RunClosedInnOptions): Promise<C
   const allEvents = store.listEvents(fixture.world.id);
   const rebuilt = rebuildState(initialSnapshot, allEvents);
 
-  const assertionsPassed =
+  const replayConsistent =
     finalSnapshot.world.revision === allEvents.length &&
     JSON.stringify(canonicalSnapshot(rebuilt)) === JSON.stringify(canonicalSnapshot(finalSnapshot));
 
@@ -211,7 +211,7 @@ export async function runClosedInnTurns(options: RunClosedInnOptions): Promise<C
     fixture,
     traces,
     finalWorldRevision: finalSnapshot.world.revision,
-    assertionsPassed,
+    replayConsistent,
   };
 }
 
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({
       worldId: result.fixture.world.id,
       finalWorldRevision: result.finalWorldRevision,
-      assertionsPassed: result.assertionsPassed,
+      replayConsistent: result.replayConsistent,
       traces: result.traces.map((trace) => ({
         ...trace,
         narrative: trace.narrative.includes(apiKey)

@@ -139,7 +139,7 @@ describe("Closed Inn 10-turn Headless Harness", () => {
     });
 
     expect(result.traces).toHaveLength(10);
-    expect(result.assertionsPassed).toBe(true);
+    expect(result.replayConsistent).toBe(true);
 
     // Turn 1: Player empty observation
     expect(result.traces[0]?.actorId).toBe("character-player");

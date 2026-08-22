@@ -263,7 +263,7 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
     player: {
       id: "character-player",
       worldId: CLOSED_INN_WORLD_ID,
-      name: "旅客·楚子航",
+      name: "旅客·顾云舟",
       type: "player",
       alive: true,
       locationId: locations.hall.id,
