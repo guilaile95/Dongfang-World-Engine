@@ -337,6 +337,12 @@ Real-model transport 不新增 World 数据表或权威字段。它只是现有 
 
 HTTP/network/timeout/provider response 错误属于 transport boundary；模型 JSON 的解析、repair、actor Proposal surface 和权限仍由 Simulation Adapter 负责。真实模型调用只通过开发者 opt-in 的单回合 headless smoke 触发，CI 使用 fake fetch 并保持 credential-free、deterministic。该 Slice 不引入 provider router、fallback、复杂 retry、Memory、RAG 或 Narrative。
 
+### 2.19 Narrative Envelope（非权威观察者投影）
+
+Narrative Envelope 由 `TurnResult + Turn 完成后重建的 CharacterContext` 组成：`intent`、Turn status、observer-scoped Context、显式 committed outcome projections，以及只含 `kind/code` 的安全 rejection。它不从 `TurnResult.state` 读取数据，也不携带 raw WorldSnapshot、Store、CommitKernel、一般 Fact、其他角色的私有 Knowledge/currentGoal/identity、raw Event payload、Event id 或 cause provenance。
+
+Narrator 只接收 Narrative Envelope 和 provider-agnostic narrative instructions，输出有界 plain text。文本属于展示层，不写入 Event、World State、Fact、Claim 或 CharacterKnowledge；空、rejected、stale、partial Turn 只能基于安全 Context、真实 committed prefix 和安全状态描述。Narrative projection 不增加任何 World authority。
+
 ## 3. 关键关系
 
 ```text

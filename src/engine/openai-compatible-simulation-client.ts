@@ -3,12 +3,19 @@ import type {
   SimulationModelRequest,
 } from "./simulation-adapter.js";
 
-export interface OpenAICompatibleSimulationClientOptions {
+export interface OpenAICompatibleChatClientOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+}
+
+export interface OpenAICompatibleSimulationClientOptions extends OpenAICompatibleChatClientOptions {}
+
+export interface OpenAICompatibleChatRequest {
+  systemInstruction: string;
+  userPayload: unknown;
 }
 
 export type OpenAICompatibleTransportErrorKind =
@@ -17,7 +24,7 @@ export type OpenAICompatibleTransportErrorKind =
   | "timeout"
   | "malformed_response";
 
-export class OpenAICompatibleSimulationTransportError extends Error {
+export class OpenAICompatibleTransportError extends Error {
   public readonly kind: OpenAICompatibleTransportErrorKind;
 
   public constructor(kind: OpenAICompatibleTransportErrorKind, message: string) {
@@ -27,104 +34,122 @@ export class OpenAICompatibleSimulationTransportError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+export { OpenAICompatibleTransportError as OpenAICompatibleSimulationTransportError };
+
+export const DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_MS = 30_000;
 
 export class OpenAICompatibleSimulationModelClient implements SimulationModelClient {
-  private readonly endpoint: string;
-  private readonly apiKey: string;
-  private readonly model: string;
-  private readonly timeoutMs: number;
-  private readonly fetchImpl: typeof fetch;
+  private readonly options: OpenAICompatibleChatClientOptions;
 
   public constructor(options: OpenAICompatibleSimulationClientOptions) {
-    if (options.baseUrl.trim().length === 0) {
-      throw new TypeError("baseUrl must not be blank");
-    }
-    if (options.apiKey.trim().length === 0) {
-      throw new TypeError("apiKey must not be blank");
-    }
-    if (options.model.trim().length === 0) {
-      throw new TypeError("model must not be blank");
-    }
-
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
-      throw new RangeError("timeoutMs must be a positive safe integer");
-    }
-
-    this.endpoint = toChatCompletionsEndpoint(options.baseUrl);
-    this.apiKey = options.apiKey;
-    this.model = options.model;
-    this.timeoutMs = timeoutMs;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.options = normalizeOptions(options);
   }
 
   public async generate(request: SimulationModelRequest): Promise<unknown> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const response = await this.fetchImpl(this.endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: buildSystemInstruction(request),
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                context: request.context,
-                intent: request.intent,
-              }),
-            },
-          ],
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new OpenAICompatibleSimulationTransportError(
-          "http",
-          `OpenAI-compatible model request failed with HTTP ${response.status}`,
-        );
-      }
-
-      let payload: unknown;
-      try {
-        payload = await response.json() as unknown;
-      } catch {
-        throw new OpenAICompatibleSimulationTransportError(
-          "malformed_response",
-          "OpenAI-compatible model response was not valid JSON",
-        );
-      }
-
-      return extractAssistantContent(payload);
-    } catch (error) {
-      if (error instanceof OpenAICompatibleSimulationTransportError) {
-        throw error;
-      }
-      if (controller.signal.aborted) {
-        throw new OpenAICompatibleSimulationTransportError(
-          "timeout",
-          `OpenAI-compatible model request timed out after ${this.timeoutMs}ms`,
-        );
-      }
-      throw new OpenAICompatibleSimulationTransportError(
-        "network",
-        "OpenAI-compatible model request failed before a response was received",
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
+    return requestOpenAICompatibleAssistantContent(this.options, {
+      systemInstruction: buildSystemInstruction(request),
+      userPayload: {
+        context: request.context,
+        intent: request.intent,
+      },
+    });
   }
+}
+
+export async function requestOpenAICompatibleAssistantContent(
+  options: OpenAICompatibleChatClientOptions,
+  request: OpenAICompatibleChatRequest,
+): Promise<string> {
+  const resolved = normalizeOptions(options);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), resolved.timeoutMs);
+
+  try {
+    const response = await resolved.fetchImpl(resolved.endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resolved.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: resolved.model,
+        messages: [
+          {
+            role: "system",
+            content: request.systemInstruction,
+          },
+          {
+            role: "user",
+            content: JSON.stringify(request.userPayload),
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new OpenAICompatibleTransportError(
+        "http",
+        `OpenAI-compatible model request failed with HTTP ${response.status}`,
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json() as unknown;
+    } catch {
+      throw new OpenAICompatibleTransportError(
+        "malformed_response",
+        "OpenAI-compatible model response was not valid JSON",
+      );
+    }
+
+    return extractAssistantContent(payload);
+  } catch (error) {
+    if (error instanceof OpenAICompatibleTransportError) {
+      throw error;
+    }
+    if (controller.signal.aborted) {
+      throw new OpenAICompatibleTransportError(
+        "timeout",
+        `OpenAI-compatible model request timed out after ${resolved.timeoutMs}ms`,
+      );
+    }
+    throw new OpenAICompatibleTransportError(
+      "network",
+      "OpenAI-compatible model request failed before a response was received",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeOptions(options: OpenAICompatibleChatClientOptions): OpenAICompatibleChatClientOptions & {
+  endpoint: string;
+  timeoutMs: number;
+  fetchImpl: typeof fetch;
+} {
+  if (options.baseUrl.trim().length === 0) {
+    throw new TypeError("baseUrl must not be blank");
+  }
+  if (options.apiKey.trim().length === 0) {
+    throw new TypeError("apiKey must not be blank");
+  }
+  if (options.model.trim().length === 0) {
+    throw new TypeError("model must not be blank");
+  }
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_OPENAI_COMPATIBLE_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new RangeError("timeoutMs must be a positive safe integer");
+  }
+
+  return {
+    ...options,
+    endpoint: toChatCompletionsEndpoint(options.baseUrl),
+    timeoutMs,
+    fetchImpl: options.fetchImpl ?? fetch,
+  };
 }
 
 function toChatCompletionsEndpoint(baseUrl: string): string {
@@ -147,7 +172,7 @@ function buildSystemInstruction(request: SimulationModelRequest): string {
 
 function extractAssistantContent(payload: unknown): string {
   if (!isRecord(payload) || !Array.isArray(payload.choices)) {
-    throw new OpenAICompatibleSimulationTransportError(
+    throw new OpenAICompatibleTransportError(
       "malformed_response",
       "OpenAI-compatible model response did not contain choices",
     );
@@ -155,7 +180,7 @@ function extractAssistantContent(payload: unknown): string {
 
   const firstChoice = payload.choices[0];
   if (!isRecord(firstChoice) || !isRecord(firstChoice.message) || typeof firstChoice.message.content !== "string") {
-    throw new OpenAICompatibleSimulationTransportError(
+    throw new OpenAICompatibleTransportError(
       "malformed_response",
       "OpenAI-compatible model response did not contain assistant content",
     );
