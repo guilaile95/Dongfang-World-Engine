@@ -56,7 +56,7 @@ LLM 输出、聊天文本、剧情摘要、Memory 和上下文缓存都不能直
 重大世界状态变化必须能够追溯到事件。不能只记录：
 
 ```text
-楚子航 trust = 10
+顾云舟 trust = 10
 ```
 
 还必须能够回答：
@@ -408,7 +408,7 @@ COMMIT
 
 当前 MVP 只支持单一权威时间线。Session / Save 不实现从旧存档分叉新时间线；未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。
 
-当前 Commit Kernel 已实现以下 Candidate Event：`character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`fact.assert`、`claim.record` 和 `world.time_advance`。Candidate 先经过 Zod Schema，再进入确定性的 Hard Validator；未通过校验的 Candidate 不产生事实副作用。初始状态保留为 Seed + Event Log → Materialized State 的双层模型，不把整个 Seed 转换为 Event 链；初始 Fact、Claim 和 CharacterKnowledge 通过 `source_seed_id` 指向 Seed。Item、Session / Save 的物理实现和其他事件类型暂不在本 Slice 内。
+当前 Commit Kernel 已实现以下 Candidate Event：`character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`fact.assert`、`claim.record`、`claim.transmit` 和 `world.time_advance`。Candidate 先经过 Zod Schema，再进入确定性的 Hard Validator；未通过校验的 Candidate 不产生事实副作用。初始状态保留为 Seed + Event Log → Materialized State 的双层模型，不把整个 Seed 转换为 Event 链；初始 Fact、Claim 和 CharacterKnowledge 通过 `source_seed_id` 指向 Seed。Item、Session / Save 的物理实现和其他事件类型暂不在本 Slice 内。
 
 ## 7. MVP 范围
 

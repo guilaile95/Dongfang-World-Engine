@@ -70,6 +70,13 @@ const claimProposal = z.object({
   object: z.string().min(1),
 }).strict();
 
+const transmitClaimProposal = z.object({
+  type: z.literal("claim.transmit"),
+  sourceCharacterId: z.string().min(1),
+  targetCharacterId: z.string().min(1),
+  claimId: z.string().min(1),
+}).strict();
+
 const timeAdvanceProposal = z.object({
   type: z.literal("world.time_advance"),
   toTime: dateTime,
@@ -81,6 +88,7 @@ export const candidateProposalSchema = z.discriminatedUnion("type", [
   learnClaimProposal,
   relationshipProposal,
   claimProposal,
+  transmitClaimProposal,
   timeAdvanceProposal,
 ]);
 
@@ -162,13 +170,14 @@ export const DEFAULT_SIMULATION_INSTRUCTIONS = [
   "Return exactly one JSON object with the top-level shape {\"proposals\":[...]}.",
   "Return JSON only: do not use markdown code fences, prose, explanations, comments, or hidden reasoning.",
   "An empty proposal list is valid: {\"proposals\":[]}.",
-  "Use only the following six actor Proposal types and exact fields. In these examples, \"string\" means a non-empty string value, not the literal word string.",
+  "Use only the following seven actor Proposal types and exact fields. In these examples, \"string\" means a non-empty string value, not the literal word string.",
   "1. character.move: {\"type\":\"character.move\",\"actorId\":\"string\",\"toLocationId\":\"string\"}. actorId must equal context.observer.id.",
   "2. character.die: {\"type\":\"character.die\",\"actorId\":\"string\"}. actorId must equal context.observer.id.",
   "3. character.learn_claim: {\"type\":\"character.learn_claim\",\"actorId\":\"string\",\"claimId\":\"string\",\"knowledgeState\":\"unknown | rumor | suspected | believed | confirmed\",\"source\":OPTIONAL}. If source exists, it must be {\"kind\":\"character\",\"characterId\":\"string\"} or {\"kind\":\"event\",\"eventId\":\"string\"}. actorId must equal context.observer.id.",
   "4. relationship.change: {\"type\":\"relationship.change\",\"sourceCharacterId\":\"string\",\"targetCharacterId\":\"string\",\"trustDelta\":OPTIONAL_INTEGER_-100_TO_100,\"hostilityDelta\":OPTIONAL_INTEGER_-100_TO_100,\"closenessDelta\":OPTIONAL_INTEGER_-100_TO_100,\"relationshipType\":OPTIONAL_NON_EMPTY_STRING}. At least one change field is required. sourceCharacterId must equal context.observer.id.",
   "5. claim.record: {\"type\":\"claim.record\",\"claimId\":\"string\",\"actorId\":\"string\",\"subject\":\"string\",\"predicate\":\"string\",\"object\":\"string\"}. actorId must equal context.observer.id.",
-  "6. world.time_advance: {\"type\":\"world.time_advance\",\"toTime\":\"parseable ISO-style date-time string\"}.",
+  "6. claim.transmit: {\"type\":\"claim.transmit\",\"sourceCharacterId\":\"string\",\"targetCharacterId\":\"string\",\"claimId\":\"string\"}. sourceCharacterId must equal context.observer.id.",
+  "7. world.time_advance: {\"type\":\"world.time_advance\",\"toTime\":\"parseable ISO-style date-time string\"}.",
   "Never provide worldId, expectedWorldRevision, occurredAt, causeEventIds, or fact.assert. The Turn Orchestrator owns the Event envelope and the Kernel owns authority.",
   "Only propose effects supported by the supplied CharacterContext; do not include extra fields.",
 ].join(" ");
@@ -371,6 +380,7 @@ function validateProposalActorAuthority(proposals: CandidateProposal[], actorCha
         }
         break;
       case "relationship.change":
+      case "claim.transmit":
         if (proposal.sourceCharacterId !== actorCharacterId) {
           throw new OutputValidationFailure(
             `proposals.${proposalIndex}.sourceCharacterId: sourceCharacterId must match context.observer.id`,

@@ -161,6 +161,20 @@ Add the first player-facing projection without creating a second authority path:
 
 Step 7 deliberately does not include Item, the closed-inn fixture, NPC Scheduler, Memory/RAG, lore retrieval, branching/save, UI, provider framework, or multi-agent execution.
 
+## Vertical Slice 0 — Closed Inn 10-turn Causal Loop Proof
+
+Status: in progress.
+
+Prove the first actual multi-character causal loop in a closed scene with deterministic information transmission:
+
+- create Closed Inn fixture: Player, NPC-A, NPC-B, NPC-C, missing dagger mystery, hidden Truth Fact, true/false Claims, and differentiated initial CharacterKnowledge;
+- implement minimal source-authored `claim.transmit` Candidate Event with co-location check, source Knowledge validation, exact knowledge state replication, and deterministic Event provenance;
+- support `claim.transmit` proposal in Simulation Adapter and Turn Orchestrator with actor ownership enforcement;
+- add headless 10-turn test harness (`closed-inn-harness.ts`) driving deterministic sequence across actors without building a general Scheduler;
+- verify all 9 hard assertions: zero Truth leaks, zero unauthorized knowledge leaks, no direct Truth writes, explainable provenance, and 100% replay/rebuild consistency.
+
+Vertical Slice 0 deliberately does not include Item/inventory framework, dialogue framework, generic interaction layer, NPC Scheduler, Memory/RAG, belief transition lattice, UI, or distributed platform.
+
 ## Later
 
-Narrator, Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.
+Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.

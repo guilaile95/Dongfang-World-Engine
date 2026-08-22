@@ -216,6 +216,11 @@ describe("Narrative projection MVP", () => {
         predicate: "reported_status",
         object: "uncertain",
       }),
+      makeEvent("claim.transmit", {
+        sourceCharacterId: "character-player",
+        targetCharacterId: "character-zhao",
+        claimId: "claim-2",
+      }),
       makeEvent("world.time_advance", { toTime: "2019-03-12T13:00:00.000Z" }),
       makeEvent("fact.assert", {
         factId: "fact-hidden",
@@ -237,6 +242,7 @@ describe("Narrative projection MVP", () => {
       "character.learn_claim",
       "relationship.change",
       "claim.record",
+      "claim.transmit",
       "world.time_advance",
     ]);
     const serializedOutcomes = JSON.stringify(envelope.outcomes);

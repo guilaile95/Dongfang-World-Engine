@@ -343,6 +343,14 @@ Narrative Envelope 由 `TurnResult + Turn 完成后重建的 CharacterContext` �
 
 Narrator 只接收 Narrative Envelope 和 provider-agnostic narrative instructions，输出有界 plain text。文本属于展示层，不写入 Event、World State、Fact、Claim 或 CharacterKnowledge；空、rejected、stale、partial Turn 只能基于安全 Context、真实 committed prefix 和安全状态描述。Narrative projection 不增加任何 World authority。
 
+### 2.20 Source-authored Claim Transmission（知识传播）
+
+知识传播事件 `claim.transmit` 允许一个角色向同一地点的另一个角色传播其所掌握的 Claim：
+- 传播必须由 source 角色发起（Proposal 校验 `sourceCharacterId === context.observer.id`）；
+- Hard Validator 校验 source 角色持有该 Claim 的有效认知，且 source 与 target 均存活并处于同一 Location；
+- Projector 精确复制 source 角色的 `knowledgeState` 到 target 角色的 `CharacterKnowledge`，并记录 `sourceType = "character"`、`sourceCharacterId` 与 `sourceEventId`；
+- 知识传播绝不创建或修改客观世界 Fact，也不赋予 Claim 任何客观 Truth 权威；目标角色若已有更高确定性状态或冲突认知，受既有防回退与不变量规则约束。
+
 ## 3. 关键关系
 
 ```text

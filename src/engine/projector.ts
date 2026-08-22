@@ -37,6 +37,9 @@ export function projectEvent(tx: any, event: CommittedEvent): void {
     case "claim.record":
       projectClaim(tx, event);
       break;
+    case "claim.transmit":
+      projectClaimTransmission(tx, event);
+      break;
     case "world.time_advance":
       break;
   }
@@ -91,6 +94,55 @@ function projectClaim(tx: any, event: CommittedEvent): void {
       recordedAt: event.eventTime,
     })
     .run();
+}
+
+function projectClaimTransmission(tx: any, event: CommittedEvent): void {
+  const payload = event.payload;
+  const sourceCharacterId = stringValue(payload.sourceCharacterId);
+  const targetCharacterId = stringValue(payload.targetCharacterId);
+  const claimId = stringValue(payload.claimId);
+
+  const sourceKnowledge = tx
+    .select()
+    .from(characterKnowledge)
+    .where(and(eq(characterKnowledge.characterId, sourceCharacterId), eq(characterKnowledge.claimId, claimId)))
+    .get();
+  if (!sourceKnowledge) {
+    throw new Error("Projector could not find source character knowledge for claim transmission");
+  }
+
+  const existing = tx
+    .select()
+    .from(characterKnowledge)
+    .where(and(eq(characterKnowledge.characterId, targetCharacterId), eq(characterKnowledge.claimId, claimId)))
+    .get();
+
+  const values = {
+    characterId: targetCharacterId,
+    claimId,
+    knowledgeState: sourceKnowledge.knowledgeState,
+    sourceType: "character" as const,
+    sourceCharacterId,
+    sourceEventId: event.id,
+    sourceSeedId: null,
+    learnedAt: event.eventTime,
+  };
+
+  if (existing) {
+    tx.update(characterKnowledge)
+      .set({
+        knowledgeState: values.knowledgeState,
+        sourceType: values.sourceType,
+        sourceCharacterId: values.sourceCharacterId,
+        sourceEventId: values.sourceEventId,
+        sourceSeedId: values.sourceSeedId,
+        learnedAt: values.learnedAt,
+      })
+      .where(and(eq(characterKnowledge.characterId, targetCharacterId), eq(characterKnowledge.claimId, claimId)))
+      .run();
+  } else {
+    tx.insert(characterKnowledge).values(values).run();
+  }
 }
 
 function projectRelationship(tx: any, event: CommittedEvent): void {
@@ -277,6 +329,36 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
         sourceSeedId: null,
         recordedAt: event.eventTime,
       });
+      return;
+    }
+    case "claim.transmit": {
+      const sourceCharacterId = stringValue(payload.sourceCharacterId);
+      const targetCharacterId = stringValue(payload.targetCharacterId);
+      const claimId = stringValue(payload.claimId);
+      const sourceKnowledge = state.knowledge.find(
+        (value) => value.characterId === sourceCharacterId && value.claimId === claimId,
+      );
+      if (!sourceKnowledge) {
+        throw new Error("Rebuild state could not find source knowledge for claim transmission");
+      }
+      const existing = state.knowledge.find(
+        (value) => value.characterId === targetCharacterId && value.claimId === claimId,
+      );
+      const next = {
+        characterId: targetCharacterId,
+        claimId,
+        knowledgeState: sourceKnowledge.knowledgeState,
+        sourceType: "character" as const,
+        sourceCharacterId,
+        sourceEventId: event.id,
+        sourceSeedId: null,
+        learnedAt: event.eventTime,
+      };
+      if (existing) {
+        Object.assign(existing, next);
+      } else {
+        state.knowledge.push(next);
+      }
       return;
     }
     case "world.time_advance":

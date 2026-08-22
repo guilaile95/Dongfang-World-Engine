@@ -143,6 +143,21 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string, wo
         predicate: candidate.predicate,
         object: candidate.object,
       });
+    case "claim.transmit":
+      return makeEvent(
+        candidate,
+        id,
+        createdAt,
+        worldRevision,
+        eventTime,
+        [candidate.sourceCharacterId],
+        [candidate.targetCharacterId],
+        {
+          sourceCharacterId: candidate.sourceCharacterId,
+          targetCharacterId: candidate.targetCharacterId,
+          claimId: candidate.claimId,
+        },
+      );
     case "world.time_advance":
       return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [], [], { toTime: eventTime });
   }

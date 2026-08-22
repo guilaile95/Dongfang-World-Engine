@@ -207,3 +207,211 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
   });
   return { world, locations, characters, secretFact, secretClaim, unverifiedClaim, seed };
 }
+
+export const CLOSED_INN_WORLD_ID = "world-closed-inn";
+export const CLOSED_INN_INITIAL_TIME = "2019-03-12T18:00:00.000Z";
+
+export interface ClosedInnFixtureIds {
+  world: WorldRecord;
+  seed: SeedRecord;
+  locations: Record<"hall" | "cellar" | "guestRoom", LocationRecord>;
+  characters: Record<"player" | "npcA" | "npcB" | "npcC", CharacterRecord>;
+  hiddenTruth: FactRecord;
+  claims: Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom", ClaimRecord>;
+}
+
+export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds {
+  const world: WorldRecord = {
+    id: CLOSED_INN_WORLD_ID,
+    name: "封闭客栈匕首谜案",
+    currentTime: CLOSED_INN_INITIAL_TIME,
+    revision: 0,
+    status: "active",
+  };
+  const seed: SeedRecord = {
+    id: "seed-closed-inn-v1",
+    worldId: CLOSED_INN_WORLD_ID,
+    sourceType: "test_fixture",
+    sourceRef: "src/testkit/world-builder.ts",
+    metadata: JSON.stringify({ fixture: "closed-inn-10turn", version: 1 }),
+  };
+  const locations = {
+    hall: {
+      id: "location-inn-hall",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "客栈大堂",
+      parentId: null,
+      type: "room",
+    },
+    cellar: {
+      id: "location-cellar",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "客栈地窖",
+      parentId: null,
+      type: "room",
+    },
+    guestRoom: {
+      id: "location-guest-room",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "二楼客房",
+      parentId: null,
+      type: "room",
+    },
+  } satisfies Record<"hall" | "cellar" | "guestRoom", LocationRecord>;
+
+  const characters = {
+    player: {
+      id: "character-player",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "旅客·顾云舟",
+      type: "player",
+      alive: true,
+      locationId: locations.hall.id,
+      identity: "避雨借宿的行者",
+      currentGoal: "查明失踪匕首下落并离开客栈",
+    },
+    npcA: {
+      id: "character-npc-a",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "店小二·阿宝",
+      type: "npc",
+      alive: true,
+      locationId: locations.hall.id,
+      identity: "负责大堂杂务的伙计",
+      currentGoal: "证明自己清白并告知可信者匕首真实掉落地窖",
+    },
+    npcB: {
+      id: "character-npc-b",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "账房·赵先生",
+      type: "npc",
+      alive: true,
+      locationId: locations.hall.id,
+      identity: "客栈算账先生",
+      currentGoal: "怀疑有人藏匿匕首并追查二楼客房传闻",
+    },
+    npcC: {
+      id: "character-npc-c",
+      worldId: CLOSED_INN_WORLD_ID,
+      name: "行商·孙掌柜",
+      type: "npc",
+      alive: true,
+      locationId: locations.guestRoom.id,
+      identity: "借宿二楼的绸缎商人",
+      currentGoal: "在客房避嫌并打探账房偷窃的传闻",
+    },
+  } satisfies Record<"player" | "npcA" | "npcB" | "npcC", CharacterRecord>;
+
+  const hiddenTruth: FactRecord = {
+    id: "fact-hidden-dagger-cellar",
+    worldId: CLOSED_INN_WORLD_ID,
+    subject: CLOSED_INN_WORLD_ID,
+    predicate: "dagger_location",
+    object: locations.cellar.id,
+    validFrom: CLOSED_INN_INITIAL_TIME,
+    validTo: null,
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    sourceType: "initial_lore",
+  };
+
+  const claims = {
+    trueCellar: {
+      id: "claim-dagger-in-cellar",
+      worldId: CLOSED_INN_WORLD_ID,
+      subject: CLOSED_INN_WORLD_ID,
+      predicate: "dagger_location",
+      object: locations.cellar.id,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      recordedAt: CLOSED_INN_INITIAL_TIME,
+    },
+    falseTheftNpcB: {
+      id: "claim-dagger-stolen-by-npcb",
+      worldId: CLOSED_INN_WORLD_ID,
+      subject: characters.npcB.id,
+      predicate: "suspected_thief",
+      object: characters.npcB.id,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      recordedAt: CLOSED_INN_INITIAL_TIME,
+    },
+    falseGuestRoom: {
+      id: "claim-dagger-in-guestroom",
+      worldId: CLOSED_INN_WORLD_ID,
+      subject: CLOSED_INN_WORLD_ID,
+      predicate: "dagger_location",
+      object: locations.guestRoom.id,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      recordedAt: CLOSED_INN_INITIAL_TIME,
+    },
+  } satisfies Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom", ClaimRecord>;
+
+  const knowledge: KnowledgeRecord[] = [
+    {
+      characterId: characters.npcA.id,
+      claimId: claims.trueCellar.id,
+      knowledgeState: "confirmed",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      learnedAt: CLOSED_INN_INITIAL_TIME,
+    },
+    {
+      characterId: characters.npcB.id,
+      claimId: claims.falseGuestRoom.id,
+      knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      learnedAt: CLOSED_INN_INITIAL_TIME,
+    },
+    {
+      characterId: characters.npcC.id,
+      claimId: claims.falseTheftNpcB.id,
+      knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      learnedAt: CLOSED_INN_INITIAL_TIME,
+    },
+  ];
+
+  const relationships = [
+    {
+      sourceCharacterId: characters.npcB.id,
+      targetCharacterId: characters.npcA.id,
+      trust: -20,
+      hostility: 20,
+      closeness: 0,
+      relationshipType: "suspicious",
+      updatedByEventId: null,
+    },
+    {
+      sourceCharacterId: characters.npcA.id,
+      targetCharacterId: characters.npcB.id,
+      trust: -10,
+      hostility: 10,
+      closeness: 0,
+      relationshipType: "wary",
+      updatedByEventId: null,
+    },
+  ];
+
+  store.seedWorld({
+    world,
+    seed,
+    locations: Object.values(locations),
+    characters: Object.values(characters),
+    facts: [hiddenTruth],
+    claims: Object.values(claims),
+    knowledge,
+    relationships,
+  });
+
+  return { world, seed, locations, characters, hiddenTruth, claims };
+}
