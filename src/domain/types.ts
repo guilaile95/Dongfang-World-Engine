@@ -3,9 +3,10 @@ export type WorldStatus = "active" | "paused" | "ended";
 export type EventType =
   | "character.move"
   | "character.die"
-  | "character.learn_fact"
+  | "character.learn_claim"
   | "relationship.change"
   | "fact.assert"
+  | "claim.record"
   | "world.time_advance";
 
 export type KnowledgeSource =
@@ -72,9 +73,20 @@ export interface FactRecord {
   sourceType: string;
 }
 
+export interface ClaimRecord {
+  id: string;
+  worldId: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  sourceEventId: string | null;
+  sourceSeedId: string | null;
+  recordedAt: string;
+}
+
 export interface KnowledgeRecord {
   characterId: string;
-  factId: string;
+  claimId: string;
   knowledgeState: KnowledgeState;
   sourceType: KnowledgeSourceType;
   sourceCharacterId: string | null;
@@ -114,6 +126,7 @@ export interface WorldSnapshot {
   locations: LocationRecord[];
   characters: CharacterRecord[];
   facts: FactRecord[];
+  claims: ClaimRecord[];
   knowledge: KnowledgeRecord[];
   predicatePolicies: PredicatePolicyRecord[];
   relationships: RelationshipRecord[];

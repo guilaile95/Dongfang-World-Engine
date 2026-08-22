@@ -12,7 +12,7 @@ Implement:
 - append-only Event Log;
 - Projector;
 - Materialized State;
-- Fact / CharacterKnowledge separation;
+- Fact / Claim / CharacterKnowledge separation;
 - directional Relationship state;
 - deterministic tests and state rebuild checks.
 
@@ -29,7 +29,7 @@ Do not implement:
 ## Architectural corrections required before coding
 
 1. Hard Validator must be deterministic code + data constraints. A future Soft Validator may advise or veto, but cannot authorize a state transition rejected by Hard Validator.
-2. Remove `Fact.confidence`; uncertainty belongs to CharacterKnowledge, Lore/Claim, or Candidate inputs, not committed Truth.
+2. Remove `Fact.confidence`; uncertainty belongs to Claim, CharacterKnowledge, Lore, or Candidate inputs, not committed Truth.
 3. Do not implement timeline branching in the MVP. `branch_id` is deferred until a complete branch model exists.
 4. Define a Persistent State Boundary: only details that future simulation must reliably remember enter durable state.
 5. Relationships are directional (`source_character_id` → `target_character_id`).
@@ -39,10 +39,13 @@ Do not implement:
 
 - `character.move`
 - `character.die`
-- `character.learn_fact`
+- `character.learn_claim`
 - `relationship.change`
 - `fact.assert`
+- `claim.record`
 - `world.time_advance`
+
+`character.learn_fact` is not a supported compatibility path. `CharacterKnowledge` references `Claim`; `claim.record` only records a non-authoritative proposition and never creates or modifies `Fact`.
 
 Add `item.transfer` only if Item is included in the first physical schema.
 

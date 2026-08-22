@@ -52,6 +52,23 @@ Focused hardening of the Step 2 authority chain, without introducing any narrati
 
 Step 2.5 deliberately does not include Context Builder, LLM, Memory, RAG, Narrative, UI, Branch, Save, Session, world-pack loading, or distributed concurrency.
 
+## Step 2.6 — Epistemic Claims Hardening
+
+Status: complete.
+
+Separate non-authoritative epistemic propositions from objective Truth before any model or context integration:
+
+- add persisted `Claim` records that may exist without a matching `Fact`;
+- refactor `CharacterKnowledge` to reference `claim_id`, never `fact_id`;
+- replace `character.learn_fact` with `character.learn_claim` and add narrowly-scoped `claim.record`;
+- keep character/event provenance, same-World validation, non-future checks, and exact-state propagation;
+- require Event provenance from `character.learn_claim` to preserve its payload `knowledgeState`, and validate Seed inputs deterministically before writing;
+- preserve Seed provenance for objective Facts, Claims, and initial CharacterKnowledge;
+- ensure Claim replay/rebuild never creates objective Facts and unrelated `fact.assert` Events cannot grant Claim knowledge;
+- preserve Step 2/2.5 revision, identity, policy, rollback, append-only, and mixed-candidate coverage.
+
+Step 2.6 deliberately does not include automatic Claim truth resolution, inference, deception, trust scoring, dialogue, Context Builder, LLM, Memory, RAG, Narrative, UI, Branch, Save, Session, or World Pack loading.
+
 ## Step 3 — LLM Candidate Generation
 
 After Step 2 is proven, connect one model only to translate player input into Candidate Events. The model still has no direct write authority.

@@ -15,7 +15,7 @@ User Action
     ↓
 Context Builder
     ↓
-World State + Lore + Character Knowledge + Relevant Memory
+    World State + Lore + Claims + Character Knowledge + Relevant Memory
     ↓
 Simulation LLM
     ↓
@@ -104,26 +104,40 @@ NPC B 知道
 推测
 ```
 
-客观事实与人物认知必须分开存储。Fact 表示世界实际上是什么，CharacterKnowledge 表示某个角色对某条 Fact 的认知状态、来源和置信度。
+客观事实、可疑命题和人物认知必须分开存储：`Fact` 表示世界实际上是什么，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 表示某个角色对某条 Claim 的认知状态与来源。Claim 不是 Truth，CharacterKnowledge 也不是 Claim 本身。
 
 NPC 只能获得其知识权限允许进入 Context 的信息。这个边界最终必须由程序实现，不能依赖一句 Prompt：“NPC 不要知道自己不该知道的东西。”
 
 当前 MVP 的知识来源必须是结构化 Provenance：
 
 ```text
-character.learn_fact
+character.learn_claim
   source = { kind: "character", characterId }
   或
   source = { kind: "event", eventId }
 ```
 
-`character` 来源表示另一个角色把 Fact 告诉当前角色。Hard Validator 必须确认来源角色属于同一个 World、不是当前学习者，并且来源角色自身拥有该 Fact；来源角色的 `rumor` 可以传播为 `rumor`，不要求来源状态为 `confirmed`。
+`character` 来源表示另一个角色把 Claim 告诉当前角色。Hard Validator 必须确认来源角色属于同一个 World、不是当前学习者，并且来源角色自身拥有该 Claim；来源角色的 `rumor` 可以传播为 `rumor`，不要求来源状态为 `confirmed`。
 
-Step 2.5 的 MVP 使用精确状态复制规则：`character` 来源的 `knowledgeState` 必须与来源角色当前的 CharacterKnowledge 完全相同，不能借传播事件静默升级或降级认知状态。传播 Event 本身是审计记录，但不会因为出现在数据库中就向其他角色广播知识。
+Step 2.5 的 MVP 使用精确状态复制规则：`character` 来源的 `knowledgeState` 必须与来源角色当前关于该 Claim 的 CharacterKnowledge 完全相同，不能借传播事件静默升级或降级认知状态。传播 Event 本身是审计记录，但不会因为出现在数据库中就向其他角色广播 Claim。
 
-`event` 来源表示当前学习者从亲自参与或观察到的 Event 中获得 Fact。Hard Validator 必须确认来源 Event 属于同一个 World、`eventTime` 不晚于学习 Event、学习者存在于来源 Event 的 `actorIds` 或 `targetIds`，并且来源 Event 的结构化载荷确实关联目标 Fact。Fact 的存在、某个无关的 `fact.assert` Event 或数据库中的传播记录，都不能自动授予其他角色知识。
+`event` 来源表示当前学习者从亲自参与或观察到的 Event 中获得 Claim。Hard Validator 必须确认来源 Event 属于同一个 World、`eventTime` 不晚于学习 Event、学习者存在于来源 Event 的 `actorIds` 或 `targetIds`，并且来源 Event 的结构化载荷确实关联目标 Claim。只有 `claim.record` 或另一个 `character.learn_claim` Event 可以作为 Claim 的 Event provenance；Fact 的存在、某个无关的 `fact.assert` Event 或数据库中的传播记录，都不能自动授予其他角色 Claim。
 
-Candidate 的知识状态在当前 MVP 限定为 `unknown`、`rumor`、`suspected`、`believed`、`confirmed`。Seed State 的初始知识仍可使用 `source_type = initial`，但必须指向该 World 的可审计 Seed 身份。
+当来源 Event 是 `character.learn_claim` 时，来源载荷中的 `knowledgeState` 还必须与当前 Candidate 完全相同；这条规则防止通过引用旧的 `rumor` 学习 Event 静默升级为 `confirmed`，也防止静默降级。
+
+Candidate 的知识状态在当前 MVP 限定为 `unknown`、`rumor`、`suspected`、`believed`、`confirmed`。Seed State 可以包含没有匹配 Fact 的 Claim，也可以包含引用 Claim 的初始 CharacterKnowledge；初始记录使用 `source_type = initial`，但必须指向该 World 的可审计 Seed 身份。`claim.record` 只持久化命题，不创建或修改 Fact。
+
+`SqliteWorldStore.seedWorld()` 在写入前确定性验证 Seed、World、Location、Character、Fact、Claim、PredicatePolicy、CharacterKnowledge 和 Relationship 的 World 归属；Knowledge 的 Character/Claim 引用必须来自同一 Seed Input，存在的 `source_seed_id` 必须指向当前 Seed。任何失败都返回稳定的 `SEED_INVALID`，并且整个 Seed transaction 不产生部分写入。
+
+Step 2.6 的硬边界是：
+
+```text
+Fact != Claim
+Claim != CharacterKnowledge
+Memory != Fact / Claim / CharacterKnowledge
+```
+
+因此错误传闻、误解和未经证实的命题可以安全存在于 Claim 层，而不会污染客观 Fact 层。当前阶段不实现 Claim 的自动真值解析、推理、欺骗、对话或信任评分。
 
 ### 2.5 Fact Predicate Policy
 
@@ -215,6 +229,7 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 - 已确认死亡角色不得无因复活；
 - 角色不得无来源瞬移；
 - NPC 不得获得无来源秘密；
+- NPC 不得获得无来源 Claim；
 - 已发生重大事件不得被后续文本直接抹除；
 - 玩家拒绝事件不代表后台事件停止；
 - 重大关系变化必须可追溯；
@@ -222,6 +237,7 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 - Memory 不得直接覆盖 Truth；
 - Narrative 不得直接 Commit 状态；
 - 对 `PredicatePolicy = one` 的谓词，不允许两个互相矛盾的当前事实同时有效；`many` 谓词按显式策略允许多个不同 object 并存。
+- Claim 的存在不得自动创建 Fact；Fact 的存在不得自动创建 CharacterKnowledge。
 
 “有因”或“有来源”必须能指向合法的已提交事件、明确的初始设定或可审计的系统规则，而不是只存在于一段不可验证的自由文本中。
 
@@ -238,6 +254,7 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 - 关键物品；
 - 重大关系变化；
 - 获得或失去的重要 Fact；
+- 角色获得或失去的重要 Claim 认知；
 - 承诺；
 - 任务；
 - 重大决定；
@@ -263,7 +280,9 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 | Canon / Lore | 世界背景、初始规则、设定约束 | 不自动证明运行时事件已经发生 |
 | World State | 当前时间、位置、存活状态、持有物等物化状态 | 不替代事件因果记录 |
 | Event Log | 记录已提交的变化、原因和参与者 | 不把未校验的模型输出当成事件 |
-| Character Knowledge | 记录每个角色对事实的认知 | 不改写客观 Fact |
+| Fact | 记录已确认的客观 Truth | 不表达角色的传闻或误解 |
+| Claim | 记录可能为真、为假、过时、不完整或未解决的命题 | 不自动成为 Truth |
+| Character Knowledge | 记录每个角色对 Claim 的认知 | 不改写客观 Fact，也不等同于 Claim |
 | Memory | 召回经历、印象和长期模式 | 不作为 Truth 或权限绕过 |
 | Simulation LLM | 提出候选事件、状态 Delta 和推演 | 不直接写入数据库 |
 | Validator | 检查权限、来源、规则、不变量和冲突 | 不负责文学化叙事 |
@@ -274,7 +293,7 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 一次有效的世界推进应尽可能具有以下边界：
 
 
-1. 读取同一版本或同一逻辑时点的 World State、Lore、CharacterKnowledge 和 Relevant Memory；
+1. 读取同一版本或同一逻辑时点的 World State、Lore、Claims、CharacterKnowledge 和 Relevant Memory；
 2. 产生候选事件和候选 State Delta；
 3. 验证所有引用的角色、地点、物品、知识来源和因果关系；
 4. 将通过校验的事件追加到 Append-only Event Log；
@@ -320,13 +339,13 @@ COMMIT
 - `world.time_advance` 仍用于没有其他事件发生但世界时间继续流逝的情况，不是唯一的时钟推进入口；
 - Hard Validator 拒绝 `eventTime < currentWorldTime`；
 - `cause_event_ids` 引用的 Event 时间不得晚于当前 Candidate 的 `eventTime`；
-- Knowledge 的 `event` 来源时间不得晚于 `character.learn_fact` 的 `eventTime`；
+- Knowledge 的 `event` 来源时间不得晚于 `character.learn_claim` 的 `eventTime`；
 - `sequence` 只表示提交顺序，`eventTime` 表示世界内时间，二者不等价；
 - `fact.assert.validFrom` 可以描述历史有效时间，但不能让 World Clock 倒退。
 
 当前 MVP 只支持单一权威时间线。Session / Save 不实现从旧存档分叉新时间线；未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。
 
-当前 Commit Kernel 已实现以下 Candidate Event：`character.move`、`character.die`、`character.learn_fact`、`relationship.change`、`fact.assert` 和 `world.time_advance`。Candidate 先经过 Zod Schema，再进入确定性的 Hard Validator；未通过校验的 Candidate 不产生事实副作用。初始状态保留为 Seed + Event Log → Materialized State 的双层模型，不把整个 Seed 转换为 Event 链；初始 Fact 和 CharacterKnowledge 通过 `source_seed_id` 指向 Seed。Item、Session / Save 的物理实现和其他事件类型暂不在本 Slice 内。
+当前 Commit Kernel 已实现以下 Candidate Event：`character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`fact.assert`、`claim.record` 和 `world.time_advance`。Candidate 先经过 Zod Schema，再进入确定性的 Hard Validator；未通过校验的 Candidate 不产生事实副作用。初始状态保留为 Seed + Event Log → Materialized State 的双层模型，不把整个 Seed 转换为 Event 链；初始 Fact、Claim 和 CharacterKnowledge 通过 `source_seed_id` 指向 Seed。Item、Session / Save 的物理实现和其他事件类型暂不在本 Slice 内。
 
 ## 7. MVP 范围
 

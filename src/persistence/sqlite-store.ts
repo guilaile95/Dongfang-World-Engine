@@ -4,6 +4,7 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { KernelError } from "../engine/errors.js";
 import type {
   CharacterRecord,
+  ClaimRecord,
   CommittedEvent,
   FactRecord,
   KnowledgeRecord,
@@ -17,6 +18,7 @@ import type {
 import {
   characterKnowledge,
   characters,
+  claims,
   createSchemaSql,
   events,
   facts,
@@ -36,6 +38,7 @@ export interface SeedWorldInput {
   locations: LocationRecord[];
   characters: CharacterRecord[];
   facts?: FactRecord[];
+  claims?: ClaimRecord[];
   knowledge?: KnowledgeRecord[];
   predicatePolicies?: PredicatePolicyRecord[];
   relationships?: RelationshipRecord[];
@@ -58,6 +61,7 @@ export class SqliteWorldStore {
 
   public seedWorld(input: SeedWorldInput): void {
     this.db.transaction((tx) => {
+      validateSeedInput(tx, input);
       tx.insert(worlds)
         .values({
           id: input.world.id,
@@ -89,6 +93,9 @@ export class SqliteWorldStore {
       }
       if (input.facts && input.facts.length > 0) {
         tx.insert(facts).values(input.facts).run();
+      }
+      if (input.claims && input.claims.length > 0) {
+        tx.insert(claims).values(input.claims).run();
       }
       if (input.knowledge && input.knowledge.length > 0) {
         tx.insert(characterKnowledge).values(input.knowledge).run();
@@ -126,6 +133,102 @@ export class SqliteWorldStore {
   }
 }
 
+function validateSeedInput(tx: any, input: SeedWorldInput): void {
+  const worldId = input.world.id;
+  const invalid = (message: string, context: Record<string, unknown> = {}): never => {
+    throw new KernelError("SEED_INVALID", message, { worldId, ...context });
+  };
+  const requireWorld = (kind: string, id: string, actualWorldId: string): void => {
+    if (actualWorldId !== worldId) {
+      invalid(`${kind} belongs to another World`, { id, referencedWorldId: actualWorldId });
+    }
+  };
+  const charactersById = new Set(input.characters.map((character) => character.id));
+  const claimsById = new Set((input.claims ?? []).map((claim) => claim.id));
+
+  if (input.seed.worldId !== worldId) {
+    invalid("Seed belongs to another World", { seedId: input.seed.id, referencedWorldId: input.seed.worldId });
+  }
+  for (const location of input.locations) {
+    requireWorld("Location", location.id, location.worldId);
+  }
+  for (const character of input.characters) {
+    requireWorld("Character", character.id, character.worldId);
+  }
+  for (const fact of input.facts ?? []) {
+    requireWorld("Fact", fact.id, fact.worldId);
+    validateSeedReference(fact.sourceSeedId, input.seed.id, "Fact", fact.id, invalid);
+    validateEventReference(tx, fact.sourceEventId, worldId, "Fact", fact.id, invalid);
+  }
+  for (const claim of input.claims ?? []) {
+    requireWorld("Claim", claim.id, claim.worldId);
+    validateSeedReference(claim.sourceSeedId, input.seed.id, "Claim", claim.id, invalid);
+    validateEventReference(tx, claim.sourceEventId, worldId, "Claim", claim.id, invalid);
+  }
+  for (const policy of input.predicatePolicies ?? []) {
+    requireWorld("PredicatePolicy", policy.predicate, policy.worldId);
+  }
+  for (const knowledge of input.knowledge ?? []) {
+    if (!charactersById.has(knowledge.characterId)) {
+      invalid("CharacterKnowledge references a Character outside the Seed", {
+        characterId: knowledge.characterId,
+        claimId: knowledge.claimId,
+      });
+    }
+    if (!claimsById.has(knowledge.claimId)) {
+      invalid("CharacterKnowledge references a Claim outside the Seed", {
+        characterId: knowledge.characterId,
+        claimId: knowledge.claimId,
+      });
+    }
+    validateSeedReference(knowledge.sourceSeedId, input.seed.id, "CharacterKnowledge", knowledge.claimId, invalid);
+    if (knowledge.sourceCharacterId !== null && !charactersById.has(knowledge.sourceCharacterId)) {
+      invalid("CharacterKnowledge source Character belongs outside the Seed", {
+        claimId: knowledge.claimId,
+        sourceCharacterId: knowledge.sourceCharacterId,
+      });
+    }
+    validateEventReference(tx, knowledge.sourceEventId, worldId, "CharacterKnowledge", knowledge.claimId, invalid);
+  }
+  for (const relationship of input.relationships ?? []) {
+    if (!charactersById.has(relationship.sourceCharacterId) || !charactersById.has(relationship.targetCharacterId)) {
+      invalid("Relationship references a Character outside the Seed", {
+        sourceCharacterId: relationship.sourceCharacterId,
+        targetCharacterId: relationship.targetCharacterId,
+      });
+    }
+  }
+}
+
+function validateSeedReference(
+  sourceSeedId: string | null,
+  expectedSeedId: string,
+  kind: string,
+  id: string,
+  invalid: (message: string, context?: Record<string, unknown>) => never,
+): void {
+  if (sourceSeedId !== null && sourceSeedId !== expectedSeedId) {
+    invalid(`${kind} provenance references another Seed`, { id, sourceSeedId, expectedSeedId });
+  }
+}
+
+function validateEventReference(
+  tx: any,
+  sourceEventId: string | null,
+  worldId: string,
+  kind: string,
+  id: string,
+  invalid: (message: string, context?: Record<string, unknown>) => never,
+): void {
+  if (sourceEventId === null) {
+    return;
+  }
+  const sourceEvent = tx.select().from(events).where(eq(events.id, sourceEventId)).get();
+  if (!sourceEvent || sourceEvent.worldId !== worldId) {
+    invalid(`${kind} provenance references an Event outside the Seed World`, { id, sourceEventId });
+  }
+}
+
 export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   const world = executor.select().from(worlds).where(eq(worlds.id, worldId)).get();
   if (!world) {
@@ -139,6 +242,7 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   const locationRows = executor.select().from(locations).where(eq(locations.worldId, worldId)).all();
   const characterRows = executor.select().from(characters).where(eq(characters.worldId, worldId)).all();
   const factRows = executor.select().from(facts).where(eq(facts.worldId, worldId)).all();
+  const claimRows = executor.select().from(claims).where(eq(claims.worldId, worldId)).all();
   const characterIds = characterRows.map((character: { id: string }) => character.id);
   const knowledgeRows = characterIds.flatMap((characterId: string) =>
     executor.select().from(characterKnowledge).where(eq(characterKnowledge.characterId, characterId)).all(),
@@ -196,9 +300,19 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       sourceSeedId: fact.sourceSeedId,
       sourceType: fact.sourceType,
     })),
+    claims: claimRows.map((claim: typeof claimRows[number]) => ({
+      id: claim.id,
+      worldId: claim.worldId,
+      subject: claim.subject,
+      predicate: claim.predicate,
+      object: claim.object,
+      sourceEventId: claim.sourceEventId,
+      sourceSeedId: claim.sourceSeedId,
+      recordedAt: claim.recordedAt,
+    })),
     knowledge: knowledgeRows.map((knowledge: typeof knowledgeRows[number]) => ({
       characterId: knowledge.characterId,
-      factId: knowledge.factId,
+      claimId: knowledge.claimId,
       knowledgeState: knowledge.knowledgeState,
       sourceType: knowledge.sourceType as KnowledgeRecord["sourceType"],
       sourceCharacterId: knowledge.sourceCharacterId,
@@ -254,6 +368,10 @@ export function findLocation(executor: any, locationId: string): typeof location
 
 export function findFact(executor: any, factId: string): typeof facts.$inferSelect | undefined {
   return executor.select().from(facts).where(eq(facts.id, factId)).get();
+}
+
+export function findClaim(executor: any, claimId: string): typeof claims.$inferSelect | undefined {
+  return executor.select().from(claims).where(eq(claims.id, claimId)).get();
 }
 
 export function findEvent(executor: any, eventId: string): typeof events.$inferSelect | undefined {

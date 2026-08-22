@@ -12,6 +12,7 @@ import {
 } from "../persistence/schema.js";
 import {
   findCharacter,
+  findClaim,
   findEvent,
   findFact,
   findLocation,
@@ -68,7 +69,7 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
     case "character.die":
       validateDeath(tx, candidate);
       return;
-    case "character.learn_fact":
+    case "character.learn_claim":
       validateKnowledge(tx, candidate, eventTime);
       return;
     case "relationship.change":
@@ -76,6 +77,9 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
       return;
     case "fact.assert":
       validateFact(tx, candidate);
+      return;
+    case "claim.record":
+      validateClaim(tx, candidate);
       return;
     case "world.time_advance":
       if (Date.parse(normalizeTime(candidate.toTime)) <= Date.parse(currentTime)) {
@@ -128,27 +132,27 @@ function validateDeath(tx: any, candidate: Extract<CandidateEvent, { type: "char
 
 function validateKnowledge(
   tx: any,
-  candidate: Extract<CandidateEvent, { type: "character.learn_fact" }>,
+  candidate: Extract<CandidateEvent, { type: "character.learn_claim" }>,
   eventTime: string,
 ): void {
   const character = findCharacter(tx, candidate.actorId);
-  const fact = findFact(tx, candidate.factId);
+  const claim = findClaim(tx, candidate.claimId);
   if (!character) {
     throw new KernelError("CHARACTER_NOT_FOUND", "Learning Character does not exist", { characterId: candidate.actorId });
   }
-  if (!fact) {
-    throw new KernelError("FACT_NOT_FOUND", "Fact does not exist", { factId: candidate.factId });
+  if (!claim) {
+    throw new KernelError("CLAIM_NOT_FOUND", "Claim does not exist", { claimId: candidate.claimId });
   }
-  if (character.worldId !== candidate.worldId || fact.worldId !== candidate.worldId) {
-    throw new KernelError("CROSS_WORLD_REFERENCE", "Character and Fact must belong to the same World", {
+  if (character.worldId !== candidate.worldId || claim.worldId !== candidate.worldId) {
+    throw new KernelError("CROSS_WORLD_REFERENCE", "Character and Claim must belong to the same World", {
       characterId: candidate.actorId,
-      factId: candidate.factId,
+      claimId: candidate.claimId,
     });
   }
   if (!candidate.source) {
-    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Learning a Fact requires structured provenance", {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Learning a Claim requires structured provenance", {
       characterId: candidate.actorId,
-      factId: candidate.factId,
+      claimId: candidate.claimId,
     });
   }
 
@@ -167,24 +171,24 @@ function validateKnowledge(
     if (sourceCharacter.id === character.id) {
       throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "A Character cannot be its own knowledge source", {
         characterId: character.id,
-        factId: candidate.factId,
+        claimId: candidate.claimId,
       });
     }
     const sourceKnowledge = tx
       .select()
       .from(characterKnowledge)
-      .where(and(eq(characterKnowledge.characterId, sourceCharacter.id), eq(characterKnowledge.factId, fact.id)))
+      .where(and(eq(characterKnowledge.characterId, sourceCharacter.id), eq(characterKnowledge.claimId, claim.id)))
       .get();
     if (!sourceKnowledge) {
-      throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Character does not know the requested Fact", {
+      throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Character does not know the requested Claim", {
         sourceCharacterId: sourceCharacter.id,
-        factId: fact.id,
+        claimId: claim.id,
       });
     }
     if (sourceKnowledge.knowledgeState !== candidate.knowledgeState) {
       throw new KernelError("KNOWLEDGE_STATE_ESCALATION", "Character propagation must copy the source knowledge state exactly", {
         sourceCharacterId: sourceCharacter.id,
-        factId: fact.id,
+        claimId: claim.id,
         sourceKnowledgeState: sourceKnowledge.knowledgeState,
         requestedKnowledgeState: candidate.knowledgeState,
       });
@@ -219,13 +223,54 @@ function validateKnowledge(
     });
   }
   const sourcePayload = JSON.parse(sourceEvent.payload) as Record<string, unknown>;
-  const sourceSupportsFact =
-    (sourceEvent.type === "fact.assert" || sourceEvent.type === "character.learn_fact") &&
-    sourcePayload.factId === candidate.factId;
-  if (!sourceSupportsFact) {
-    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Event does not establish the requested Fact", {
+  const sourceSupportsClaim =
+    (sourceEvent.type === "claim.record" || sourceEvent.type === "character.learn_claim") &&
+    sourcePayload.claimId === candidate.claimId;
+  if (!sourceSupportsClaim) {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Event does not establish the requested Claim", {
       sourceEventId: candidate.source.eventId,
-      factId: candidate.factId,
+      claimId: candidate.claimId,
+    });
+  }
+  if (sourceEvent.type === "character.learn_claim" && sourcePayload.knowledgeState !== candidate.knowledgeState) {
+    throw new KernelError("KNOWLEDGE_STATE_ESCALATION", "Claim Event provenance must preserve the source knowledge state exactly", {
+      sourceEventId: candidate.source.eventId,
+      claimId: candidate.claimId,
+      sourceKnowledgeState: sourcePayload.knowledgeState,
+      requestedKnowledgeState: candidate.knowledgeState,
+    });
+  }
+}
+
+function validateClaim(tx: any, candidate: Extract<CandidateEvent, { type: "claim.record" }>): void {
+  if (findClaim(tx, candidate.claimId)) {
+    throw new KernelError("CLAIM_ALREADY_EXISTS", "Claim id has already been recorded", { claimId: candidate.claimId });
+  }
+  if (candidate.actorId) {
+    const actor = findCharacter(tx, candidate.actorId);
+    if (!actor) {
+      throw new KernelError("CHARACTER_NOT_FOUND", "Claim assertion actor does not exist", {
+        characterId: candidate.actorId,
+      });
+    }
+    if (actor.worldId !== candidate.worldId) {
+      throw new KernelError("CROSS_WORLD_REFERENCE", "Claim assertion actor belongs to another World", {
+        characterId: candidate.actorId,
+      });
+    }
+  }
+
+  const subjectCharacter = findCharacter(tx, candidate.subject);
+  const subjectLocation = findLocation(tx, candidate.subject);
+  const subjectWorld = tx.select().from(worlds).where(eq(worlds.id, candidate.subject)).get();
+  const subjectBelongsToWorld =
+    subjectCharacter?.worldId === candidate.worldId ||
+    subjectLocation?.worldId === candidate.worldId ||
+    subjectWorld?.id === candidate.worldId;
+  if (!subjectBelongsToWorld) {
+    throw new KernelError("INVALID_CLAIM_SUBJECT", "Claim subject must be a known entity in the same World", {
+      subject: candidate.subject,
+      worldId: candidate.worldId,
     });
   }
 }
