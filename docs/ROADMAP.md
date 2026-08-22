@@ -97,6 +97,8 @@ Add the first non-authoritative model boundary on top of the completed Context B
 - accept only an already-filtered `CharacterContext`, matching actor identity, and intent;
 - inject one narrow model client/transport boundary;
 - validate 0..N ordered proposal drafts against the six-type actor Candidate surface;
+- publish the provider-agnostic top-level Proposal contract, exact six-type fields, actor ownership, and forbidden authority fields;
+- provide one bounded actionable repair summary and preserve the final sanitized validation reason;
 - keep Kernel-only capabilities such as `fact.assert` unavailable to actor proposals until a deterministic authority contract exists;
 - keep Event envelope/provenance (`occurredAt`, `causeEventIds`) and revision binding outside model output;
 - reject model-controlled `worldId` / `expectedWorldRevision` metadata;
