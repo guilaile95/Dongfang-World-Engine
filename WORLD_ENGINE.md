@@ -49,7 +49,7 @@ Player
 
 LLM 输出、聊天文本、剧情摘要、Memory 和上下文缓存都不能直接覆盖数据库事实。它们最多是候选变化、召回材料或非权威展示。
 
-“数据库”在本阶段表示事实权威层的概念边界，不意味着现在就要选定或引入某个数据库产品。
+“数据库”首先表示事实权威层的概念边界；当前 Commit Kernel 使用 SQLite 承载这一层，但核心规则不依赖某个不可替换的数据库供应商。
 
 ### 2.2 Events Explain State
 
@@ -125,6 +125,19 @@ LLM 不能直接修改数据库。正确流程是：
 
 LLM 负责提出可能发生的变化和叙事意图；World Engine 负责决定变化是否合法、是否有来源、是否与当前状态和不变量冲突。未通过校验的候选结果不得产生事实副作用。
 
+本阶段的 Validator 必须是 **Hard Validator**：
+
+```text
+Hard Validator
+= 确定性代码
++ 数据约束
++ 明确世界不变量
+```
+
+Hard Validator 不调用 LLM，不依赖自然语言判断，并且对相同的输入状态和 Candidate Event 给出相同结果。
+
+未来可以增加 **Soft Validator**，用于语义检查、警告和补充判断。但 Soft Validator 永远不能授权违反 Hard Validator 的状态变化。
+
 ### 2.6 Narrative is a View of State
 
 剧情文本不是事实源。正确方向是：
@@ -184,7 +197,38 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 
 “有因”或“有来源”必须能指向合法的已提交事件、明确的初始设定或可审计的系统规则，而不是只存在于一段不可验证的自由文本中。
 
-## 4. 权威边界与职责
+## 4. Persistent State Boundary
+
+不是 Narrative 中的所有细节都进入数据库。只有会影响未来、需要可靠记忆或需要审计的内容进入 Persistent State。
+
+必须持久化：
+
+- 生死；
+- 重大伤势；
+- 重要位置变化；
+- 身份；
+- 关键物品；
+- 重大关系变化；
+- 获得或失去的重要 Fact；
+- 承诺；
+- 任务；
+- 重大决定；
+- 世界事件；
+- 其他会影响未来的状态。
+
+通常不持久化：
+
+- 喝水；
+- 普通表情；
+- 无后果动作；
+- 临时景物；
+- 普通桌椅；
+- 纯文学修辞；
+- 对未来没有影响的微小细节。
+
+判断原则是：**如果未来剧情需要可靠地记住它，才进入 Persistent State。**
+
+## 5. 权威边界与职责
 
 | 层 | 负责什么 | 不负责什么 |
 | --- | --- | --- |
@@ -197,9 +241,10 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 | Validator | 检查权限、来源、规则、不变量和冲突 | 不负责文学化叙事 |
 | Narrator | 将已确认结果呈现给玩家 | 不从文本直接提交世界状态 |
 
-## 5. 提交语义
+## 6. 提交语义
 
 一次有效的世界推进应尽可能具有以下边界：
+
 
 1. 读取同一版本或同一逻辑时点的 World State、Lore、CharacterKnowledge 和 Relevant Memory；
 2. 产生候选事件和候选 State Delta；
@@ -211,7 +256,31 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 
 如果任一关键候选无法校验，整次事实提交应失败或进入明确的待处理状态，不能部分写入后再让叙事文本掩盖不一致。
 
-## 6. MVP 范围
+Commit 必须在同一个 SQLite 事务中完成：
+
+```text
+Validate
+↓
+BEGIN TRANSACTION
+↓
+Append Event
+↓
+Project Materialized State
+↓
+Update Knowledge / Relationship 等派生状态
+↓
+COMMIT
+```
+
+任意一步失败都必须 Rollback，不能出现“角色已经移动但 Event 写入失败”或“Event 已写入但当前状态未更新”的半提交状态。
+
+已提交 Event 是 Append-only：不得 UPDATE 核心内容，不得 DELETE；纠正或逆转必须追加具有因果关系的新 Event。
+
+当前 MVP 只支持单一权威时间线。Session / Save 不实现从旧存档分叉新时间线；未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。
+
+当前 Commit Kernel 已实现以下 Candidate Event：`character.move`、`character.die`、`character.learn_fact`、`relationship.change`、`fact.assert` 和 `world.time_advance`。Candidate 先经过 Zod Schema，再进入确定性的 Hard Validator；未通过校验的 Candidate 不产生事实副作用。Item、Session / Save 的物理实现和其他事件类型暂不在本 Slice 内。
+
+## 7. MVP 范围
 
 第一阶段只证明核心世界状态能稳定运行。明确不实现：
 
@@ -224,11 +293,12 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 - 复杂数值 RPG；
 - 大规模经济模拟。
 
-MVP 的最小验证对象是：一个世界、一个玩家、少量 NPC 和一条后台事件链，连续运行 30～50 轮后，事实、时间、位置、人物认知和因果仍然一致。
+MVP 的最小验证对象是：一个世界、一个玩家、少量 NPC 和一条后台事件链，连续运行 30～50 轮后，事实、时间、位置、人物认知和因果仍然一致。当前 Commit Kernel 已用 90 个合法与非法 Candidate Event 的混合测试证明没有半提交状态，并且关键状态可以由初始 Fixture 加 Event Log 重建。
 
-## 7. 变更纪律
+## 8. 变更纪律
 
 后续新增模块必须明确回答：
+
 
 - 它读取哪一层数据；
 - 它是否能够提出状态变化；

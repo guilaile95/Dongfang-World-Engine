@@ -82,10 +82,23 @@ Player
 
 ## 当前阶段
 
-当前只做 **World Engine MVP**。
+当前只做 **World Engine Commit Kernel**。
 
 第一阶段验证目标是：
 
 > 一个世界、一个玩家、少量 NPC 和一条后台事件链，连续运行 30～50 轮后，仍保持事实、时间、位置、人物认知和因果一致。
 
-本阶段不实现 UI、不接入腾讯 Agent Memory、不创建复杂业务代码，也不引入数据库依赖。先冻结世界运行架构，再用一个最小代码 Slice 验证“候选事件 → 校验 → 提交 → 状态更新 → 叙事”的闭环。
+当前 Slice 已实现一个完全确定性的闭环：
+
+```text
+Candidate Event
+→ Zod Schema
+→ Hard Validator
+→ SQLite Transaction
+→ Append-only Event Log
+→ Materialized State
+```
+
+当前使用 TypeScript、Node.js、SQLite、Drizzle ORM、Zod 和 Vitest。暂不实现 UI、LLM、腾讯 Agent Memory、Memory Provider、RAG、多世界、分支时间线或复杂业务系统。
+
+当前已实现的 Commit Kernel 支持 `character.move`、`character.die`、`character.learn_fact`、`relationship.change`、`fact.assert` 和 `world.time_advance` 六类 Candidate Event；所有提交都经过 Hard Validator 和同一 SQLite 事务，并可从初始 Fixture 加 Event Log 重建关键状态。
