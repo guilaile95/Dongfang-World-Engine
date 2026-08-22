@@ -224,6 +224,24 @@ Narrator 只能文学化已经确认的事件和状态。叙事中的修辞、�
 
 如果某个选项在世界状态、角色认知和后续事件上都不产生差异，就不应把它伪装成有意义的分支。
 
+### 2.10 Context Builder MVP
+
+当前 Context Builder 是只读的观察者视图，不是事实写入入口。`buildCharacterContext({ worldId, observerCharacterId, budget })` 只读取同一 World 的物化状态和 Event Log，并按以下顺序工作：
+
+```text
+World Data
+→ observer-specific visibility gate
+→ legal visible pool
+→ deterministic unit packing
+→ structured Context
+```
+
+它始终返回 World envelope、观察者自身状态和当前位置（若有）；可选内容只包括观察者自己的 `CharacterKnowledge + Claim + minimal provenance` causal bundle、同地点角色的安全公共投影，以及 `sourceCharacterId == observerCharacterId` 的有向关系。预算是可配置的 MVP context-unit 上限，visibility filtering 必须先于 truncation；core envelope/self/location 不被截断，Knowledge bundle 不会拆开。
+
+Context Builder 不读取或输出一般 objective `Fact`，不通过 `(subject, predicate, object)` 将 Claim 与 Fact 连接，也不输出其他角色的 CharacterKnowledge、`currentGoal`、`identity` 或反向关系评价。Event provenance 最多带已记录的 source id、Event type 和 Event time，不带 raw payload、actor list、target list 或无关 Event 数据。跨 World 的 observer/world 引用必须确定性拒绝；构建过程不得追加 Event、改变 State 或推进 World revision。
+
+任何未来的概率相关性排序都必须在上述确定性 visibility gate 之后运行；本 Slice 不实现概率 reranking、Embedding、RAG 或 LLM。
+
 ## 3. Invariants
 
 以下是不变量。任何产生状态 Delta 的路径，包括玩家行动、后台事件、脚本和 LLM 候选，都必须经过这些规则的检查：
