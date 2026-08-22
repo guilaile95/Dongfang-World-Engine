@@ -117,6 +117,10 @@ function projectClaimTransmission(tx: any, event: CommittedEvent): void {
     .where(and(eq(characterKnowledge.characterId, targetCharacterId), eq(characterKnowledge.claimId, claimId)))
     .get();
 
+  if (existing) {
+    return;
+  }
+
   const values = {
     characterId: targetCharacterId,
     claimId,
@@ -128,21 +132,7 @@ function projectClaimTransmission(tx: any, event: CommittedEvent): void {
     learnedAt: event.eventTime,
   };
 
-  if (existing) {
-    tx.update(characterKnowledge)
-      .set({
-        knowledgeState: values.knowledgeState,
-        sourceType: values.sourceType,
-        sourceCharacterId: values.sourceCharacterId,
-        sourceEventId: values.sourceEventId,
-        sourceSeedId: values.sourceSeedId,
-        learnedAt: values.learnedAt,
-      })
-      .where(and(eq(characterKnowledge.characterId, targetCharacterId), eq(characterKnowledge.claimId, claimId)))
-      .run();
-  } else {
-    tx.insert(characterKnowledge).values(values).run();
-  }
+  tx.insert(characterKnowledge).values(values).run();
 }
 
 function projectRelationship(tx: any, event: CommittedEvent): void {
@@ -344,19 +334,17 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       const existing = state.knowledge.find(
         (value) => value.characterId === targetCharacterId && value.claimId === claimId,
       );
-      const next = {
-        characterId: targetCharacterId,
-        claimId,
-        knowledgeState: sourceKnowledge.knowledgeState,
-        sourceType: "character" as const,
-        sourceCharacterId,
-        sourceEventId: event.id,
-        sourceSeedId: null,
-        learnedAt: event.eventTime,
-      };
-      if (existing) {
-        Object.assign(existing, next);
-      } else {
+      if (!existing) {
+        const next = {
+          characterId: targetCharacterId,
+          claimId,
+          knowledgeState: sourceKnowledge.knowledgeState,
+          sourceType: "character" as const,
+          sourceCharacterId,
+          sourceEventId: event.id,
+          sourceSeedId: null,
+          learnedAt: event.eventTime,
+        };
         state.knowledge.push(next);
       }
       return;
