@@ -100,10 +100,10 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string, wo
       return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [], {
         actorId: candidate.actorId,
       });
-    case "character.learn_fact":
-      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [candidate.factId], {
+    case "character.learn_claim":
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [candidate.claimId], {
         actorId: candidate.actorId,
-        factId: candidate.factId,
+        claimId: candidate.claimId,
         knowledgeState: candidate.knowledgeState,
         source: candidate.source ?? null,
       });
@@ -134,6 +134,14 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string, wo
         object: candidate.object,
         validFrom: normalizeTime(candidate.validFrom),
         validTo: candidate.validTo ? normalizeTime(candidate.validTo) : null,
+      });
+    case "claim.record":
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, candidate.actorId ? [candidate.actorId] : [], [candidate.claimId], {
+        claimId: candidate.claimId,
+        actorId: candidate.actorId ?? null,
+        subject: candidate.subject,
+        predicate: candidate.predicate,
+        object: candidate.object,
       });
     case "world.time_advance":
       return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [], [], { toTime: eventTime });

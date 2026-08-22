@@ -36,11 +36,11 @@ const knowledgeSource = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const learnFactCandidate = z.object({
+const learnClaimCandidate = z.object({
   ...base,
-  type: z.literal("character.learn_fact"),
+  type: z.literal("character.learn_claim"),
   actorId: z.string().min(1),
-  factId: z.string().min(1),
+  claimId: z.string().min(1),
   knowledgeState: z.enum(["unknown", "rumor", "suspected", "believed", "confirmed"]),
   source: knowledgeSource.optional(),
 });
@@ -83,6 +83,16 @@ const factCandidate = z.object({
   validTo: dateTime.optional(),
 });
 
+const claimRecordCandidate = z.object({
+  ...base,
+  type: z.literal("claim.record"),
+  claimId: z.string().min(1),
+  actorId: z.string().min(1).optional(),
+  subject: z.string().min(1),
+  predicate: z.string().min(1),
+  object: z.string().min(1),
+});
+
 const timeAdvanceCandidate = z.object({
   ...base,
   type: z.literal("world.time_advance"),
@@ -92,9 +102,10 @@ const timeAdvanceCandidate = z.object({
 export const candidateSchema = z.discriminatedUnion("type", [
   moveCandidate,
   dieCandidate,
-  learnFactCandidate,
+  learnClaimCandidate,
   relationshipCandidate,
   factCandidate,
+  claimRecordCandidate,
   timeAdvanceCandidate,
 ]);
 

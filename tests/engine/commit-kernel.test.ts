@@ -3,7 +3,14 @@ import { CommitKernel, type CommitResult } from "../../src/engine/commit-kernel.
 import { TEST_TIME, seedTestWorld } from "../../src/testkit/world-builder.js";
 import { rebuildState } from "../../src/engine/projector.js";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
-import type { CommittedEvent, WorldSnapshot } from "../../src/domain/types.js";
+import type {
+  CharacterRecord,
+  ClaimRecord,
+  CommittedEvent,
+  SeedRecord,
+  WorldRecord,
+  WorldSnapshot,
+} from "../../src/domain/types.js";
 
 function createHarness(options: ConstructorParameters<typeof CommitKernel>[1] = {}) {
   const store = new SqliteWorldStore();
@@ -54,8 +61,9 @@ function sortedSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
     locations: [...snapshot.locations].sort((a, b) => a.id.localeCompare(b.id)),
     characters: [...snapshot.characters].sort((a, b) => a.id.localeCompare(b.id)),
     facts: [...snapshot.facts].sort((a, b) => a.id.localeCompare(b.id)),
+    claims: [...snapshot.claims].sort((a, b) => a.id.localeCompare(b.id)),
     knowledge: [...snapshot.knowledge].sort((a, b) =>
-      `${a.characterId}:${a.factId}`.localeCompare(`${b.characterId}:${b.factId}`),
+      `${a.characterId}:${a.claimId}`.localeCompare(`${b.characterId}:${b.claimId}`),
     ),
     predicatePolicies: [...snapshot.predicatePolicies].sort((a, b) => a.predicate.localeCompare(b.predicate)),
     relationships: [...snapshot.relationships].sort((a, b) =>
@@ -93,7 +101,56 @@ function insertRawEventForTemporalValidation(
       JSON.stringify([]),
       JSON.stringify(input.payload ?? {}),
       TEST_TIME,
-    );
+  );
+}
+
+function seedForeignWorld(store: SqliteWorldStore): {
+  world: WorldRecord;
+  character: CharacterRecord;
+  claim: ClaimRecord;
+} {
+  const world: WorldRecord = {
+    id: "world-foreign",
+    name: "Foreign Test World",
+    currentTime: TEST_TIME,
+    revision: 0,
+    status: "active",
+  };
+  const seed: SeedRecord = {
+    id: "seed-foreign-world-v1",
+    worldId: world.id,
+    sourceType: "test_fixture",
+    sourceRef: "tests/engine/commit-kernel.test.ts",
+    metadata: JSON.stringify({ name: "foreign-world-fixture", version: 1 }),
+  };
+  const character: CharacterRecord = {
+    id: "character-foreign",
+    worldId: world.id,
+    name: "Foreign Character",
+    type: "npc",
+    alive: true,
+    locationId: null,
+    identity: "foreign",
+    currentGoal: "test isolation",
+  };
+  const claim: ClaimRecord = {
+    id: "claim-foreign",
+    worldId: world.id,
+    subject: character.id,
+    predicate: "foreign_claim",
+    object: "foreign-object",
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    recordedAt: TEST_TIME,
+  };
+  store.seedWorld({
+    world,
+    seed,
+    locations: [],
+    characters: [character],
+    claims: [claim],
+  });
+  return { world, character, claim };
 }
 
 describe("World Engine Commit Kernel", () => {
@@ -252,10 +309,20 @@ describe("World Engine Commit Kernel", () => {
       sourceSeedId: ids.seed.id,
       sourceEventId: null,
     }));
-    expect(snapshot.knowledge.filter((entry) => entry.factId === ids.secretFact.id)).toEqual(
+    expect(snapshot.claims).toContainEqual(expect.objectContaining({
+      id: ids.unverifiedClaim.id,
+      sourceSeedId: ids.seed.id,
+      sourceEventId: null,
+    }));
+    expect(snapshot.facts).not.toContainEqual(expect.objectContaining({
+      subject: ids.unverifiedClaim.subject,
+      predicate: ids.unverifiedClaim.predicate,
+      object: ids.unverifiedClaim.object,
+    }));
+    expect(snapshot.knowledge.filter((entry) => entry.claimId === ids.unverifiedClaim.id)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ characterId: ids.characters.zhao.id, sourceSeedId: ids.seed.id }),
-        expect.objectContaining({ characterId: ids.characters.npcA.id, sourceSeedId: ids.seed.id }),
+        expect.objectContaining({ characterId: ids.characters.npcA.id, knowledgeState: "rumor", sourceSeedId: ids.seed.id }),
+        expect.objectContaining({ characterId: ids.characters.npcB.id, knowledgeState: "believed", sourceSeedId: ids.seed.id }),
       ]),
     );
     store.close();
@@ -296,18 +363,18 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
-  it("keeps Fact and CharacterKnowledge separate and authorizes character provenance", () => {
+  it("keeps Fact, Claim and CharacterKnowledge separate and authorizes Claim provenance", () => {
     const { store, ids, kernel } = createHarness();
     expect(store.getSnapshot(ids.world.id).knowledge).not.toContainEqual(
-      expect.objectContaining({ characterId: ids.characters.player.id, factId: ids.secretFact.id }),
+      expect.objectContaining({ characterId: ids.characters.player.id, claimId: ids.secretClaim.id }),
     );
 
     expectFailure(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         occurredAt: TEST_TIME,
       }),
@@ -316,10 +383,10 @@ describe("World Engine Commit Kernel", () => {
 
     expectSuccess(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         source: { kind: "character", characterId: ids.characters.zhao.id },
         occurredAt: TEST_TIME,
@@ -328,7 +395,7 @@ describe("World Engine Commit Kernel", () => {
     expect(store.getSnapshot(ids.world.id).knowledge).toContainEqual(
       expect.objectContaining({
         characterId: ids.characters.player.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         sourceType: "character",
         sourceCharacterId: ids.characters.zhao.id,
@@ -339,7 +406,24 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
-  it("does not infer knowledge from an unrelated fact.assert Event", () => {
+  it("rejects the obsolete character.learn_fact compatibility path", () => {
+    const { store, ids, kernel } = createHarness();
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_fact",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        factId: ids.secretFact.id,
+        knowledgeState: "rumor",
+        occurredAt: TEST_TIME,
+      }),
+      "VALIDATION_FAILED",
+    );
+    expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    store.close();
+  });
+
+  it("does not infer Claim knowledge from an unrelated fact.assert Event", () => {
     const { store, ids, kernel } = createHarness();
     const factEvent = expectSuccess(
       kernel.commit({
@@ -354,12 +438,17 @@ describe("World Engine Commit Kernel", () => {
         occurredAt: TEST_TIME,
       }),
     );
+    expect(store.getSnapshot(ids.world.id).facts).toContainEqual(expect.objectContaining({ id: "fact-002" }));
+    expect(store.getSnapshot(ids.world.id).knowledge).not.toContainEqual(expect.objectContaining({
+      characterId: ids.characters.player.id,
+      claimId: ids.unverifiedClaim.id,
+    }));
     expectFailure(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: "fact-002",
+        claimId: ids.unverifiedClaim.id,
         knowledgeState: "confirmed",
         source: { kind: "event", eventId: factEvent.id },
         occurredAt: TEST_TIME,
@@ -367,19 +456,19 @@ describe("World Engine Commit Kernel", () => {
       "KNOWLEDGE_SOURCE_REQUIRED",
     );
     expect(store.getSnapshot(ids.world.id).knowledge).not.toContainEqual(
-      expect.objectContaining({ characterId: ids.characters.player.id, factId: "fact-002" }),
+      expect.objectContaining({ characterId: ids.characters.player.id, claimId: ids.unverifiedClaim.id }),
     );
     store.close();
   });
 
-  it("allows NPC-A to propagate knowledge to NPC-B without broadcasting to NPC-C", () => {
+  it("allows NPC-A to propagate a Claim to NPC-B without broadcasting to NPC-C", () => {
     const { store, ids, kernel } = createHarness();
     expectFailure(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.npcB.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         source: { kind: "character", characterId: ids.characters.npcA.id },
         occurredAt: TEST_TIME,
@@ -388,10 +477,10 @@ describe("World Engine Commit Kernel", () => {
     );
     expectSuccess(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.npcB.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "rumor",
         source: { kind: "character", characterId: ids.characters.npcA.id },
         occurredAt: TEST_TIME,
@@ -400,25 +489,25 @@ describe("World Engine Commit Kernel", () => {
     const knowledge = store.getSnapshot(ids.world.id).knowledge;
     expect(knowledge).toContainEqual(expect.objectContaining({
       characterId: ids.characters.npcB.id,
-      factId: ids.secretFact.id,
+      claimId: ids.secretClaim.id,
       sourceType: "character",
       sourceCharacterId: ids.characters.npcA.id,
     }));
     expect(knowledge).not.toContainEqual(expect.objectContaining({
       characterId: ids.characters.npcC.id,
-      factId: ids.secretFact.id,
+      claimId: ids.secretClaim.id,
     }));
     store.close();
   });
 
-  it("rejects a source Character that does not know the Fact", () => {
+  it("rejects a source Character that does not know the Claim", () => {
     const { store, ids, kernel } = createHarness();
     expectFailure(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         source: { kind: "character", characterId: ids.characters.npcB.id },
         occurredAt: TEST_TIME,
@@ -428,27 +517,26 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
-  it("allows Event provenance only when the learner participated in that Event", () => {
+  it("allows Claim Event provenance only when the learner participated in that Event", () => {
     const { store, ids, kernel } = createHarness();
     const observedEvent = expectSuccess(
       kernel.commit({
-        type: "fact.assert",
+        type: "claim.record",
         worldId: ids.world.id,
-        factId: "fact-observed",
+        claimId: "claim-observed",
         actorId: ids.characters.player.id,
         subject: ids.characters.player.id,
         predicate: "observed_signal",
         object: "signal-a",
-        validFrom: TEST_TIME,
         occurredAt: TEST_TIME,
       }),
     );
     expectSuccess(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: "fact-observed",
+        claimId: "claim-observed",
         knowledgeState: "confirmed",
         source: { kind: "event", eventId: observedEvent.id },
         occurredAt: TEST_TIME,
@@ -456,11 +544,104 @@ describe("World Engine Commit Kernel", () => {
     );
     expect(store.getSnapshot(ids.world.id).knowledge).toContainEqual(expect.objectContaining({
       characterId: ids.characters.player.id,
-      factId: "fact-observed",
+      claimId: "claim-observed",
       sourceType: "event",
       sourceCharacterId: null,
       sourceEventId: observedEvent.id,
     }));
+    store.close();
+  });
+
+  it("replays Claim records and ClaimKnowledge without creating objective Facts", () => {
+    const { store, ids, kernel } = createHarness();
+    const initial = store.getSnapshot(ids.world.id);
+    const claimEvent = expectSuccess(
+      kernel.commit({
+        type: "claim.record",
+        worldId: ids.world.id,
+        claimId: "claim-replayed",
+        actorId: ids.characters.player.id,
+        subject: ids.characters.player.id,
+        predicate: "unverified_status",
+        object: "possibly-hidden",
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expectSuccess(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: "claim-replayed",
+        knowledgeState: "believed",
+        source: { kind: "event", eventId: claimEvent.id },
+        occurredAt: TEST_TIME,
+      }),
+    );
+
+    const finalState = store.getSnapshot(ids.world.id);
+    expect(finalState.claims).toContainEqual(expect.objectContaining({ id: "claim-replayed" }));
+    expect(finalState.facts).not.toContainEqual(expect.objectContaining({ id: "claim-replayed" }));
+    expect(finalState.knowledge).toContainEqual(expect.objectContaining({
+      characterId: ids.characters.player.id,
+      claimId: "claim-replayed",
+      knowledgeState: "believed",
+    }));
+    expect(sortedSnapshot(rebuildState(initial, store.listEvents(ids.world.id)))).toEqual(sortedSnapshot(finalState));
+    store.close();
+  });
+
+  it("rejects cross-World Claim, Character, and Event provenance references", () => {
+    const { store, ids, kernel } = createHarness();
+    const foreign = seedForeignWorld(store);
+
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: foreign.claim.id,
+        knowledgeState: "rumor",
+        source: { kind: "character", characterId: ids.characters.npcA.id },
+        occurredAt: TEST_TIME,
+      }),
+      "CROSS_WORLD_REFERENCE",
+    );
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        knowledgeState: "rumor",
+        source: { kind: "character", characterId: foreign.character.id },
+        occurredAt: TEST_TIME,
+      }),
+      "CROSS_WORLD_REFERENCE",
+    );
+
+    insertRawEventForTemporalValidation(store, {
+      id: "foreign-claim-event",
+      worldId: foreign.world.id,
+      eventTime: TEST_TIME,
+      type: "claim.record",
+      actorIds: [foreign.character.id],
+      targetIds: [foreign.claim.id],
+      payload: { claimId: foreign.claim.id },
+    });
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        knowledgeState: "rumor",
+        source: { kind: "event", eventId: "foreign-claim-event" },
+        occurredAt: TEST_TIME,
+      }),
+      "CROSS_WORLD_REFERENCE",
+    );
+    expect(store.listEvents(ids.world.id)).toHaveLength(0);
     store.close();
   });
 
@@ -470,10 +651,10 @@ describe("World Engine Commit Kernel", () => {
       id: "future-event",
       worldId: ids.world.id,
       eventTime: "2019-03-12T14:00:00.000Z",
-      type: "fact.assert",
+      type: "claim.record",
       actorIds: [ids.characters.player.id],
-      targetIds: [ids.secretFact.id],
-      payload: { factId: ids.secretFact.id },
+      targetIds: [ids.secretClaim.id],
+      payload: { claimId: ids.secretClaim.id },
     });
 
     expectFailure(
@@ -489,10 +670,10 @@ describe("World Engine Commit Kernel", () => {
     );
     expectFailure(
       kernel.commit({
-        type: "character.learn_fact",
+        type: "character.learn_claim",
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
-        factId: ids.secretFact.id,
+        claimId: ids.secretClaim.id,
         knowledgeState: "confirmed",
         source: { kind: "event", eventId: "future-event" },
         occurredAt: "2019-03-12T13:00:00.000Z",
@@ -746,10 +927,10 @@ describe("World Engine Commit Kernel", () => {
     for (let index = 0; index < 10; index += 1) {
       results.push(
         kernel.commit({
-          type: "character.learn_fact",
+          type: "character.learn_claim",
           worldId: ids.world.id,
           actorId: ids.characters.player.id,
-          factId: ids.secretFact.id,
+          claimId: ids.secretClaim.id,
           knowledgeState: "confirmed",
           occurredAt: TEST_TIME,
         }),
@@ -788,7 +969,7 @@ describe("World Engine Commit Kernel", () => {
     expect(sortedSnapshot(rebuilt)).toEqual(sortedSnapshot(finalState));
     expect(finalState.world.currentTime).toBe("2019-03-12T22:00:00.000Z");
     expect(finalState.knowledge).not.toContainEqual(
-      expect.objectContaining({ characterId: ids.characters.player.id, factId: ids.secretFact.id }),
+      expect.objectContaining({ characterId: ids.characters.player.id, claimId: ids.secretClaim.id }),
     );
     expect(finalState.relationships.find(
       (relationship) => relationship.sourceCharacterId === ids.characters.player.id && relationship.targetCharacterId === ids.characters.zhao.id,

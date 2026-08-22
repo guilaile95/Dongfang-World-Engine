@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
-import type { CandidateEvent } from "./candidate.js";
 import type { CommittedEvent, KnowledgeRecord, WorldSnapshot } from "../domain/types.js";
 import {
   characterKnowledge,
   characters,
+  claims,
   facts,
   relationships,
   worlds,
@@ -25,7 +25,7 @@ export function projectEvent(tx: any, event: CommittedEvent): void {
         .where(eq(characters.id, stringValue(payload.actorId)))
         .run();
       break;
-    case "character.learn_fact":
+    case "character.learn_claim":
       projectKnowledge(tx, event);
       break;
     case "relationship.change":
@@ -33,6 +33,9 @@ export function projectEvent(tx: any, event: CommittedEvent): void {
       break;
     case "fact.assert":
       projectFact(tx, event);
+      break;
+    case "claim.record":
+      projectClaim(tx, event);
       break;
     case "world.time_advance":
       break;
@@ -43,16 +46,16 @@ export function projectEvent(tx: any, event: CommittedEvent): void {
 function projectKnowledge(tx: any, event: CommittedEvent): void {
   const payload = event.payload;
   const characterId = stringValue(payload.actorId);
-  const factId = stringValue(payload.factId);
+  const claimId = stringValue(payload.claimId);
   const existing = tx
     .select()
     .from(characterKnowledge)
-    .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.factId, factId)))
+    .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.claimId, claimId)))
     .get();
   const provenance = provenanceValues(payload.source);
   const values = {
     characterId,
-    factId,
+    claimId,
     knowledgeState: stringValue(payload.knowledgeState) as KnowledgeRecord["knowledgeState"],
     ...provenance,
     learnedAt: event.eventTime,
@@ -67,11 +70,27 @@ function projectKnowledge(tx: any, event: CommittedEvent): void {
         sourceSeedId: values.sourceSeedId,
         learnedAt: values.learnedAt,
       })
-      .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.factId, factId)))
+      .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.claimId, claimId)))
       .run();
   } else {
     tx.insert(characterKnowledge).values(values).run();
   }
+}
+
+function projectClaim(tx: any, event: CommittedEvent): void {
+  const payload = event.payload;
+  tx.insert(claims)
+    .values({
+      id: stringValue(payload.claimId),
+      worldId: event.worldId,
+      subject: stringValue(payload.subject),
+      predicate: stringValue(payload.predicate),
+      object: stringValue(payload.object),
+      sourceEventId: event.id,
+      sourceSeedId: null,
+      recordedAt: event.eventTime,
+    })
+    .run();
 }
 
 function projectRelationship(tx: any, event: CommittedEvent): void {
@@ -170,14 +189,14 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       }
       return;
     }
-    case "character.learn_fact": {
+    case "character.learn_claim": {
       const characterId = stringValue(payload.actorId);
-      const factId = stringValue(payload.factId);
-      const existing = state.knowledge.find((value) => value.characterId === characterId && value.factId === factId);
+      const claimId = stringValue(payload.claimId);
+      const existing = state.knowledge.find((value) => value.characterId === characterId && value.claimId === claimId);
       const provenance = provenanceValues(payload.source);
       const next = {
         characterId,
-        factId,
+        claimId,
         knowledgeState: stringValue(payload.knowledgeState) as KnowledgeRecord["knowledgeState"],
         ...provenance,
         learnedAt: event.eventTime,
@@ -244,6 +263,19 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
         sourceEventId: event.id,
         sourceSeedId: null,
         sourceType: "event",
+      });
+      return;
+    }
+    case "claim.record": {
+      state.claims.push({
+        id: stringValue(payload.claimId),
+        worldId: event.worldId,
+        subject: stringValue(payload.subject),
+        predicate: stringValue(payload.predicate),
+        object: stringValue(payload.object),
+        sourceEventId: event.id,
+        sourceSeedId: null,
+        recordedAt: event.eventTime,
       });
       return;
     }

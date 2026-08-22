@@ -4,6 +4,7 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { KernelError } from "../engine/errors.js";
 import type {
   CharacterRecord,
+  ClaimRecord,
   CommittedEvent,
   FactRecord,
   KnowledgeRecord,
@@ -17,6 +18,7 @@ import type {
 import {
   characterKnowledge,
   characters,
+  claims,
   createSchemaSql,
   events,
   facts,
@@ -36,6 +38,7 @@ export interface SeedWorldInput {
   locations: LocationRecord[];
   characters: CharacterRecord[];
   facts?: FactRecord[];
+  claims?: ClaimRecord[];
   knowledge?: KnowledgeRecord[];
   predicatePolicies?: PredicatePolicyRecord[];
   relationships?: RelationshipRecord[];
@@ -90,6 +93,9 @@ export class SqliteWorldStore {
       if (input.facts && input.facts.length > 0) {
         tx.insert(facts).values(input.facts).run();
       }
+      if (input.claims && input.claims.length > 0) {
+        tx.insert(claims).values(input.claims).run();
+      }
       if (input.knowledge && input.knowledge.length > 0) {
         tx.insert(characterKnowledge).values(input.knowledge).run();
       }
@@ -139,6 +145,7 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   const locationRows = executor.select().from(locations).where(eq(locations.worldId, worldId)).all();
   const characterRows = executor.select().from(characters).where(eq(characters.worldId, worldId)).all();
   const factRows = executor.select().from(facts).where(eq(facts.worldId, worldId)).all();
+  const claimRows = executor.select().from(claims).where(eq(claims.worldId, worldId)).all();
   const characterIds = characterRows.map((character: { id: string }) => character.id);
   const knowledgeRows = characterIds.flatMap((characterId: string) =>
     executor.select().from(characterKnowledge).where(eq(characterKnowledge.characterId, characterId)).all(),
@@ -196,9 +203,19 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       sourceSeedId: fact.sourceSeedId,
       sourceType: fact.sourceType,
     })),
+    claims: claimRows.map((claim: typeof claimRows[number]) => ({
+      id: claim.id,
+      worldId: claim.worldId,
+      subject: claim.subject,
+      predicate: claim.predicate,
+      object: claim.object,
+      sourceEventId: claim.sourceEventId,
+      sourceSeedId: claim.sourceSeedId,
+      recordedAt: claim.recordedAt,
+    })),
     knowledge: knowledgeRows.map((knowledge: typeof knowledgeRows[number]) => ({
       characterId: knowledge.characterId,
-      factId: knowledge.factId,
+      claimId: knowledge.claimId,
       knowledgeState: knowledge.knowledgeState,
       sourceType: knowledge.sourceType as KnowledgeRecord["sourceType"],
       sourceCharacterId: knowledge.sourceCharacterId,
@@ -254,6 +271,10 @@ export function findLocation(executor: any, locationId: string): typeof location
 
 export function findFact(executor: any, factId: string): typeof facts.$inferSelect | undefined {
   return executor.select().from(facts).where(eq(facts.id, factId)).get();
+}
+
+export function findClaim(executor: any, claimId: string): typeof claims.$inferSelect | undefined {
+  return executor.select().from(claims).where(eq(claims.id, claimId)).get();
 }
 
 export function findEvent(executor: any, eventId: string): typeof events.$inferSelect | undefined {

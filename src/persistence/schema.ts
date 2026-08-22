@@ -50,6 +50,17 @@ export const events = sqliteTable("events", {
   createdAt: text("created_at").notNull(),
 });
 
+export const claims = sqliteTable("claims", {
+  id: text("id").primaryKey(),
+  worldId: text("world_id").notNull().references(() => worlds.id),
+  subject: text("subject").notNull(),
+  predicate: text("predicate").notNull(),
+  object: text("object").notNull(),
+  sourceEventId: text("source_event_id").references(() => events.id),
+  sourceSeedId: text("source_seed_id").references(() => seeds.id),
+  recordedAt: text("recorded_at").notNull(),
+});
+
 export const facts = sqliteTable("facts", {
   id: text("id").primaryKey(),
   worldId: text("world_id").notNull().references(() => worlds.id),
@@ -67,7 +78,7 @@ export const characterKnowledge = sqliteTable(
   "character_knowledge",
   {
     characterId: text("character_id").notNull().references(() => characters.id),
-    factId: text("fact_id").notNull().references(() => facts.id),
+    claimId: text("claim_id").notNull().references(() => claims.id),
     knowledgeState: text("knowledge_state").notNull(),
     sourceType: text("source_type").notNull(),
     sourceCharacterId: text("source_character_id").references(() => characters.id),
@@ -76,7 +87,7 @@ export const characterKnowledge = sqliteTable(
     learnedAt: text("learned_at").notNull(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.characterId, table.factId] }),
+    pk: primaryKey({ columns: [table.characterId, table.claimId] }),
   }),
 );
 
@@ -114,6 +125,7 @@ export const schema = {
   locations,
   characters,
   events,
+  claims,
   facts,
   characterKnowledge,
   predicatePolicies,
@@ -166,6 +178,17 @@ CREATE TABLE IF NOT EXISTS events (
   payload TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS claims (
+  id TEXT PRIMARY KEY NOT NULL,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  subject TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  object TEXT NOT NULL,
+  source_event_id TEXT REFERENCES events(id),
+  source_seed_id TEXT REFERENCES seeds(id),
+  recorded_at TEXT NOT NULL,
+  CHECK (source_event_id IS NOT NULL OR source_seed_id IS NOT NULL)
+);
 CREATE TABLE IF NOT EXISTS facts (
   id TEXT PRIMARY KEY NOT NULL,
   world_id TEXT NOT NULL REFERENCES worlds(id),
@@ -180,14 +203,14 @@ CREATE TABLE IF NOT EXISTS facts (
 );
 CREATE TABLE IF NOT EXISTS character_knowledge (
   character_id TEXT NOT NULL REFERENCES characters(id),
-  fact_id TEXT NOT NULL REFERENCES facts(id),
+  claim_id TEXT NOT NULL REFERENCES claims(id),
   knowledge_state TEXT NOT NULL CHECK (knowledge_state IN ('unknown', 'rumor', 'suspected', 'believed', 'confirmed')),
   source_type TEXT NOT NULL,
   source_character_id TEXT REFERENCES characters(id),
   source_event_id TEXT REFERENCES events(id),
   source_seed_id TEXT REFERENCES seeds(id),
   learned_at TEXT NOT NULL,
-  PRIMARY KEY (character_id, fact_id)
+  PRIMARY KEY (character_id, claim_id)
 );
 CREATE TABLE IF NOT EXISTS predicate_policies (
   world_id TEXT NOT NULL REFERENCES worlds(id),

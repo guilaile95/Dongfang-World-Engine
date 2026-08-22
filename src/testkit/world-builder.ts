@@ -1,5 +1,6 @@
 import type {
   CharacterRecord,
+  ClaimRecord,
   FactRecord,
   KnowledgeRecord,
   LocationRecord,
@@ -17,6 +18,8 @@ export interface TestWorldIds {
   locations: Record<"beijing" | "tokyo" | "office", LocationRecord>;
   characters: Record<"player" | "zhao" | "npcA" | "npcB" | "npcC", CharacterRecord>;
   secretFact: FactRecord;
+  secretClaim: ClaimRecord;
+  unverifiedClaim: ClaimRecord;
   seed: SeedRecord;
 }
 
@@ -122,10 +125,30 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
     sourceSeedId: seed.id,
     sourceType: "initial_lore",
   };
+  const secretClaim: ClaimRecord = {
+    id: "claim-001",
+    worldId: TEST_WORLD_ID,
+    subject: characters.zhao.id,
+    predicate: "secret_affiliation",
+    object: "隐藏组织",
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    recordedAt: TEST_TIME,
+  };
+  const unverifiedClaim: ClaimRecord = {
+    id: "claim-unverified-001",
+    worldId: TEST_WORLD_ID,
+    subject: characters.npcC.id,
+    predicate: "organization_membership",
+    object: "组织-A",
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    recordedAt: TEST_TIME,
+  };
   const knowledge: KnowledgeRecord[] = [
     {
       characterId: characters.zhao.id,
-      factId: secretFact.id,
+      claimId: secretClaim.id,
       knowledgeState: "confirmed",
       sourceType: "initial",
       sourceCharacterId: null,
@@ -135,8 +158,28 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
     },
     {
       characterId: characters.npcA.id,
-      factId: secretFact.id,
+      claimId: secretClaim.id,
       knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      learnedAt: TEST_TIME,
+    },
+    {
+      characterId: characters.npcA.id,
+      claimId: unverifiedClaim.id,
+      knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      learnedAt: TEST_TIME,
+    },
+    {
+      characterId: characters.npcB.id,
+      claimId: unverifiedClaim.id,
+      knowledgeState: "believed",
       sourceType: "initial",
       sourceCharacterId: null,
       sourceEventId: null,
@@ -158,8 +201,9 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
     locations: Object.values(locations),
     characters: Object.values(characters),
     facts: [secretFact],
+    claims: [secretClaim, unverifiedClaim],
     knowledge,
     predicatePolicies,
   });
-  return { world, locations, characters, secretFact, seed };
+  return { world, locations, characters, secretFact, secretClaim, unverifiedClaim, seed };
 }
