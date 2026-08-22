@@ -69,6 +69,12 @@ Separate non-authoritative epistemic propositions from objective Truth before an
 
 Step 2.6 deliberately does not include automatic Claim truth resolution, inference, deception, trust scoring, dialogue, Context Builder, LLM, Memory, RAG, Narrative, UI, Branch, Save, Session, or World Pack loading.
 
+## Step 2.6.1 — Seed Referential Integrity
+
+Status: complete.
+
+Complete the Seed boundary before Context Builder by validating Character locations, Location parents, Fact/Claim subjects, and Relationship Event provenance deterministically within one Seed World. Rejected Seed inputs return `SEED_INVALID` before any write and leave no partial state.
+
 ## Step 3 — LLM Candidate Generation
 
 After Step 2 is proven, connect one model only to translate player input into Candidate Events. The model still has no direct write authority.

@@ -48,6 +48,8 @@ Seed
 
 `SqliteWorldStore.seedWorld()` 会在事务写入前确定性检查所有 Seed Input 的 World 归属。CharacterKnowledge 的 `character_id`、`claim_id` 必须分别属于当前输入的 Character、Claim，非空 provenance 必须指向当前 Seed / World；Relationship 两端也必须属于当前 Character 集合。失败使用稳定的 `SEED_INVALID`，不会留下部分 Seed 状态。
 
+同一校验还覆盖嵌入引用：Character 的 `location_id`、Location 的 `parent_id`、Fact/Claim 的 `subject`（同 World 的 Character、Location 或 World）以及 Relationship 的 `updated_by_event_id` 必须能解析到同一 Seed World；未知引用不依赖 SQLite FK 偶然失败。
+
 ### 2.3 Character
 
 表示玩家角色、NPC 或其他具有身份与行动能力的角色。
