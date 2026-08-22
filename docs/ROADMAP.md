@@ -88,9 +88,22 @@ Add the first read-only vertical-slice boundary on top of the completed Foundati
 - configurable deterministic unit budget applied only after visibility filtering;
 - no Event append, State mutation, World revision change, LLM, Memory, RAG, or UI.
 
-## Step 4 — LLM Candidate Generation
+## Step 4 — Simulation Adapter MVP
 
-After the deterministic Context Builder boundary is proven, connect one model only to translate player input into Candidate Events. The model still has no direct write authority.
+Status: complete.
+
+Add the first non-authoritative model boundary on top of the completed Context Builder:
+
+- accept only an already-filtered `CharacterContext`, matching actor identity, and intent;
+- inject one narrow model client/transport boundary;
+- validate 0..N ordered proposal drafts against the existing supported Candidate surface;
+- reject model-controlled `worldId` / `expectedWorldRevision` metadata;
+- allow at most one repair retry for malformed output;
+- surface transport errors deterministically without writing World state or executing proposals.
+
+## Step 5 — Turn Orchestrator / Candidate Commit Binding
+
+The future Turn Orchestrator will bind current `worldId` and `expectedWorldRevision` for each proposal, commit in order through the existing Kernel, read the new revision, and then process the next proposal. The Simulation Adapter remains non-authoritative.
 
 ## Later
 
