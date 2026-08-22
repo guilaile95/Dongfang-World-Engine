@@ -4,7 +4,16 @@ export const worlds = sqliteTable("worlds", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   currentTime: text("current_time").notNull(),
+  revision: integer("revision").notNull().default(0),
   status: text("status").notNull(),
+});
+
+export const seeds = sqliteTable("seeds", {
+  id: text("id").primaryKey(),
+  worldId: text("world_id").notNull().references(() => worlds.id),
+  sourceType: text("source_type").notNull(),
+  sourceRef: text("source_ref").notNull(),
+  metadata: text("metadata").notNull(),
 });
 
 export const locations = sqliteTable("locations", {
@@ -30,6 +39,7 @@ export const events = sqliteTable("events", {
   sequence: integer("sequence").primaryKey({ autoIncrement: true }),
   id: text("id").notNull().unique(),
   worldId: text("world_id").notNull().references(() => worlds.id),
+  worldRevision: integer("world_revision").notNull(),
   eventTime: text("event_time").notNull(),
   type: text("event_type").notNull(),
   locationId: text("location_id"),
@@ -49,6 +59,7 @@ export const facts = sqliteTable("facts", {
   validFrom: text("valid_from").notNull(),
   validTo: text("valid_to"),
   sourceEventId: text("source_event_id").references(() => events.id),
+  sourceSeedId: text("source_seed_id").references(() => seeds.id),
   sourceType: text("source_type").notNull(),
 });
 
@@ -61,10 +72,23 @@ export const characterKnowledge = sqliteTable(
     sourceType: text("source_type").notNull(),
     sourceCharacterId: text("source_character_id").references(() => characters.id),
     sourceEventId: text("source_event_id").references(() => events.id),
+    sourceSeedId: text("source_seed_id").references(() => seeds.id),
     learnedAt: text("learned_at").notNull(),
   },
   (table) => ({
     pk: primaryKey({ columns: [table.characterId, table.factId] }),
+  }),
+);
+
+export const predicatePolicies = sqliteTable(
+  "predicate_policies",
+  {
+    worldId: text("world_id").notNull().references(() => worlds.id),
+    predicate: text("predicate").notNull(),
+    cardinality: text("cardinality").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.worldId, table.predicate] }),
   }),
 );
 
@@ -86,11 +110,13 @@ export const relationships = sqliteTable(
 
 export const schema = {
   worlds,
+  seeds,
   locations,
   characters,
   events,
   facts,
   characterKnowledge,
+  predicatePolicies,
   relationships,
 };
 
@@ -99,7 +125,15 @@ CREATE TABLE IF NOT EXISTS worlds (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
   current_time TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
   status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'ended'))
+);
+CREATE TABLE IF NOT EXISTS seeds (
+  id TEXT PRIMARY KEY NOT NULL,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  source_type TEXT NOT NULL,
+  source_ref TEXT NOT NULL,
+  metadata TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS locations (
   id TEXT PRIMARY KEY NOT NULL,
@@ -122,6 +156,7 @@ CREATE TABLE IF NOT EXISTS events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
   world_id TEXT NOT NULL REFERENCES worlds(id),
+  world_revision INTEGER NOT NULL CHECK (world_revision >= 1),
   event_time TEXT NOT NULL,
   event_type TEXT NOT NULL,
   location_id TEXT,
@@ -140,17 +175,25 @@ CREATE TABLE IF NOT EXISTS facts (
   valid_from TEXT NOT NULL,
   valid_to TEXT,
   source_event_id TEXT REFERENCES events(id),
+  source_seed_id TEXT REFERENCES seeds(id),
   source_type TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_knowledge (
   character_id TEXT NOT NULL REFERENCES characters(id),
   fact_id TEXT NOT NULL REFERENCES facts(id),
-  knowledge_state TEXT NOT NULL,
+  knowledge_state TEXT NOT NULL CHECK (knowledge_state IN ('unknown', 'rumor', 'suspected', 'believed', 'confirmed')),
   source_type TEXT NOT NULL,
   source_character_id TEXT REFERENCES characters(id),
   source_event_id TEXT REFERENCES events(id),
+  source_seed_id TEXT REFERENCES seeds(id),
   learned_at TEXT NOT NULL,
   PRIMARY KEY (character_id, fact_id)
+);
+CREATE TABLE IF NOT EXISTS predicate_policies (
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  predicate TEXT NOT NULL,
+  cardinality TEXT NOT NULL CHECK (cardinality IN ('one', 'many')),
+  PRIMARY KEY (world_id, predicate)
 );
 CREATE TABLE IF NOT EXISTS relationships (
   source_character_id TEXT NOT NULL REFERENCES characters(id),

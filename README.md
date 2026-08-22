@@ -82,7 +82,7 @@ Player
 
 ## 当前阶段
 
-当前只做 **World Engine Commit Kernel**。
+当前只做 **World Engine Commit Kernel / Step 2.5 Kernel Hardening**。
 
 第一阶段验证目标是：
 
@@ -101,4 +101,8 @@ Candidate Event
 
 当前使用 TypeScript、Node.js、SQLite、Drizzle ORM、Zod 和 Vitest。暂不实现 UI、LLM、腾讯 Agent Memory、Memory Provider、RAG、多世界、分支时间线或复杂业务系统。
 
-当前已实现的 Commit Kernel 支持 `character.move`、`character.die`、`character.learn_fact`、`relationship.change`、`fact.assert` 和 `world.time_advance` 六类 Candidate Event；所有提交都经过 Hard Validator 和同一 SQLite 事务，并可从初始 Fixture 加 Event Log 重建关键状态。
+当前已实现的 Commit Kernel 支持 `character.move`、`character.die`、`character.learn_fact`、`relationship.change`、`fact.assert` 和 `world.time_advance` 六类 Candidate Event；所有提交都经过 Hard Validator 和同一 SQLite 事务，并可从初始 Seed 加 Event Log 重建关键状态。
+
+Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
+
+本阶段仍不实现 Context Builder、LLM、Memory、RAG、Narrative、UI、Branch 或 Save。
