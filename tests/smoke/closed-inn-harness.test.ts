@@ -117,7 +117,10 @@ class ScriptedSimulationModel implements SimulationModelClient {
 }
 
 class ScriptedNarrativeModel implements NarrativeModelClient {
+  public readonly requests: NarrativeModelRequest[] = [];
+
   public async generate(request: NarrativeModelRequest): Promise<string> {
+    this.requests.push(request);
     const actorName = request.envelope.observerContext.observer.name;
     const locationName = request.envelope.observerContext.location?.name ?? "未知地点";
     const status = request.envelope.turnStatus;
@@ -145,12 +148,14 @@ describe("Closed Inn 10-turn Headless Harness", () => {
     expect(result.traces[0]?.actorId).toBe("character-player");
     expect(result.traces[0]?.turnStatus).toBe("empty");
     expect(result.traces[0]?.visibleClaims).toEqual([]); // Player starts with 0 knowledge
+    expect(typeof result.traces[0]?.narrative).toBe("string");
 
     // Turn 2: NPC-A transmits true cellar claim to Player
     expect(result.traces[1]?.actorId).toBe("character-npc-a");
     expect(result.traces[1]?.turnStatus).toBe("success");
     expect(result.traces[1]?.committedEvents).toHaveLength(1);
     expect(result.traces[1]?.committedEvents[0]?.type).toBe("claim.transmit");
+    expect(result.traces[1]?.narrative).toBeNull();
 
     // Turn 3: Player now legally has claim-dagger-in-cellar visible in Context!
     expect(result.traces[2]?.actorId).toBe("character-player");
@@ -159,6 +164,7 @@ describe("Closed Inn 10-turn Headless Harness", () => {
       knowledgeState: "confirmed",
     });
     expect(result.traces[2]?.committedEvents[0]?.type).toBe("relationship.change");
+    expect(typeof result.traces[2]?.narrative).toBe("string");
 
     // Turn 4: NPC-B acts while holding false claim
     expect(result.traces[3]?.actorId).toBe("character-npc-b");
@@ -167,10 +173,12 @@ describe("Closed Inn 10-turn Headless Harness", () => {
       knowledgeState: "rumor",
     });
     expect(result.traces[3]?.committedEvents[0]?.type).toBe("relationship.change");
+    expect(result.traces[3]?.narrative).toBeNull();
 
     // Turn 6: Player transmits cellar claim to NPC-B
     expect(result.traces[5]?.actorId).toBe("character-player");
     expect(result.traces[5]?.committedEvents[0]?.type).toBe("claim.transmit");
+    expect(typeof result.traces[5]?.narrative).toBe("string");
 
     // Turn 8: NPC-B now legally has claim-dagger-in-cellar visible in Context!
     expect(result.traces[7]?.actorId).toBe("character-npc-b");
@@ -178,18 +186,76 @@ describe("Closed Inn 10-turn Headless Harness", () => {
       claimId: "claim-dagger-in-cellar",
       knowledgeState: "confirmed",
     });
+    expect(result.traces[7]?.narrative).toBeNull();
 
-    // Verify all 10 turn narratives are non-empty bounded plain text
+    // Verify player-facing narratives vs NPC developer-only safe traces
     for (const trace of result.traces) {
-      expect(typeof trace.narrative).toBe("string");
-      expect(trace.narrative.length).toBeGreaterThan(0);
-      expect(trace.narrative).not.toContain("fact-hidden-dagger-cellar");
+      if (trace.actorId === "character-player") {
+        expect(typeof trace.narrative).toBe("string");
+        expect(trace.narrative!.length).toBeGreaterThan(0);
+        expect(trace.narrative).not.toContain("fact-hidden-dagger-cellar");
+      } else {
+        expect(trace.narrative).toBeNull();
+        expect(typeof trace.actorId).toBe("string");
+        expect(typeof trace.turnStatus).toBe("string");
+        expect(Array.isArray(trace.visibleClaims)).toBe(true);
+        expect(Array.isArray(trace.committedEvents)).toBe(true);
+      }
+    }
+
+    // Verify Narrator invocation regression:
+    // 1. NarrativeModelClient is ONLY called by Player turns (4 player turns in 10-step harness: T1, T3, T6, T10)
+    expect(narratorModel.requests).toHaveLength(4);
+
+    // 2. Every NarrativeModelRequest.observerContext.observer.id MUST equal character-player
+    for (const request of narratorModel.requests) {
+      expect(request.envelope.observerContext.observer.id).toBe("character-player");
     }
 
     // Verify final world revision matches number of committed events
     const allEvents = store.listEvents(result.fixture.world.id);
     expect(result.finalWorldRevision).toBe(allEvents.length);
     expect(result.finalWorldRevision).toBe(5); // 5 committed turns (T2: transmit, T3: rel, T4: rel, T6: transmit, T8: rel)
+
+    store.close();
+  });
+
+  it("enforces regression: NarrativeModelClient is only called for player turns with character-player as observer", async () => {
+    const store = new SqliteWorldStore();
+    const simulationModel = new ScriptedSimulationModel();
+    const narratorModel = new ScriptedNarrativeModel();
+
+    const result = await runClosedInnTurns({
+      store,
+      simulationModel,
+      narratorModel,
+    });
+
+    // 10 turns total, 4 player turns, 6 NPC turns
+    const playerTraces = result.traces.filter((t) => t.actorId === "character-player");
+    const npcTraces = result.traces.filter((t) => t.actorId !== "character-player");
+
+    expect(playerTraces).toHaveLength(4);
+    expect(npcTraces).toHaveLength(6);
+
+    // Only player turns invoked Narrator
+    expect(narratorModel.requests).toHaveLength(4);
+
+    // Every observer is character-player
+    for (const request of narratorModel.requests) {
+      expect(request.envelope.observerContext.observer.id).toBe("character-player");
+    }
+
+    // NPC turns have null narrative, player turns have string narrative
+    for (const playerTrace of playerTraces) {
+      expect(typeof playerTrace.narrative).toBe("string");
+      expect(playerTrace.narrative!.length).toBeGreaterThan(0);
+    }
+    for (const npcTrace of npcTraces) {
+      expect(npcTrace.narrative).toBeNull();
+      expect(npcTrace.visibleClaims).toBeDefined();
+      expect(npcTrace.committedEvents).toBeDefined();
+    }
 
     store.close();
   });

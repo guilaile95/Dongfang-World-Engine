@@ -45,7 +45,7 @@ export interface TurnExecutionTrace {
     kind: string;
     code: string;
   } | null;
-  narrative: string;
+  narrative: string | null;
 }
 
 export interface ClosedInnRunResult {
@@ -84,7 +84,7 @@ export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   },
   {
     actorId: "character-player",
-    intent: "根据当前合法可见的信息，在大堂尝试与账房赵先生交流。",
+    intent: "根据当前合法可见的信息，询问赵先生自己掌握的情况；这一回合不要主动向他传播你已有的 Claim。",
   },
   {
     actorId: "character-npc-b",
@@ -96,7 +96,7 @@ export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   },
   {
     actorId: "character-player",
-    intent: "根据当前合法可见的信息，在大堂与账房赵先生交流并说明自己掌握的情况。",
+    intent: "根据当前合法可见的信息，如果已经掌握有助于澄清情况的 Claim，可以选择向赵先生说明。",
   },
   {
     actorId: "character-npc-a",
@@ -167,13 +167,15 @@ export async function runClosedInnTurns(options: RunClosedInnOptions): Promise<C
       ...(options.contextBudget === undefined ? {} : { contextBudget: options.contextBudget }),
     });
 
-    const envelope = envelopeBuilder.build({
-      intent: step.intent,
-      turnResult,
-      ...(options.contextBudget === undefined ? {} : { contextBudget: options.contextBudget }),
-    });
-
-    const narrative = await narrator.generate(envelope);
+    let narrative: string | null = null;
+    if (step.actorId === fixture.characters.player.id) {
+      const envelope = envelopeBuilder.build({
+        intent: step.intent,
+        turnResult,
+        ...(options.contextBudget === undefined ? {} : { contextBudget: options.contextBudget }),
+      });
+      narrative = await narrator.generate(envelope);
+    }
 
     traces.push({
       turnIndex,
@@ -246,9 +248,10 @@ async function main(): Promise<void> {
       replayConsistent: result.replayConsistent,
       traces: result.traces.map((trace) => ({
         ...trace,
-        narrative: trace.narrative.includes(apiKey)
-          ? "[narrative omitted because it contained the configured secret]"
-          : trace.narrative,
+        narrative:
+          trace.narrative !== null && trace.narrative.includes(apiKey)
+            ? "[narrative omitted because it contained the configured secret]"
+            : trace.narrative,
       })),
     }, null, 2));
   } finally {
