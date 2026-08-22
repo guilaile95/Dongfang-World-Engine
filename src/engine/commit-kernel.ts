@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { events } from "../persistence/schema.js";
-import { findEvent, SqliteWorldStore } from "../persistence/sqlite-store.js";
+import { eq } from "drizzle-orm";
+import { events, worlds } from "../persistence/schema.js";
+import { findEvent, findWorld, SqliteWorldStore, toEvent } from "../persistence/sqlite-store.js";
 import type { CommittedEvent } from "../domain/types.js";
 import { parseCandidate, normalizeTime, type CandidateEvent } from "./candidate.js";
 import { asKernelError, KernelError } from "./errors.js";
@@ -46,23 +47,37 @@ export class CommitKernel {
           throw new KernelError("EVENT_ALREADY_COMMITTED", "Event id has already been committed", { eventId });
         }
         validateCandidate(tx, candidate);
-        const committedEvent = buildEvent(candidate, eventId, normalizeTime(this.clock()));
+        const world = findWorld(tx, candidate.worldId);
+        if (!world) {
+          throw new KernelError("WORLD_NOT_FOUND", "World does not exist", { worldId: candidate.worldId });
+        }
+        const pendingEvent = buildEvent(candidate, eventId, normalizeTime(this.clock()), world.revision + 1);
         tx.insert(events)
           .values({
-            id: committedEvent.id,
-            worldId: committedEvent.worldId,
-            eventTime: committedEvent.eventTime,
-            type: committedEvent.type,
-            locationId: committedEvent.locationId,
-            actorIds: JSON.stringify(committedEvent.actorIds),
-            targetIds: JSON.stringify(committedEvent.targetIds),
-            causeEventIds: JSON.stringify(committedEvent.causeEventIds),
-            payload: JSON.stringify(committedEvent.payload),
-            createdAt: committedEvent.createdAt,
+            worldId: pendingEvent.worldId,
+            worldRevision: pendingEvent.worldRevision,
+            id: pendingEvent.id,
+            eventTime: pendingEvent.eventTime,
+            type: pendingEvent.type,
+            locationId: pendingEvent.locationId,
+            actorIds: JSON.stringify(pendingEvent.actorIds),
+            targetIds: JSON.stringify(pendingEvent.targetIds),
+            causeEventIds: JSON.stringify(pendingEvent.causeEventIds),
+            payload: JSON.stringify(pendingEvent.payload),
+            createdAt: pendingEvent.createdAt,
           })
           .run();
         this.faultInjector?.("after_event_append");
+        const storedRow = findEvent(tx, eventId);
+        if (!storedRow) {
+          throw new KernelError("COMMIT_FAILED", "Committed Event could not be read after append", { eventId });
+        }
+        const committedEvent = toEvent(storedRow);
         projectEvent(tx, committedEvent);
+        tx.update(worlds)
+          .set({ revision: committedEvent.worldRevision })
+          .where(eq(worlds.id, committedEvent.worldId))
+          .run();
         this.faultInjector?.("after_projection");
         return committedEvent;
       });
@@ -73,20 +88,20 @@ export class CommitKernel {
   }
 }
 
-function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): CommittedEvent {
+function buildEvent(candidate: CandidateEvent, id: string, createdAt: string, worldRevision: number): CommittedEvent {
   const eventTime = normalizeTime(candidate.type === "world.time_advance" ? candidate.toTime : candidate.occurredAt);
   switch (candidate.type) {
     case "character.move":
-      return makeEvent(candidate, id, createdAt, eventTime, [candidate.actorId], [], {
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [], {
         actorId: candidate.actorId,
         toLocationId: candidate.toLocationId,
       });
     case "character.die":
-      return makeEvent(candidate, id, createdAt, eventTime, [candidate.actorId], [], {
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [], {
         actorId: candidate.actorId,
       });
     case "character.learn_fact":
-      return makeEvent(candidate, id, createdAt, eventTime, [candidate.actorId], [candidate.factId], {
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [candidate.actorId], [candidate.factId], {
         actorId: candidate.actorId,
         factId: candidate.factId,
         knowledgeState: candidate.knowledgeState,
@@ -97,6 +112,7 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): C
         candidate,
         id,
         createdAt,
+        worldRevision,
         eventTime,
         [candidate.sourceCharacterId],
         [candidate.targetCharacterId],
@@ -110,7 +126,7 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): C
         },
       );
     case "fact.assert":
-      return makeEvent(candidate, id, createdAt, eventTime, candidate.actorId ? [candidate.actorId] : [], [candidate.factId], {
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, candidate.actorId ? [candidate.actorId] : [], [candidate.factId], {
         factId: candidate.factId,
         actorId: candidate.actorId ?? null,
         subject: candidate.subject,
@@ -120,7 +136,7 @@ function buildEvent(candidate: CandidateEvent, id: string, createdAt: string): C
         validTo: candidate.validTo ? normalizeTime(candidate.validTo) : null,
       });
     case "world.time_advance":
-      return makeEvent(candidate, id, createdAt, eventTime, [], [], { toTime: eventTime });
+      return makeEvent(candidate, id, createdAt, worldRevision, eventTime, [], [], { toTime: eventTime });
   }
 }
 
@@ -128,6 +144,7 @@ function makeEvent(
   candidate: CandidateEvent,
   id: string,
   createdAt: string,
+  worldRevision: number,
   eventTime: string,
   actorIds: string[],
   targetIds: string[],
@@ -135,7 +152,9 @@ function makeEvent(
 ): CommittedEvent {
   return {
     id,
+    sequence: 0,
     worldId: candidate.worldId,
+    worldRevision,
     eventTime,
     type: candidate.type,
     locationId: null,

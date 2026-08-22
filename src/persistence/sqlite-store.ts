@@ -8,7 +8,9 @@ import type {
   FactRecord,
   KnowledgeRecord,
   LocationRecord,
+  PredicatePolicyRecord,
   RelationshipRecord,
+  SeedRecord,
   WorldRecord,
   WorldSnapshot,
 } from "../domain/types.js";
@@ -19,8 +21,10 @@ import {
   events,
   facts,
   locations,
+  predicatePolicies,
   relationships,
   schema,
+  seeds,
   worlds,
 } from "./schema.js";
 
@@ -28,10 +32,12 @@ export type AppDatabase = BetterSQLite3Database<typeof schema>;
 
 export interface SeedWorldInput {
   world: WorldRecord;
+  seed: SeedRecord;
   locations: LocationRecord[];
   characters: CharacterRecord[];
   facts?: FactRecord[];
   knowledge?: KnowledgeRecord[];
+  predicatePolicies?: PredicatePolicyRecord[];
   relationships?: RelationshipRecord[];
 }
 
@@ -57,9 +63,12 @@ export class SqliteWorldStore {
           id: input.world.id,
           name: input.world.name,
           currentTime: input.world.currentTime,
+          revision: input.world.revision,
           status: input.world.status,
         })
         .run();
+
+      tx.insert(seeds).values(input.seed).run();
 
       if (input.locations.length > 0) {
         tx.insert(locations).values(input.locations).run();
@@ -83,6 +92,9 @@ export class SqliteWorldStore {
       }
       if (input.knowledge && input.knowledge.length > 0) {
         tx.insert(characterKnowledge).values(input.knowledge).run();
+      }
+      if (input.predicatePolicies && input.predicatePolicies.length > 0) {
+        tx.insert(predicatePolicies).values(input.predicatePolicies).run();
       }
       if (input.relationships && input.relationships.length > 0) {
         tx.insert(relationships).values(input.relationships).run();
@@ -119,6 +131,10 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   if (!world) {
     throw new KernelError("WORLD_NOT_FOUND", "World does not exist", { worldId });
   }
+  const seed = executor.select().from(seeds).where(eq(seeds.worldId, worldId)).get();
+  if (!seed) {
+    throw new KernelError("SEED_NOT_FOUND", "World does not have an auditable Seed", { worldId });
+  }
 
   const locationRows = executor.select().from(locations).where(eq(locations.worldId, worldId)).all();
   const characterRows = executor.select().from(characters).where(eq(characters.worldId, worldId)).all();
@@ -130,13 +146,26 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   const relationshipRows = characterIds.flatMap((characterId: string) =>
     executor.select().from(relationships).where(eq(relationships.sourceCharacterId, characterId)).all(),
   );
+  const predicatePolicyRows = executor
+    .select()
+    .from(predicatePolicies)
+    .where(eq(predicatePolicies.worldId, worldId))
+    .all();
 
   return {
     world: {
       id: world.id,
       name: world.name,
       currentTime: world.currentTime,
+      revision: world.revision,
       status: world.status as WorldRecord["status"],
+    },
+    seed: {
+      id: seed.id,
+      worldId: seed.worldId,
+      sourceType: seed.sourceType,
+      sourceRef: seed.sourceRef,
+      metadata: seed.metadata,
     },
     locations: locationRows.map((location: typeof locationRows[number]) => ({
       id: location.id,
@@ -164,6 +193,7 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       validFrom: fact.validFrom,
       validTo: fact.validTo,
       sourceEventId: fact.sourceEventId,
+      sourceSeedId: fact.sourceSeedId,
       sourceType: fact.sourceType,
     })),
     knowledge: knowledgeRows.map((knowledge: typeof knowledgeRows[number]) => ({
@@ -173,7 +203,13 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       sourceType: knowledge.sourceType as KnowledgeRecord["sourceType"],
       sourceCharacterId: knowledge.sourceCharacterId,
       sourceEventId: knowledge.sourceEventId,
+      sourceSeedId: knowledge.sourceSeedId,
       learnedAt: knowledge.learnedAt,
+    })),
+    predicatePolicies: predicatePolicyRows.map((policy: typeof predicatePolicyRows[number]) => ({
+      worldId: policy.worldId,
+      predicate: policy.predicate,
+      cardinality: policy.cardinality as PredicatePolicyRecord["cardinality"],
     })),
     relationships: relationshipRows.map((relationship: typeof relationshipRows[number]) => ({
       sourceCharacterId: relationship.sourceCharacterId,
@@ -190,7 +226,9 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
 export function toEvent(row: typeof events.$inferSelect): CommittedEvent {
   return {
     id: row.id,
+    sequence: row.sequence,
     worldId: row.worldId,
+    worldRevision: row.worldRevision,
     eventTime: row.eventTime,
     type: row.type as CommittedEvent["type"],
     locationId: row.locationId,
@@ -200,6 +238,10 @@ export function toEvent(row: typeof events.$inferSelect): CommittedEvent {
     payload: JSON.parse(row.payload) as Record<string, unknown>,
     createdAt: row.createdAt,
   };
+}
+
+export function findWorld(executor: any, worldId: string): typeof worlds.$inferSelect | undefined {
+  return executor.select().from(worlds).where(eq(worlds.id, worldId)).get();
 }
 
 export function findCharacter(executor: any, characterId: string): typeof characters.$inferSelect | undefined {
@@ -216,6 +258,18 @@ export function findFact(executor: any, factId: string): typeof facts.$inferSele
 
 export function findEvent(executor: any, eventId: string): typeof events.$inferSelect | undefined {
   return executor.select().from(events).where(eq(events.id, eventId)).get();
+}
+
+export function findPredicatePolicy(
+  executor: any,
+  worldId: string,
+  predicate: string,
+): typeof predicatePolicies.$inferSelect | undefined {
+  return executor
+    .select()
+    .from(predicatePolicies)
+    .where(and(eq(predicatePolicies.worldId, worldId), eq(predicatePolicies.predicate, predicate)))
+    .get();
 }
 
 export function findRelationship(

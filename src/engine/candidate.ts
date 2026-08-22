@@ -7,6 +7,7 @@ const dateTime = z.string().min(1).refine((value) => Number.isFinite(Date.parse(
 
 const base = {
   worldId: z.string().min(1),
+  expectedWorldRevision: z.number().int().nonnegative(),
   occurredAt: dateTime,
   causeEventIds: z.array(z.string().min(1)).default([]),
 };
@@ -40,7 +41,7 @@ const learnFactCandidate = z.object({
   type: z.literal("character.learn_fact"),
   actorId: z.string().min(1),
   factId: z.string().min(1),
-  knowledgeState: z.string().min(1),
+  knowledgeState: z.enum(["unknown", "rumor", "suspected", "believed", "confirmed"]),
   source: knowledgeSource.optional(),
 });
 

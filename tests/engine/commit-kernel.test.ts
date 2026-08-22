@@ -9,12 +9,27 @@ function createHarness(options: ConstructorParameters<typeof CommitKernel>[1] = 
   const store = new SqliteWorldStore();
   const ids = seedTestWorld(store);
   let nextId = 0;
-  const kernel = new CommitKernel(store, {
+  const rawKernel = new CommitKernel(store, {
     clock: () => TEST_TIME,
     idFactory: () => `event-${String(++nextId).padStart(4, "0")}`,
     ...options,
   });
+  const kernel = {
+    commit(input: unknown): CommitResult {
+      if (isRecord(input) && !("expectedWorldRevision" in input)) {
+        return rawKernel.commit({
+          ...input,
+          expectedWorldRevision: store.getSnapshot(ids.world.id).world.revision,
+        });
+      }
+      return rawKernel.commit(input);
+    },
+  };
   return { store, ids, kernel };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function expectSuccess(result: CommitResult): CommittedEvent {
@@ -42,9 +57,11 @@ function sortedSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
     knowledge: [...snapshot.knowledge].sort((a, b) =>
       `${a.characterId}:${a.factId}`.localeCompare(`${b.characterId}:${b.factId}`),
     ),
+    predicatePolicies: [...snapshot.predicatePolicies].sort((a, b) => a.predicate.localeCompare(b.predicate)),
     relationships: [...snapshot.relationships].sort((a, b) =>
       `${a.sourceCharacterId}:${a.targetCharacterId}`.localeCompare(`${b.sourceCharacterId}:${b.targetCharacterId}`),
     ),
+    seed: snapshot.seed,
   };
 }
 
@@ -62,12 +79,13 @@ function insertRawEventForTemporalValidation(
 ): void {
   store.sqlite
     .prepare(
-      `INSERT INTO events (id, world_id, event_time, event_type, location_id, actor_ids, target_ids, cause_event_ids, payload, created_at)
-       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (id, world_id, world_revision, event_time, event_type, location_id, actor_ids, target_ids, cause_event_ids, payload, created_at)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.id,
       input.worldId,
+      1,
       input.eventTime,
       input.type,
       JSON.stringify(input.actorIds ?? []),
@@ -155,6 +173,94 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
+  it("assigns one World revision per successful Event and exposes deterministic identities", () => {
+    const { store, ids, kernel } = createHarness();
+    const initial = store.getSnapshot(ids.world.id);
+    expect(store.getSnapshot(ids.world.id).world.revision).toBe(0);
+
+    const first = expectSuccess(
+      kernel.commit({
+        type: "character.move",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        toLocationId: ids.locations.beijing.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    const second = expectSuccess(
+      kernel.commit({
+        type: "relationship.change",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.player.id,
+        trustDelta: 1,
+        occurredAt: TEST_TIME,
+      }),
+    );
+
+    expect(first.sequence).toBe(1);
+    expect(first.worldRevision).toBe(1);
+    expect(second.sequence).toBe(2);
+    expect(second.worldRevision).toBe(2);
+    expect(first.eventTime).toBe(second.eventTime);
+    expect(store.getSnapshot(ids.world.id).world.revision).toBe(2);
+    expect(store.listEvents(ids.world.id).map((event) => [event.sequence, event.worldRevision])).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+    expect(rebuildState(initial, store.listEvents(ids.world.id)).world.revision).toBe(2);
+    store.close();
+  });
+
+  it("rejects stale Candidates without changing Event Log or Materialized State", () => {
+    const { store, ids, kernel } = createHarness();
+    const first = expectSuccess(
+      kernel.commit({
+        type: "character.move",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        toLocationId: ids.locations.tokyo.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    const beforeRejected = store.getSnapshot(ids.world.id);
+    const result = kernel.commit({
+      type: "character.die",
+      worldId: ids.world.id,
+      actorId: ids.characters.player.id,
+      occurredAt: TEST_TIME,
+      expectedWorldRevision: first.worldRevision - 1,
+    });
+    expectFailure(result, "STALE_WORLD_STATE");
+    if (!result.ok) {
+      expect(result.error.context).toMatchObject({
+        expectedWorldRevision: 0,
+        currentWorldRevision: 1,
+      });
+    }
+    expect(store.listEvents(ids.world.id)).toHaveLength(1);
+    expect(sortedSnapshot(store.getSnapshot(ids.world.id))).toEqual(sortedSnapshot(beforeRejected));
+    store.close();
+  });
+
+  it("keeps initial Truth and Knowledge traceable to the auditable Seed", () => {
+    const { store, ids } = createHarness();
+    const snapshot = store.getSnapshot(ids.world.id);
+    expect(snapshot.seed).toEqual(ids.seed);
+    expect(snapshot.facts).toContainEqual(expect.objectContaining({
+      id: ids.secretFact.id,
+      sourceSeedId: ids.seed.id,
+      sourceEventId: null,
+    }));
+    expect(snapshot.knowledge.filter((entry) => entry.factId === ids.secretFact.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ characterId: ids.characters.zhao.id, sourceSeedId: ids.seed.id }),
+        expect.objectContaining({ characterId: ids.characters.npcA.id, sourceSeedId: ids.seed.id }),
+      ]),
+    );
+    store.close();
+  });
+
   it("enforces death invariants", () => {
     const { store, ids, kernel } = createHarness();
     expectSuccess(
@@ -214,7 +320,7 @@ describe("World Engine Commit Kernel", () => {
         worldId: ids.world.id,
         actorId: ids.characters.player.id,
         factId: ids.secretFact.id,
-        knowledgeState: "rumor",
+        knowledgeState: "confirmed",
         source: { kind: "character", characterId: ids.characters.zhao.id },
         occurredAt: TEST_TIME,
       }),
@@ -223,10 +329,11 @@ describe("World Engine Commit Kernel", () => {
       expect.objectContaining({
         characterId: ids.characters.player.id,
         factId: ids.secretFact.id,
-        knowledgeState: "rumor",
+        knowledgeState: "confirmed",
         sourceType: "character",
         sourceCharacterId: ids.characters.zhao.id,
         sourceEventId: null,
+        sourceSeedId: null,
       }),
     );
     store.close();
@@ -267,6 +374,18 @@ describe("World Engine Commit Kernel", () => {
 
   it("allows NPC-A to propagate knowledge to NPC-B without broadcasting to NPC-C", () => {
     const { store, ids, kernel } = createHarness();
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_fact",
+        worldId: ids.world.id,
+        actorId: ids.characters.npcB.id,
+        factId: ids.secretFact.id,
+        knowledgeState: "confirmed",
+        source: { kind: "character", characterId: ids.characters.npcA.id },
+        occurredAt: TEST_TIME,
+      }),
+      "KNOWLEDGE_STATE_ESCALATION",
+    );
     expectSuccess(
       kernel.commit({
         type: "character.learn_fact",
@@ -432,6 +551,41 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
+  it("allows overlapping objects when the World predicate policy is many", () => {
+    const { store, ids, kernel } = createHarness();
+    expectSuccess(
+      kernel.commit({
+        type: "fact.assert",
+        worldId: ids.world.id,
+        factId: "fact-many-1",
+        subject: ids.characters.player.id,
+        predicate: "known_multi",
+        object: "object-a",
+        validFrom: TEST_TIME,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expectSuccess(
+      kernel.commit({
+        type: "fact.assert",
+        worldId: ids.world.id,
+        factId: "fact-many-2",
+        subject: ids.characters.player.id,
+        predicate: "known_multi",
+        object: "object-b",
+        validFrom: TEST_TIME,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expect(store.getSnapshot(ids.world.id).facts.filter((fact) => fact.predicate === "known_multi")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "fact-many-1", object: "object-a", validTo: null }),
+        expect.objectContaining({ id: "fact-many-2", object: "object-b", validTo: null }),
+      ]),
+    );
+    store.close();
+  });
+
   it("stores A→B and B→A relationships independently and traces changes to Events", () => {
     const { store, ids, kernel } = createHarness();
     const forward = expectSuccess(
@@ -502,6 +656,7 @@ describe("World Engine Commit Kernel", () => {
     });
     expectFailure(result, "COMMIT_FAILED");
     expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    expect(store.getSnapshot(ids.world.id).world.revision).toBe(before.world.revision);
     expect(sortedSnapshot(store.getSnapshot(ids.world.id))).toEqual(sortedSnapshot(before));
     store.close();
   });

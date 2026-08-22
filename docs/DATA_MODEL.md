@@ -24,13 +24,29 @@ World
   id
   name
   current_time
+  revision
   era
   status
 ```
 
-`current_time` 是世界时间，不应仅由聊天轮次推断；`status` 至少需要能区分可运行、暂停或结束等生命周期状态。后续可扩展时间推进规则、日历和世界级配置。
+`current_time` 是世界时间，不应仅由聊天轮次推断；`revision` 从 `0` 开始，每个成功 Commit 的 Event 恰好推进一个版本；`status` 至少需要能区分可运行、暂停或结束等生命周期状态。Candidate 必须携带 `expected_world_revision`，过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。后续可扩展时间推进规则、日历和世界级配置。
 
-### 2.2 Character
+### 2.2 Seed
+
+Seed 是初始世界状态的可审计来源。MVP 保留 Seed State + Append-only Event Log → Materialized State 的模型，不把整个初始世界转换为 Event 链。
+
+```text
+Seed
+  id
+  world_id
+  source_type
+  source_ref
+  metadata
+```
+
+初始 Fact 和 CharacterKnowledge 必须通过 `source_seed_id` 指向该 World 的 Seed；这使初始设定不会退化为没有来源的 `initial` 标签。当前阶段不实现 World Pack loader。
+
+### 2.3 Character
 
 表示玩家角色、NPC 或其他具有身份与行动能力的角色。
 
@@ -51,7 +67,7 @@ Character
 
 `alive`、`location_id` 和 `current_goal` 是当前物化状态；它们的重大变化必须能回溯到 Event。
 
-### 2.3 Location
+### 2.4 Location
 
 表示角色、物品和事件可以关联的空间节点。
 
@@ -66,7 +82,7 @@ Location
 
 `parent_id` 支持地点层级，例如大陆、城市、建筑和房间。角色位置变化不能只靠文本描述，必须有来源事件或明确的初始状态。
 
-### 2.4 Fact
+### 2.5 Fact
 
 表示客观世界事实，即“世界实际上是什么”。
 
@@ -80,14 +96,15 @@ Fact
   valid_from
   valid_to
   source_event_id
+  source_seed_id
   source_type
 ```
 
-`subject`、`predicate`、`object` 可以先保持概念级表示，不在此阶段锁定具体序列化格式。`source_event_id` 应能指向产生该 Fact 的已提交 Event；初始 Lore Fact 可以使用 `source_type = initial_lore` 且没有事件来源。Fact 是已确认的客观世界事实，因此不设置 `confidence`；不确定性属于 CharacterKnowledge、Lore / Claim 或 Candidate Event。
+`subject`、`predicate`、`object` 可以先保持概念级表示，不在此阶段锁定具体序列化格式。运行时产生的 Fact 使用 `source_event_id` 指向产生它的已提交 Event；初始 Lore Fact 使用 `source_seed_id` 指向审计 Seed。Fact 是已确认的客观世界事实，因此不设置 `confidence`；不确定性属于 CharacterKnowledge、Lore / Claim 或 Candidate Event。
 
-同一事实在时间线上发生变化时，应保留可解释的历史，而不是直接抹掉旧事实。对于互斥谓词，当前有效区间不能同时存在互相矛盾的记录。
+同一事实在时间线上发生变化时，应保留可解释的历史，而不是直接抹掉旧事实。World 级 `PredicatePolicy` 将谓词定义为 `one` 或 `many`：`one` 的重叠不同 object 互斥并保留时间转移；`many` 允许不同 object 在同一有效区间并存；未配置谓词保守按 `one` 处理。
 
-### 2.5 CharacterKnowledge
+### 2.6 CharacterKnowledge
 
 这是核心隔离表，表示某个角色对某条 Fact 知道多少，而不是表示 Fact 本身是否成立。
 
@@ -99,6 +116,7 @@ CharacterKnowledge
   source_type
   source_character_id
   source_event_id
+  source_seed_id
   learned_at
 ```
 
@@ -124,9 +142,9 @@ Candidate Event 使用结构化来源：
 
 `character` 来源表示另一个角色把信息告诉当前角色；Hard Validator 必须确认来源角色属于同一个 World，并且自身拥有该 Fact。来源角色的 `knowledge_state` 不要求是 `confirmed`，`rumor` 也可以传播 `rumor`。`event` 来源表示当前角色实际参与了该 Event；Hard Validator 必须确认来源 Event 属于同一个 World、时间不晚于学习 Event、角色位于该 Event 的 `actor_ids` 或 `target_ids`，且 Event 的结构化载荷确实关联该 Fact。
 
-Seed State 可以使用 `source_type = initial`，此时 `source_character_id` 和 `source_event_id` 都为空。普通角色不能仅因为 Fact 存在或数据库中存在某个 `fact.assert` Event 就自动获得知识。
+Seed State 可以使用 `source_type = initial`，此时 `source_character_id` 和 `source_event_id` 都为空，但 `source_seed_id` 必须指向 Seed。普通角色不能仅因为 Fact 存在或数据库中存在某个 `fact.assert` Event 就自动获得知识。
 
-`knowledge_state` 可以考虑以下概念状态：
+当前 MVP 的 `knowledge_state` 限定为以下状态：
 
 ```text
 unknown
@@ -136,11 +154,11 @@ believed
 confirmed
 ```
 
-但 MVP 不应过早把枚举设计死。关键是保留“认知状态”和结构化“认知来源”，使系统可以表达一个角色不知道、听说、怀疑、相信或确认某件事。
+`character` provenance 的传播采用精确状态复制：学习 Event 请求的状态必须等于来源角色已有的状态，不能静默升级或降级。`event` provenance 只能来自同一 World、时间不晚于学习 Event、且学习者位于来源 Event 的 `actor_ids` 或 `target_ids`；Event 载荷必须关联目标 Fact。
 
 角色知识可以由亲历事件、他人告知、文件、观察或传闻产生。每种来源都需要由事件、权限规则或初始设定支持，NPC 不能通过 LLM 上下文意外获得不应知道的 Fact。
 
-### 2.6 Event
+### 2.7 Event
 
 Event 是 Append-only 的已提交世界事件，用来回答“世界为什么变成现在这样”。
 
@@ -149,6 +167,7 @@ Event
   id
   world_id
   sequence（物理层提交序号）
+  world_revision（World 内状态版本）
   event_time
   type
   location_id
@@ -159,13 +178,26 @@ Event
   created_at
 ```
 
-`sequence` 是物理层提交顺序，`event_time` 是世界内时间；两者不是同一个概念。`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
+`sequence` 是数据库级物理提交顺序，`world_revision` 是该 World 的状态版本，`event_time` 是世界内时间；三者不是同一个概念。每个成功 Commit 的 Event 都分配恰好递增 1 的 `world_revision`，读取和调试必须暴露两个 identity 字段。`actor_ids`、`target_ids` 和 `cause_event_ids` 表达事件参与者、受影响对象和因果链；`payload` 保存该事件所需的结构化细节。重大状态变化不能只存在于 `payload` 的自由文本中，必须能被状态更新器和审计逻辑识别。
 
 每一个成功 Commit 的 Event 都会使 `World.current_time = max(previous_current_time, event_time)`。因此 `world.time_advance` 不是唯一能够推动世界时钟的 Event；它用于没有其他事件发生但世界仍继续流逝的情况。`cause_event_ids` 中的 Event 时间不能晚于当前 Event；Knowledge 的 `event` 来源也不能晚于学习 Event。`fact.assert.valid_from` 可以描述历史有效时间，但不能让 World Clock 倒退。
 
 Event 一旦 Commit，不应被后续叙事直接修改或删除。物理层使用内部 `sequence` 保留提交顺序，保证 Event Log 可以确定性重放。若发生纠正、撤销或反转，应追加新的、具有因果关系的 Event。
 
-### 2.7 Relationship
+### 2.8 PredicatePolicy
+
+表示 World 对 Fact 谓词的确定性基数策略。
+
+```text
+PredicatePolicy
+  world_id
+  predicate
+  cardinality  // one | many
+```
+
+策略属于单个 World，持久化在 World State 边界内，不引入 DSL。未知或缺失策略默认 `one`，确保 Fact 冲突不会因为未配置而被放行。
+
+### 2.9 Relationship
 
 表示角色之间的关系。不要只保存一个“好感度”，因为信任、敌意和亲近程度可能同时变化，且方向未必一致。
 
@@ -182,7 +214,7 @@ Relationship
 
 关系必须有方向：`A → B` 与 `B → A` 是两条不同状态。关系方向、维度和单位可以后续扩展。重大关系变化必须指向 `updated_by_event_id`，不能由聊天文本或 Memory 直接覆盖。
 
-### 2.8 Item / Asset
+### 2.10 Item / Asset
 
 表示世界中的物品、资产或可被持有与转移的资源。MVP 先保持简单：
 
@@ -198,7 +230,7 @@ Item / Asset
 
 所有权和位置通常互相约束。转移、丢失、损坏或销毁应通过 Event 解释，不能只修改 `owner_id` 或 `status`。
 
-### 2.9 Session / Save
+### 2.11 Session / Save
 
 用于承载玩家当前所处的运行上下文和可恢复存档。
 
@@ -220,7 +252,7 @@ Session / Save
 
 当前 MVP 只有单一权威时间线，暂不实现 `branch_id` 或从旧存档恢复后创建新时间线。未来如需分支，单独设计 `Branch`、`parent_branch`、`fork_event` 和 `head_event`。Session / Save 是运行入口和恢复指针，不应成为另一套独立事实源。
 
-### 2.10 Memory
+### 2.12 Memory
 
 Memory 只定义接口关系，不把某一种 Memory 实现写入世界事实模型。
 
@@ -245,7 +277,7 @@ Mem0
 
 World Engine 不应依赖某个特定 Memory 实现。Memory 的内容可以被召回、排序和注入上下文；它不能直接决定谁活着、谁在哪里、谁拥有什么、事件是否发生或 NPC 是否知道某个秘密。
 
-### 2.11 Lore / Canon（概念层）
+### 2.13 Lore / Canon（概念层）
 
 Lore 是世界背景设定、初始规则和 Canon 约束，可以作为初始化来源或验证规则输入。它不等同于运行时 Event，也不自动证明某件运行时事件已经发生。
 
@@ -255,16 +287,19 @@ Lore 是世界背景设定、初始规则和 Canon 约束，可以作为初始�
 
 ```text
 World
+ ├── Seed
  ├── Character ──< CharacterKnowledge >── Fact
  ├── Location
  ├── Event ──< cause_event_ids >── Event
  ├── Relationship ──> Character + updated_by_event_id
+ ├── PredicatePolicy
  ├── Item / Asset ──> Character / Location
  ├── Session / Save ──> World + Player Character
  └── Lore / Canon
 
 Event ──> 更新 ──> World / Character / Fact / Relationship / Item 当前状态
 Event ──> 来源 ──> Memory
+Seed ──> 来源 ──> 初始 Fact / CharacterKnowledge
 ```
 
 最重要的分离是：
@@ -283,11 +318,14 @@ Event = 已提交的变化及其因果
 | 数据 | 权威来源 |
 | --- | --- |
 | 当前时间 | World State |
+| World revision | World State / Commit Kernel |
 | 人物是否存活 | Character / Event |
 | 人物位置 | World State（由 Event 更新） |
 | 已发生事件 | Event Log |
 | 客观秘密 | Fact |
 | NPC 是否知道秘密 | CharacterKnowledge |
+| Fact 基数策略 | PredicatePolicy |
+| 初始 Fact / Knowledge 来源 | Seed |
 | NPC 过去经历 | Event + Memory |
 | 长期对话召回 | Memory |
 | 世界背景设定 | Lore |
@@ -345,4 +383,4 @@ Player
 9. Memory 只作为可替换召回接口；
 10. 连续运行 30～50 轮后，可以从 Event 解释当前事实、时间、位置、人物认知和因果。
 
-当前 Slice 已将 World、Character、Location、Fact、CharacterKnowledge、Relationship 和 Event 物理化到 SQLite，并实现六类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。
+当前 Slice 已将 World、Seed、Character、Location、Fact、CharacterKnowledge、PredicatePolicy、Relationship 和 Event 物理化到 SQLite，并实现六类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。

@@ -14,11 +14,30 @@ export type KnowledgeSource =
 
 export type KnowledgeSourceType = "initial" | "character" | "event";
 
+export type KnowledgeState = "unknown" | "rumor" | "suspected" | "believed" | "confirmed";
+
+export type PredicateCardinality = "one" | "many";
+
 export interface WorldRecord {
   id: string;
   name: string;
   currentTime: string;
+  revision: number;
   status: WorldStatus;
+}
+
+export interface SeedRecord {
+  id: string;
+  worldId: string;
+  sourceType: string;
+  sourceRef: string;
+  metadata: string;
+}
+
+export interface PredicatePolicyRecord {
+  worldId: string;
+  predicate: string;
+  cardinality: PredicateCardinality;
 }
 
 export interface LocationRecord {
@@ -49,16 +68,18 @@ export interface FactRecord {
   validFrom: string;
   validTo: string | null;
   sourceEventId: string | null;
+  sourceSeedId: string | null;
   sourceType: string;
 }
 
 export interface KnowledgeRecord {
   characterId: string;
   factId: string;
-  knowledgeState: string;
+  knowledgeState: KnowledgeState;
   sourceType: KnowledgeSourceType;
   sourceCharacterId: string | null;
   sourceEventId: string | null;
+  sourceSeedId: string | null;
   learnedAt: string;
 }
 
@@ -74,7 +95,9 @@ export interface RelationshipRecord {
 
 export interface CommittedEvent {
   id: string;
+  sequence: number;
   worldId: string;
+  worldRevision: number;
   eventTime: string;
   type: EventType;
   locationId: string | null;
@@ -87,9 +110,11 @@ export interface CommittedEvent {
 
 export interface WorldSnapshot {
   world: WorldRecord;
+  seed: SeedRecord;
   locations: LocationRecord[];
   characters: CharacterRecord[];
   facts: FactRecord[];
   knowledge: KnowledgeRecord[];
+  predicatePolicies: PredicatePolicyRecord[];
   relationships: RelationshipRecord[];
 }

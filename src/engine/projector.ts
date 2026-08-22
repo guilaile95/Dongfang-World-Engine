@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { CandidateEvent } from "./candidate.js";
-import type { CommittedEvent, WorldSnapshot } from "../domain/types.js";
+import type { CommittedEvent, KnowledgeRecord, WorldSnapshot } from "../domain/types.js";
 import {
   characterKnowledge,
   characters,
@@ -8,7 +8,7 @@ import {
   relationships,
   worlds,
 } from "../persistence/schema.js";
-import { findRelationship } from "../persistence/sqlite-store.js";
+import { findPredicatePolicy, findRelationship } from "../persistence/sqlite-store.js";
 
 export function projectEvent(tx: any, event: CommittedEvent): void {
   const payload = event.payload;
@@ -53,7 +53,7 @@ function projectKnowledge(tx: any, event: CommittedEvent): void {
   const values = {
     characterId,
     factId,
-    knowledgeState: stringValue(payload.knowledgeState),
+    knowledgeState: stringValue(payload.knowledgeState) as KnowledgeRecord["knowledgeState"],
     ...provenance,
     learnedAt: event.eventTime,
   };
@@ -64,6 +64,7 @@ function projectKnowledge(tx: any, event: CommittedEvent): void {
         sourceType: values.sourceType,
         sourceCharacterId: values.sourceCharacterId,
         sourceEventId: values.sourceEventId,
+        sourceSeedId: values.sourceSeedId,
         learnedAt: values.learnedAt,
       })
       .where(and(eq(characterKnowledge.characterId, characterId), eq(characterKnowledge.factId, factId)))
@@ -110,12 +111,15 @@ function projectFact(tx: any, event: CommittedEvent): void {
   const object = stringValue(payload.object);
   const validFrom = stringValue(payload.validFrom);
   const validTo = payload.validTo === null ? null : stringValue(payload.validTo);
-  const existingOpenFacts = tx
-    .select()
-    .from(facts)
-    .where(and(eq(facts.worldId, event.worldId), eq(facts.subject, subject), eq(facts.predicate, predicate)))
-    .all()
-    .filter((fact: typeof facts.$inferSelect) => fact.object !== object && fact.validTo === null && Date.parse(fact.validFrom) < Date.parse(validFrom));
+  const cardinality = findPredicatePolicy(tx, event.worldId, predicate)?.cardinality === "many" ? "many" : "one";
+  const existingOpenFacts = cardinality === "one"
+    ? tx
+      .select()
+      .from(facts)
+      .where(and(eq(facts.worldId, event.worldId), eq(facts.subject, subject), eq(facts.predicate, predicate)))
+      .all()
+      .filter((fact: typeof facts.$inferSelect) => fact.object !== object && fact.validTo === null && Date.parse(fact.validFrom) < Date.parse(validFrom))
+    : [];
   for (const existing of existingOpenFacts) {
     tx.update(facts).set({ validTo: validFrom }).where(eq(facts.id, existing.id)).run();
   }
@@ -129,6 +133,7 @@ function projectFact(tx: any, event: CommittedEvent): void {
       validFrom,
       validTo,
       sourceEventId: event.id,
+      sourceSeedId: null,
       sourceType: "event",
     })
     .run();
@@ -144,6 +149,9 @@ export function rebuildState(initial: WorldSnapshot, eventLog: CommittedEvent[])
 
 function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void {
   const payload = event.payload;
+  if (event.worldId === state.world.id && event.worldRevision > state.world.revision) {
+    state.world.revision = event.worldRevision;
+  }
   if (Date.parse(event.eventTime) > Date.parse(state.world.currentTime)) {
     state.world.currentTime = event.eventTime;
   }
@@ -170,7 +178,7 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       const next = {
         characterId,
         factId,
-        knowledgeState: stringValue(payload.knowledgeState),
+        knowledgeState: stringValue(payload.knowledgeState) as KnowledgeRecord["knowledgeState"],
         ...provenance,
         learnedAt: event.eventTime,
       };
@@ -210,16 +218,19 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
       const object = stringValue(payload.object);
       const validFrom = stringValue(payload.validFrom);
       const validTo = payload.validTo === null ? null : stringValue(payload.validTo);
-      for (const fact of state.facts) {
-        if (
-          fact.worldId === event.worldId &&
-          fact.subject === subject &&
-          fact.predicate === predicate &&
-          fact.object !== object &&
-          fact.validTo === null &&
-          Date.parse(fact.validFrom) < Date.parse(validFrom)
-        ) {
-          fact.validTo = validFrom;
+      const cardinality = getPredicateCardinality(state, event.worldId, predicate);
+      if (cardinality === "one") {
+        for (const fact of state.facts) {
+          if (
+            fact.worldId === event.worldId &&
+            fact.subject === subject &&
+            fact.predicate === predicate &&
+            fact.object !== object &&
+            fact.validTo === null &&
+            Date.parse(fact.validFrom) < Date.parse(validFrom)
+          ) {
+            fact.validTo = validFrom;
+          }
         }
       }
       state.facts.push({
@@ -231,6 +242,7 @@ function applyEventToSnapshot(state: WorldSnapshot, event: CommittedEvent): void
         validFrom,
         validTo,
         sourceEventId: event.id,
+        sourceSeedId: null,
         sourceType: "event",
       });
       return;
@@ -254,6 +266,7 @@ function provenanceValues(value: unknown): {
   sourceType: "character" | "event";
   sourceCharacterId: string | null;
   sourceEventId: string | null;
+  sourceSeedId: string | null;
 } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Projector expected structured knowledge provenance");
@@ -264,6 +277,7 @@ function provenanceValues(value: unknown): {
       sourceType: "character",
       sourceCharacterId: stringValue(source.characterId),
       sourceEventId: null,
+      sourceSeedId: null,
     };
   }
   if (source.kind === "event") {
@@ -271,9 +285,18 @@ function provenanceValues(value: unknown): {
       sourceType: "event",
       sourceCharacterId: null,
       sourceEventId: stringValue(source.eventId),
+      sourceSeedId: null,
     };
   }
   throw new Error("Projector received an unknown knowledge provenance kind");
+}
+
+function getPredicateCardinality(state: WorldSnapshot, worldId: string, predicate: string): "one" | "many" {
+  return state.predicatePolicies.find(
+    (policy) => policy.worldId === worldId && policy.predicate === predicate,
+  )?.cardinality === "many"
+    ? "many"
+    : "one";
 }
 
 function stringValue(value: unknown): string {

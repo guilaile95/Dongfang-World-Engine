@@ -15,6 +15,7 @@ import {
   findEvent,
   findFact,
   findLocation,
+  findPredicatePolicy,
   findRelationship,
 } from "../persistence/sqlite-store.js";
 
@@ -22,6 +23,13 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
   const world = tx.select().from(worlds).where(eq(worlds.id, candidate.worldId)).get();
   if (!world) {
     throw new KernelError("WORLD_NOT_FOUND", "World does not exist", { worldId: candidate.worldId });
+  }
+  if (candidate.expectedWorldRevision !== world.revision) {
+    throw new KernelError("STALE_WORLD_STATE", "Candidate was built from a stale World revision", {
+      worldId: candidate.worldId,
+      expectedWorldRevision: candidate.expectedWorldRevision,
+      currentWorldRevision: world.revision,
+    });
   }
 
   const eventTime = normalizeTime(candidate.type === "world.time_advance" ? candidate.toTime : candidate.occurredAt);
@@ -173,6 +181,14 @@ function validateKnowledge(
         factId: fact.id,
       });
     }
+    if (sourceKnowledge.knowledgeState !== candidate.knowledgeState) {
+      throw new KernelError("KNOWLEDGE_STATE_ESCALATION", "Character propagation must copy the source knowledge state exactly", {
+        sourceCharacterId: sourceCharacter.id,
+        factId: fact.id,
+        sourceKnowledgeState: sourceKnowledge.knowledgeState,
+        requestedKnowledgeState: candidate.knowledgeState,
+      });
+    }
     return;
   }
 
@@ -285,6 +301,11 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
   const validTo = candidate.validTo ? normalizeTime(candidate.validTo) : null;
   if (validTo && Date.parse(validTo) <= Date.parse(validFrom)) {
     throw new KernelError("INVALID_TIME", "Fact validTo must be after validFrom", { validFrom, validTo });
+  }
+  const configuredPolicy = findPredicatePolicy(tx, candidate.worldId, candidate.predicate);
+  const cardinality = configuredPolicy?.cardinality === "many" ? "many" : "one";
+  if (cardinality === "many") {
+    return;
   }
   const samePredicate = tx
     .select()
