@@ -1,6 +1,9 @@
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
 import {
+  isDirectExecution,
   runClosedInnTurns,
   type ClosedInnRunResult,
 } from "../../src/smoke/closed-inn-harness.js";
@@ -258,5 +261,20 @@ describe("Closed Inn 10-turn Headless Harness", () => {
     }
 
     store.close();
+  });
+
+  it("determines direct execution correctly even when path contains spaces and unicode characters", () => {
+    const complexPath = resolve("E:/AI Projects/东方狂想/dist/smoke/closed-inn-harness.js");
+    const moduleUrl = pathToFileURL(complexPath).href;
+
+    // 1. matching entry -> true
+    expect(isDirectExecution(moduleUrl, complexPath)).toBe(true);
+
+    // 2. different entry -> false
+    const otherPath = resolve("E:/AI Projects/东方狂想/dist/smoke/other-module.js");
+    expect(isDirectExecution(moduleUrl, otherPath)).toBe(false);
+
+    // 3. undefined argv entry -> false
+    expect(isDirectExecution(moduleUrl, undefined)).toBe(false);
   });
 });

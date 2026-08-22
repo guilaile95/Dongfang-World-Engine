@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ContextBuilder } from "../engine/context-builder.js";
 import { CommitKernel } from "../engine/commit-kernel.js";
 import {
@@ -267,7 +269,18 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+export function isDirectExecution(moduleUrl: string, argvEntry: string | undefined): boolean {
+  if (!argvEntry) {
+    return false;
+  }
+  try {
+    return fileURLToPath(moduleUrl) === resolve(argvEntry);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution(import.meta.url, process.argv[1])) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Closed Inn harness failed";
     console.error(JSON.stringify({ status: "error", message }, null, 2));
