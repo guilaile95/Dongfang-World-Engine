@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport 与 Step 7 Minimal Narrator 已完成；当前实现 **Step 8 Vertical Slice 0: Closed Inn 10-turn Causal Loop Proof**。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport 与 Step 7 Minimal Narrator 已完成；当前实现 **Vertical Slice 0 — Closed Inn 10-turn Causal Loop Proof**。
 
 第一阶段验证目标是：
 
@@ -105,6 +105,20 @@ Candidate Event
 
 当前已实现的 Commit Kernel 支持 `character.move`、`character.die`、`character.learn_claim`、`relationship.change`、`fact.assert`、`claim.record`、`claim.transmit` 和 `world.time_advance` 八类 Candidate Event；所有提交都经过 Hard Validator 和同一 SQLite 事务，并可从初始 Seed 加 Event Log 重建关键状态。
 
-Step 8 增加 Closed Inn 最小测试场景与同地点 source-authored `claim.transmit` 传播能力：由拥有该 Claim 认知的角色主动发起传播，经同地点和存在性严格校验后为目标角色生成具备确定性 Event Provenance 的 CharacterKnowledge，且不赋予任何客观 Truth 权威；配备无通用 Scheduler 依赖的 10-turn Headless Test Harness。
+Context Builder MVP 通过只读 API 为指定观察者构造结构化上下文：确定性过滤观察者自己的 CharacterKnowledge、Claim 和最小 provenance，暴露自身状态、当前位置、同地点角色的安全公共投影以及观察者作为 source 的有向关系；预算截断发生在可见性过滤之后，并保留完整 Knowledge causal bundle。Objective Fact 不会因为存在于数据库中而进入角色上下文；任何未来的概率相关性排序也只能发生在这个确定性可见性边界之后。
+
+Simulation Adapter MVP 只接收已经过滤的 `CharacterContext`、匹配该 Context observer 的 actor 和自然语言 intent，通过窄的可注入 Model Client 生成 0..N 个有序、经 Zod 校验的七类 actor Candidate Proposal；model-facing system contract 明确要求顶层 `{\"proposals\":[...]}`、允许空列表、禁止 markdown/prose，并列出七类 Proposal 的精确字段与 actor ownership 规则。actor 模型暂不能生成 `fact.assert`。Proposal 不是已提交 Truth，不包含模型控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`，Adapter 不读取 Store、不调用 CommitKernel，也不执行 proposal；最多允许一次结构修复，repair 只携带有界的 schema path/code/message 或具体 authority reason。Kernel 仍可为 trusted/system producer 保留 `fact.assert` 能力，Kernel capability 不等于 actor-model capability。
+
+Turn Orchestrator MVP 接收 `worldId + actorCharacterId + intent`，自行构造当前角色 Context，调用 Simulation Adapter，再由自身为每个 Proposal 绑定可信的 World、revision、当前世界时间和空 cause provenance，并按顺序通过 CommitKernel 提交。首次 Commit 前会对整个 Proposal plan 做 schema 与 actor authority 预校验；单回合 Proposal 数量受小型、可配置的 execution cap 限制，越界或非法 plan 都不会产生部分写入。多 Proposal 使用已成功提交事件返回的 revision chaining；首次提交前世界变更最多触发一次 Context 重建与重新模拟，产生 committed prefix 后不再自动重模拟，失败结果保留已提交前缀且不会自动创建 `action.failed` Event。
+
+Step 6 只增加一个窄的 OpenAI-compatible Chat Completions `SimulationModelClient` transport，以及一个开发者 opt-in 的单回合 headless smoke。Transport 只把现有 `SimulationModelRequest` 映射为 system instruction 与 `{ context, intent }` user payload，并只返回 assistant content；Simulation Adapter 继续负责 JSON/Zod/repair，Turn Orchestrator 和 Commit Kernel 继续拥有全部权威边界。Smoke 使用内存测试世界和真实 Context Builder → Simulation Adapter → Turn Orchestrator → Commit Kernel 链路，但不进入 CI，必须通过 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL` 显式提供凭据。
+
+Step 7 增加一个 observer-scoped `NarrativeEnvelope`：Turn 完成后重新构造合法 CharacterContext，并将 committed actor outcomes 转成显式安全投影，再交给窄 Narrator boundary。Narrator 不能接收 raw `TurnResult.state`、WorldSnapshot、Store、CommitKernel、一般 Fact 或其他角色私有认知；Narrative text 只是展示投影，不写入 World、Event 或 Truth。Narrated smoke 使用现有 OpenAI-compatible chat boundary，仍是开发者 opt-in，不进入 CI。
+
+Vertical Slice 0 增加 Closed Inn 最小测试场景与同地点 source-authored `claim.transmit` 传播能力：由拥有该 Claim 认知的角色主动发起传播，经同地点和存在性严格校验后为目标角色生成具备确定性 Event Provenance 的 CharacterKnowledge，且不赋予任何客观 Truth 权威；配备无通用 Scheduler 依赖的 10-turn Headless Test Harness。
+
+Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact、Claim 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
+
+Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 与 `claim.transmit` 是合法的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 
 本阶段不实现 provider framework、fallback chain、复杂 retry、Memory、RAG、Scheduler、Item/Inventory Framework、Dialogue Framework、UI、Branch 或 Save；CI 仍完全不依赖真实模型/API，Narrative text 仍不成为 Truth，Simulation Adapter 仍不执行任何 Event、State 或 World revision 写入。

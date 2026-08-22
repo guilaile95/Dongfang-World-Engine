@@ -161,7 +161,7 @@ Add the first player-facing projection without creating a second authority path:
 
 Step 7 deliberately does not include Item, the closed-inn fixture, NPC Scheduler, Memory/RAG, lore retrieval, branching/save, UI, provider framework, or multi-agent execution.
 
-## Step 8 — Vertical Slice 0: Closed Inn 10-turn Causal Loop Proof
+## Vertical Slice 0 — Closed Inn 10-turn Causal Loop Proof
 
 Status: in progress.
 
@@ -173,7 +173,7 @@ Prove the first actual multi-character causal loop in a closed scene with determ
 - add headless 10-turn test harness (`closed-inn-harness.ts`) driving deterministic sequence across actors without building a general Scheduler;
 - verify all 9 hard assertions: zero Truth leaks, zero unauthorized knowledge leaks, no direct Truth writes, explainable provenance, and 100% replay/rebuild consistency.
 
-Step 8 deliberately does not include Item/inventory framework, dialogue framework, generic interaction layer, NPC Scheduler, Memory/RAG, belief transition lattice, UI, or distributed platform.
+Vertical Slice 0 deliberately does not include Item/inventory framework, dialogue framework, generic interaction layer, NPC Scheduler, Memory/RAG, belief transition lattice, UI, or distributed platform.
 
 ## Later
 

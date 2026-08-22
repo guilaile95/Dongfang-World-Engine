@@ -865,6 +865,58 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
+  it("rejects claim.transmit with KNOWLEDGE_STATE_ESCALATION when target already holds different knowledgeState and produces no writes", () => {
+    const { store, ids, kernel } = createHarness();
+
+    // Move npcA (holding unverifiedClaim as "rumor") and npcB (holding unverifiedClaim as "believed") to location-office
+    expectSuccess(
+      kernel.commit({
+        type: "character.move",
+        worldId: ids.world.id,
+        actorId: ids.characters.npcA.id,
+        toLocationId: ids.locations.office.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expectSuccess(
+      kernel.commit({
+        type: "character.move",
+        worldId: ids.world.id,
+        actorId: ids.characters.npcB.id,
+        toLocationId: ids.locations.office.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+
+    const snapshotBeforeFailedTransmit = store.getSnapshot(ids.world.id);
+    const eventsBeforeFailedTransmit = store.listEvents(ids.world.id);
+
+    // npcA (holds "rumor") attempts to transmit unverifiedClaim to npcB (holds "believed")
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.npcA.id,
+        targetCharacterId: ids.characters.npcB.id,
+        claimId: ids.unverifiedClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "KNOWLEDGE_STATE_ESCALATION",
+    );
+
+    // Verify zero writes: events and snapshot unchanged
+    expect(store.listEvents(ids.world.id)).toEqual(eventsBeforeFailedTransmit);
+    expect(store.getSnapshot(ids.world.id)).toEqual(snapshotBeforeFailedTransmit);
+
+    // Verify npcB's knowledge remains "believed"
+    const npcBKnowledge = store.getSnapshot(ids.world.id).knowledge.find(
+      (k) => k.characterId === ids.characters.npcB.id && k.claimId === ids.unverifiedClaim.id,
+    );
+    expect(npcBKnowledge?.knowledgeState).toBe("believed");
+
+    store.close();
+  });
+
   it("rejects cross-World Claim, Character, and Event provenance references", () => {
     const { store, ids, kernel } = createHarness();
     const foreign = seedForeignWorld(store);

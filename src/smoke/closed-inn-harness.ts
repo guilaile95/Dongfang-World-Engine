@@ -18,17 +18,23 @@ import { TurnOrchestrator } from "../engine/turn-orchestrator.js";
 import { SqliteWorldStore } from "../persistence/sqlite-store.js";
 import { seedClosedInnWorld, type ClosedInnFixtureIds } from "../testkit/world-builder.js";
 import { rebuildState } from "../engine/projector.js";
+import type { KnowledgeState, WorldSnapshot } from "../domain/types.js";
 
 export interface TurnStepConfig {
   actorId: string;
   intent: string;
 }
 
+export interface VisibleClaimTrace {
+  claimId: string;
+  knowledgeState: KnowledgeState;
+}
+
 export interface TurnExecutionTrace {
   turnIndex: number;
   actorId: string;
   locationId: string | null;
-  visibleClaimIds: string[];
+  visibleClaims: VisibleClaimTrace[];
   turnStatus: string;
   committedEvents: Array<{
     type: string;
@@ -49,46 +55,64 @@ export interface ClosedInnRunResult {
   assertionsPassed: boolean;
 }
 
+export function canonicalSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
+  return {
+    world: snapshot.world,
+    locations: [...snapshot.locations].sort((a, b) => a.id.localeCompare(b.id)),
+    characters: [...snapshot.characters].sort((a, b) => a.id.localeCompare(b.id)),
+    facts: [...snapshot.facts].sort((a, b) => a.id.localeCompare(b.id)),
+    claims: [...snapshot.claims].sort((a, b) => a.id.localeCompare(b.id)),
+    knowledge: [...snapshot.knowledge].sort((a, b) =>
+      `${a.characterId}:${a.claimId}`.localeCompare(`${b.characterId}:${b.claimId}`),
+    ),
+    predicatePolicies: [...snapshot.predicatePolicies].sort((a, b) => a.predicate.localeCompare(b.predicate)),
+    relationships: [...snapshot.relationships].sort((a, b) =>
+      `${a.sourceCharacterId}:${a.targetCharacterId}`.localeCompare(`${b.sourceCharacterId}:${b.targetCharacterId}`),
+    ),
+    seed: snapshot.seed,
+  };
+}
+
 export const DEFAULT_CLOSED_INN_STEPS: TurnStepConfig[] = [
   {
     actorId: "character-player",
-    intent: "在客栈大堂观察周围环境与在场人员",
+    intent: "在客栈大堂观察周围环境，向店小二阿宝询问匕首失踪的线索",
   },
   {
     actorId: "character-npc-a",
-    intent: "根据你当前合法可见的信息决定下一步行动，向大堂内的旅客楚子航告知匕首掉在地窖的消息",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
   },
   {
     actorId: "character-player",
-    intent: "根据刚刚获知的信息，动身前往客栈地窖查看情况",
+    intent: "在大堂梳理从阿宝处获知的信息，并尝试向账房赵先生了解情况",
   },
   {
     actorId: "character-npc-b",
-    intent: "根据当前合法可见的信息决定下一步行动",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
   },
   {
     actorId: "character-npc-c",
-    intent: "根据当前合法可见的信息决定下一步行动，在二楼客房静观其变",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
   },
   {
     actorId: "character-player",
-    intent: "在客栈地窖查看情况，然后返回客栈大堂",
-  },
-  {
-    actorId: "character-player",
-    intent: "在大堂向账房赵先生说明匕首掉在地窖的情况",
-  },
-  {
-    actorId: "character-npc-b",
-    intent: "根据当前合法可见的信息与新获得的信息决定下一步行动",
+    intent: "在大堂向账房赵先生说明店小二阿宝提供的地窖线索，澄清二楼客房的误会",
   },
   {
     actorId: "character-npc-a",
-    intent: "根据当前合法可见的信息决定下一步行动",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
+  },
+  {
+    actorId: "character-npc-b",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
+  },
+  {
+    actorId: "character-npc-c",
+    intent: "根据你当前合法可见的信息和自己的目标，自主决定下一步行动。",
   },
   {
     actorId: "character-player",
-    intent: "确认当前掌握的线索，准备离开客栈",
+    intent: "在大堂总结掌握的全部线索，决定下一步对策",
   },
 ];
 
@@ -155,7 +179,10 @@ export async function runClosedInnTurns(options: RunClosedInnOptions): Promise<C
       turnIndex,
       actorId: step.actorId,
       locationId: preContext.location?.id ?? null,
-      visibleClaimIds: preContext.knowledge.map((k) => k.claim.id),
+      visibleClaims: preContext.knowledge.map((k) => ({
+        claimId: k.claim.id,
+        knowledgeState: k.knowledge.knowledgeState,
+      })),
       turnStatus: turnResult.status,
       committedEvents: turnResult.committedEvents.map((event) => ({
         type: event.type,
@@ -178,9 +205,7 @@ export async function runClosedInnTurns(options: RunClosedInnOptions): Promise<C
 
   const assertionsPassed =
     finalSnapshot.world.revision === allEvents.length &&
-    rebuilt.world.revision === finalSnapshot.world.revision &&
-    rebuilt.characters.length === finalSnapshot.characters.length &&
-    rebuilt.knowledge.length === finalSnapshot.knowledge.length;
+    JSON.stringify(canonicalSnapshot(rebuilt)) === JSON.stringify(canonicalSnapshot(finalSnapshot));
 
   return {
     fixture,
