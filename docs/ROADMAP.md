@@ -124,6 +124,23 @@ Build the first authoritative runtime bridge on top of the Context Builder and h
 
 Step 5 deliberately does not include a real LLM Provider, Narrator, NPC Scheduler, Memory/RAG, new Event types, or UI.
 
+## Step 6 — Minimal Real-Model Transport and Headless Smoke
+
+Status: complete.
+
+Add the first narrow real-model connectivity proof without changing authority:
+
+- implement one OpenAI-compatible Chat Completions `SimulationModelClient` using native `fetch`;
+- map only existing model instructions, filtered CharacterContext and intent into the request;
+- return only assistant content to the existing Simulation Adapter;
+- keep JSON/Zod validation, one repair attempt, actor Proposal restrictions, Orchestrator binding and Kernel Commit unchanged;
+- surface HTTP, network, timeout and malformed provider responses without provider fallback or retry chains;
+- add fake-fetch HTTP and one-turn end-to-end tests with no real credentials;
+- add an opt-in `npm run smoke:real-model` using an in-memory test World and the normal Context Builder → Simulation Adapter → Turn Orchestrator → Commit Kernel path;
+- keep GitHub Actions credential-free and real-model/API independent.
+
+Step 6 deliberately does not include Narrator, Scheduler, Item, Memory/RAG, provider framework, fallback chain, complex retry, UI, or production deployment.
+
 ## Later
 
 Narrator, Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.

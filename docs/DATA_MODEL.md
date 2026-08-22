@@ -331,6 +331,12 @@ Orchestrator 为每个 Proposal 在提交时绑定可信 envelope：`world_id`�
 
 有序执行采用 committed-prefix 结果：零 Proposal 为 `empty`，全部成功为 `success`，首项失败为 `rejected`，前缀成功后失败为 `partial`。首个 Commit 前发现 stale 最多允许一次 Context 重建与重新 Simulation；再次 stale 则返回稳定 stale 结果且不提交本轮 Event。已有前缀后不自动重模拟、不回滚、不继续后续项，Kernel rejection 也不会隐式生成 `action.failed` Event。actor Proposal surface 仍不包含 `fact.assert`，即使 Kernel 对 trusted/system producer 支持该 Candidate。
 
+### 2.18 Real-model transport（非权威模型连接）
+
+Real-model transport 不新增 World 数据表或权威字段。它只是现有 `SimulationModelClient` 的一个 OpenAI-compatible HTTP 实现：`SimulationModelRequest.instructions` 进入 system message，`context` 与 `intent` 组成 user payload，provider 的 assistant content 原样交回 Simulation Adapter。Transport 不接触 raw Snapshot、SQLite、Event、State 或 revision，也不解析、授权或提交 Proposal。
+
+HTTP/network/timeout/provider response 错误属于 transport boundary；模型 JSON 的解析、repair、actor Proposal surface 和权限仍由 Simulation Adapter 负责。真实模型调用只通过开发者 opt-in 的单回合 headless smoke 触发，CI 使用 fake fetch 并保持 credential-free、deterministic。该 Slice 不引入 provider router、fallback、复杂 retry、Memory、RAG 或 Narrative。
+
 ## 3. 关键关系
 
 ```text

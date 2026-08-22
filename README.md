@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP 与 Step 4 Simulation Adapter MVP 已完成；当前实现 **Step 5 Turn Orchestrator MVP**。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP 与 Step 5 Turn Orchestrator MVP 已完成；当前实现 **Step 6 Minimal Real-Model Transport and Headless Smoke**。
 
 第一阶段验证目标是：
 
@@ -111,8 +111,10 @@ Simulation Adapter MVP 只接收已经过滤的 `CharacterContext`、匹配该 C
 
 Turn Orchestrator MVP 接收 `worldId + actorCharacterId + intent`，自行构造当前角色 Context，调用 Simulation Adapter，再由自身为每个 Proposal 绑定可信的 World、revision、当前世界时间和空 cause provenance，并按顺序通过 CommitKernel 提交。首次 Commit 前会对整个 Proposal plan 做 schema 与 actor authority 预校验；单回合 Proposal 数量受小型、可配置的 execution cap 限制，越界或非法 plan 都不会产生部分写入。多 Proposal 使用已成功提交事件返回的 revision chaining；首次提交前世界变更最多触发一次 Context 重建与重新模拟，产生 committed prefix 后不再自动重模拟，失败结果保留已提交前缀且不会自动创建 `action.failed` Event。
 
+Step 6 只增加一个窄的 OpenAI-compatible Chat Completions `SimulationModelClient` transport，以及一个开发者 opt-in 的单回合 headless smoke。Transport 只把现有 `SimulationModelRequest` 映射为 system instruction 与 `{ context, intent }` user payload，并只返回 assistant content；Simulation Adapter 继续负责 JSON/Zod/repair，Turn Orchestrator 和 Commit Kernel 继续拥有全部权威边界。Smoke 使用内存测试世界和真实 Context Builder → Simulation Adapter → Turn Orchestrator → Commit Kernel 链路，但不进入 CI，必须通过 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL` 显式提供凭据。
+
 Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact、Claim 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
 
 Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 是唯一的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 
-本阶段不接入真实 LLM Provider、Memory、RAG、Narrative、UI、Branch、Save 或其他后续系统；Simulation Adapter 仍完全不执行任何 Event、State 或 World revision 写入。
+本阶段不实现 provider framework、fallback chain、复杂 retry、Memory、RAG、Narrative、Scheduler、Item、UI、Branch 或 Save；CI 仍完全不依赖真实模型/API，Simulation Adapter 仍不执行任何 Event、State 或 World revision 写入。

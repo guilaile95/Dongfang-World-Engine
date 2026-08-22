@@ -267,6 +267,14 @@ Turn Orchestrator 是从非权威 Proposal 到权威 Commit 的最小运行桥�
 
 由于 Simulation 是异步的，Orchestrator 在首个 Commit 前检查 Context revision；若 World 已变化，最多重建一次 Context 并重新 Simulation。第二次仍陈旧时返回稳定 stale 结果且不提交本轮 Event。首项发生 `STALE_WORLD_STATE` 也共享这一次重试额度；一旦已有 committed prefix，任何 stale 或其他 Kernel rejection 都只返回前缀，不自动重模拟。
 
+### 2.13 Minimal Real-Model Transport and Headless Smoke
+
+Step 6 的 real-model boundary 只实现一个窄的 OpenAI-compatible Chat Completions `SimulationModelClient`。它接收现有 `SimulationModelRequest`，把 `instructions` 放入 system message，把经过 Context Builder 的 `context` 与 intent 放入 user message，并只把 provider 返回的 assistant content 交回 Simulation Adapter。Transport 不读取 SQLite 或 raw `WorldSnapshot`，不构造 Context，不调用 CommitKernel，不解析或授权 Proposal，也不拥有 `fact.assert` 能力。
+
+Transport 只负责一次 HTTP 请求、响应映射和一个小的 timeout safety setting。HTTP、network、timeout 或 malformed provider response 都以稳定 transport error 抛出；不实现 provider fallback、retry chain、复杂 backoff 或 provider-specific world logic。Simulation Adapter 仍独自拥有 JSON/Zod 解析和最多一次 repair，CI 使用 injected fake fetch，不调用真实模型。
+
+`npm run smoke:real-model` 是开发者 opt-in 的单回合 headless smoke。它使用内存测试 World，经过正常 Context Builder、Simulation Adapter、Turn Orchestrator 和 Commit Kernel，最后只输出 status、rejection、提交 Event type/revision/time 和最终 World revision。需要 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL`，可选 `DWE_SMOKE_INTENT`；程序不会打印 API Key、原始 prompt、provider raw response 或 hidden reasoning。该 smoke 不属于 GitHub Actions CI。
+
 ## 3. Invariants
 
 以下是不变量。任何产生状态 Delta 的路径，包括玩家行动、后台事件、脚本和 LLM 候选，都必须经过这些规则的检查：
