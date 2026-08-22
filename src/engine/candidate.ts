@@ -93,6 +93,14 @@ const claimRecordCandidate = z.object({
   object: z.string().min(1),
 });
 
+const transmitClaimCandidate = z.object({
+  ...base,
+  type: z.literal("claim.transmit"),
+  sourceCharacterId: z.string().min(1),
+  targetCharacterId: z.string().min(1),
+  claimId: z.string().min(1),
+});
+
 const timeAdvanceCandidate = z.object({
   ...base,
   type: z.literal("world.time_advance"),
@@ -106,6 +114,7 @@ export const candidateSchema = z.discriminatedUnion("type", [
   relationshipCandidate,
   factCandidate,
   claimRecordCandidate,
+  transmitClaimCandidate,
   timeAdvanceCandidate,
 ]);
 

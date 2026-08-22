@@ -81,6 +81,9 @@ export function validateCandidate(tx: any, candidate: CandidateEvent): void {
     case "claim.record":
       validateClaim(tx, candidate);
       return;
+    case "claim.transmit":
+      validateClaimTransmission(tx, candidate);
+      return;
     case "world.time_advance":
       if (Date.parse(normalizeTime(candidate.toTime)) <= Date.parse(currentTime)) {
         throw new KernelError("INVALID_TIME", "world.time_advance must advance the world clock", {
@@ -271,6 +274,92 @@ function validateClaim(tx: any, candidate: Extract<CandidateEvent, { type: "clai
     throw new KernelError("INVALID_CLAIM_SUBJECT", "Claim subject must be a known entity in the same World", {
       subject: candidate.subject,
       worldId: candidate.worldId,
+    });
+  }
+}
+
+function validateClaimTransmission(
+  tx: any,
+  candidate: Extract<CandidateEvent, { type: "claim.transmit" }>,
+): void {
+  const source = findCharacter(tx, candidate.sourceCharacterId);
+  const target = findCharacter(tx, candidate.targetCharacterId);
+  const claim = findClaim(tx, candidate.claimId);
+
+  if (!source) {
+    throw new KernelError("CHARACTER_NOT_FOUND", "Transmission source Character does not exist", {
+      sourceCharacterId: candidate.sourceCharacterId,
+    });
+  }
+  if (!target) {
+    throw new KernelError("CHARACTER_NOT_FOUND", "Transmission target Character does not exist", {
+      targetCharacterId: candidate.targetCharacterId,
+    });
+  }
+  if (source.worldId !== candidate.worldId || target.worldId !== candidate.worldId) {
+    throw new KernelError("CROSS_WORLD_REFERENCE", "Source and Target Characters must belong to the same World", {
+      sourceCharacterId: candidate.sourceCharacterId,
+      targetCharacterId: candidate.targetCharacterId,
+      worldId: candidate.worldId,
+    });
+  }
+  if (!source.alive) {
+    throw new KernelError("CHARACTER_DEAD", "A dead Character cannot transmit a Claim", {
+      characterId: source.id,
+    });
+  }
+  if (!target.alive) {
+    throw new KernelError("CHARACTER_DEAD", "Cannot transmit a Claim to a dead Character", {
+      characterId: target.id,
+    });
+  }
+  if (source.id === target.id) {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "A Character cannot transmit a Claim to itself", {
+      characterId: source.id,
+      claimId: candidate.claimId,
+    });
+  }
+  if (source.locationId === null || target.locationId === null || source.locationId !== target.locationId) {
+    throw new KernelError("CHARACTERS_NOT_COLOCATED", "Source and Target must be co-located to transmit a Claim", {
+      sourceCharacterId: source.id,
+      sourceLocationId: source.locationId,
+      targetCharacterId: target.id,
+      targetLocationId: target.locationId,
+    });
+  }
+  if (!claim) {
+    throw new KernelError("CLAIM_NOT_FOUND", "Claim does not exist", { claimId: candidate.claimId });
+  }
+  if (claim.worldId !== candidate.worldId) {
+    throw new KernelError("CROSS_WORLD_REFERENCE", "Claim must belong to the same World", {
+      claimId: candidate.claimId,
+      worldId: candidate.worldId,
+    });
+  }
+
+  const sourceKnowledge = tx
+    .select()
+    .from(characterKnowledge)
+    .where(and(eq(characterKnowledge.characterId, source.id), eq(characterKnowledge.claimId, claim.id)))
+    .get();
+  if (!sourceKnowledge) {
+    throw new KernelError("KNOWLEDGE_SOURCE_REQUIRED", "Source Character does not know the transmitted Claim", {
+      sourceCharacterId: source.id,
+      claimId: claim.id,
+    });
+  }
+
+  const targetKnowledge = tx
+    .select()
+    .from(characterKnowledge)
+    .where(and(eq(characterKnowledge.characterId, target.id), eq(characterKnowledge.claimId, claim.id)))
+    .get();
+  if (targetKnowledge && targetKnowledge.knowledgeState !== sourceKnowledge.knowledgeState) {
+    throw new KernelError("KNOWLEDGE_STATE_ESCALATION", "Target already holds different knowledge state for this Claim; generic transition lattice is not supported", {
+      targetCharacterId: target.id,
+      claimId: claim.id,
+      existingKnowledgeState: targetKnowledge.knowledgeState,
+      transmittedKnowledgeState: sourceKnowledge.knowledgeState,
     });
   }
 }

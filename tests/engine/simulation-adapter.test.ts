@@ -722,4 +722,60 @@ describe("Simulation Adapter MVP", () => {
     expect(second).toEqual(first);
     store.close();
   });
+
+  it("accepts valid claim.transmit proposal when sourceCharacterId matches actorCharacterId", async () => {
+    const { store, ids, context } = createHarness();
+    const validOutput = {
+      proposals: [{
+        type: "claim.transmit",
+        sourceCharacterId: ids.characters.player.id,
+        targetCharacterId: ids.characters.zhao.id,
+        claimId: ids.secretClaim.id,
+      }],
+    };
+    const model = new FakeModel(validOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const result = await adapter.generate({
+      context,
+      actorCharacterId: ids.characters.player.id,
+      intent: "向赵雅传播信息",
+    });
+
+    expect(result.proposals).toHaveLength(1);
+    expect(result.proposals[0]).toEqual({
+      type: "claim.transmit",
+      sourceCharacterId: ids.characters.player.id,
+      targetCharacterId: ids.characters.zhao.id,
+      claimId: ids.secretClaim.id,
+    });
+    store.close();
+  });
+
+  it("rejects claim.transmit proposal when sourceCharacterId does not match actorCharacterId", async () => {
+    const { store, ids, context } = createHarness();
+    const mismatchedOutput = {
+      proposals: [{
+        type: "claim.transmit",
+        sourceCharacterId: ids.characters.zhao.id, // Zhao instead of Player (actor)
+        targetCharacterId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+      }],
+    };
+    const model = new FakeModel(mismatchedOutput, mismatchedOutput);
+    const adapter = new SimulationAdapter(model);
+
+    const error = await expectAdapterError(
+      () => adapter.generate({
+        context,
+        actorCharacterId: ids.characters.player.id,
+        intent: "传播信息",
+      }),
+      "MODEL_OUTPUT_INVALID",
+    );
+
+    expect(error.diagnostics.attempts).toBe(2);
+    expect(model.calls[1]!.repair?.reason).toContain("sourceCharacterId");
+    store.close();
+  });
 });

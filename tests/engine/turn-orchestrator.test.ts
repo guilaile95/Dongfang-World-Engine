@@ -740,4 +740,61 @@ describe("Turn Orchestrator MVP", () => {
     const second = await runOnce();
     expect(second).toEqual(first);
   });
+
+  it("executes claim.transmit proposal end-to-end and makes Claim visible in target's subsequent Context", async () => {
+    const store = new SqliteWorldStore();
+    const ids = seedTestWorld(store);
+    const contextBuilder = new ContextBuilder(store);
+    const kernel = createKernel(store, "turn");
+
+    // Zhao transmits secretClaim to Player (both in office)
+    const transmitPlan: SimulationPlan = {
+      proposals: [{
+        type: "claim.transmit",
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+      }],
+      diagnostics: {
+        modelId: "test-model",
+        attempts: 1,
+        proposalCount: 1,
+        repaired: false,
+        status: "success",
+      },
+    };
+
+    const planner = new FakePlanner(() => transmitPlan);
+    const orchestrator = new TurnOrchestrator({
+      stateReader: store,
+      contextBuilder,
+      simulationAdapter: planner,
+      commitKernel: kernel,
+    });
+
+    const result = await orchestrator.runActorTurn({
+      worldId: ids.world.id,
+      actorCharacterId: ids.characters.zhao.id,
+      intent: "向玩家告知秘密命题",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.committedEvents).toHaveLength(1);
+    expect(result.committedEvents[0]?.type).toBe("claim.transmit");
+
+    // Now verify Player's context on next turn includes the transmitted Claim!
+    const playerContext = contextBuilder.buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.player.id,
+    });
+
+    const learnedBundle = playerContext.knowledge.find((k) => k.claim.id === ids.secretClaim.id);
+    expect(learnedBundle).toBeDefined();
+    expect(learnedBundle?.knowledge.knowledgeState).toBe("confirmed");
+    expect(learnedBundle?.provenance.sourceType).toBe("character");
+    expect(learnedBundle?.provenance.sourceCharacterId).toBe(ids.characters.zhao.id);
+    expect(learnedBundle?.provenance.sourceEventId).toBe(result.committedEvents[0]?.id);
+
+    store.close();
+  });
 });

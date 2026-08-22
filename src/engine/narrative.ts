@@ -59,6 +59,13 @@ export type NarrativeOutcomeProjection =
     eventTime: string;
   }
   | {
+    type: "claim.transmit";
+    sourceCharacterId: string;
+    targetCharacterId: string;
+    claimId: string;
+    eventTime: string;
+  }
+  | {
     type: "world.time_advance";
     toTime: string;
     eventTime: string;
@@ -256,6 +263,14 @@ function toNarrativeOutcome(event: CommittedEvent): NarrativeOutcomeProjection[]
       const object = readString(payload, "object");
       return actorId && claimId && subject && predicate && object
         ? [{ type: event.type, actorId, claimId, subject, predicate, object, eventTime: event.eventTime }]
+        : [];
+    }
+    case "claim.transmit": {
+      const sourceCharacterId = readString(payload, "sourceCharacterId");
+      const targetCharacterId = readString(payload, "targetCharacterId");
+      const claimId = readString(payload, "claimId");
+      return sourceCharacterId && targetCharacterId && claimId
+        ? [{ type: event.type, sourceCharacterId, targetCharacterId, claimId, eventTime: event.eventTime }]
         : [];
     }
     case "world.time_advance": {

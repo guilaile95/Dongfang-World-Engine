@@ -745,6 +745,126 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
+  it("commits valid source-authored claim.transmit between co-located characters and updates target CharacterKnowledge with event provenance", () => {
+    const { store, ids, kernel } = createHarness();
+    const initial = store.getSnapshot(ids.world.id);
+
+    // Zhao and Player are co-located at 'location-office' in seedTestWorld.
+    // Zhao knows ids.secretClaim ("claim-001") with knowledgeState "confirmed".
+    const transmitEvent = expectSuccess(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+
+    expect(transmitEvent.type).toBe("claim.transmit");
+    expect(transmitEvent.actorIds).toEqual([ids.characters.zhao.id]);
+    expect(transmitEvent.targetIds).toEqual([ids.characters.player.id]);
+
+    const state = store.getSnapshot(ids.world.id);
+    const playerKnowledge = state.knowledge.find(
+      (k) => k.characterId === ids.characters.player.id && k.claimId === ids.secretClaim.id,
+    );
+    expect(playerKnowledge).toBeDefined();
+    expect(playerKnowledge).toMatchObject({
+      characterId: ids.characters.player.id,
+      claimId: ids.secretClaim.id,
+      knowledgeState: "confirmed",
+      sourceType: "character",
+      sourceCharacterId: ids.characters.zhao.id,
+      sourceEventId: transmitEvent.id,
+    });
+
+    const rebuilt = rebuildState(initial, store.listEvents(ids.world.id));
+    expect(sortedSnapshot(rebuilt)).toEqual(sortedSnapshot(state));
+    store.close();
+  });
+
+  it("rejects claim.transmit when source does not hold the Claim, characters are not co-located, or characters are invalid", () => {
+    const { store, ids, kernel } = createHarness();
+    const foreign = seedForeignWorld(store);
+
+    // Player does not know secretClaim initially -> cannot transmit it to Zhao
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.player.id,
+        targetCharacterId: ids.characters.zhao.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "KNOWLEDGE_SOURCE_REQUIRED",
+    );
+
+    // Zhao is at 'location-office', npcA is at 'location-beijing' -> not co-located
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.npcA.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "CHARACTERS_NOT_COLOCATED",
+    );
+
+    // Self-transmission rejected
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.zhao.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "KNOWLEDGE_SOURCE_REQUIRED",
+    );
+
+    // Cross-world target rejected
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: foreign.character.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "CROSS_WORLD_REFERENCE",
+    );
+
+    // Dead character cannot transmit
+    expectSuccess(
+      kernel.commit({
+        type: "character.die",
+        worldId: ids.world.id,
+        actorId: ids.characters.zhao.id,
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expectFailure(
+      kernel.commit({
+        type: "claim.transmit",
+        worldId: ids.world.id,
+        sourceCharacterId: ids.characters.zhao.id,
+        targetCharacterId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        occurredAt: TEST_TIME,
+      }),
+      "CHARACTER_DEAD",
+    );
+
+    store.close();
+  });
+
   it("rejects cross-World Claim, Character, and Event provenance references", () => {
     const { store, ids, kernel } = createHarness();
     const foreign = seedForeignWorld(store);

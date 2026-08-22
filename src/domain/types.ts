@@ -7,6 +7,7 @@ export type EventType =
   | "relationship.change"
   | "fact.assert"
   | "claim.record"
+  | "claim.transmit"
   | "world.time_advance";
 
 export type KnowledgeSource =

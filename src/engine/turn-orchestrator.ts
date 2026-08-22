@@ -454,6 +454,7 @@ function isActorOwnedProposal(proposal: CandidateProposal, actorCharacterId: str
     case "claim.record":
       return proposal.actorId === actorCharacterId;
     case "relationship.change":
+    case "claim.transmit":
       return proposal.sourceCharacterId === actorCharacterId;
     case "world.time_advance":
       return true;

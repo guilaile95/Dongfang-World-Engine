@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "harness:closed-inn": "npm run build && node dist/smoke/closed-inn-harness.js",
     "lint": "tsc --noEmit",
     "smoke:narrated": "npm run build && node dist/smoke/narrated-smoke.js",
     "smoke:real-model": "npm run build && node dist/smoke/real-model-smoke.js",
