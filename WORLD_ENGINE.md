@@ -248,6 +248,23 @@ Simulation Adapter 是 Context Builder 之后的非权威模型边界。它只�
 
 Proposal 只描述六类 actor-supported Candidate 类型的非权威草案；actor 模型暂不拥有 `fact.assert` 能力，即使 Kernel 为 trusted/system producer 保留该 Candidate capability。模型不得提供 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；这些 Event envelope/provenance 字段由未来 Turn Orchestrator 在每次提交前绑定。`world.time_advance.toTime` 仍是可提议的 Effect 字段，不等同于 `occurredAt`。Adapter 对模型输出执行严格确定性 Zod 校验，结构错误最多触发一次 repair，transport/provider 错误不进入无限重试；无论成功、解析失败还是 transport 失败，都不能写入 Event、Materialized State 或 World revision。
 
+### 2.12 Turn Orchestrator MVP
+
+Turn Orchestrator 是从非权威 Proposal 到权威 Commit 的最小运行桥接层。调用方只提供 `worldId`、`actorCharacterId`、intent 和可选 Context budget；Orchestrator 自己通过 Context Builder 构造观察者上下文，再把上下文交给 Simulation Adapter。调用方和模型都不能提供用于执行的任意 raw Context。
+
+模型 Proposal 仍不是 Candidate Event，也不能控制 Event envelope。Orchestrator 在每次提交前绑定：
+
+- 当前请求的 `worldId`；
+- `expectedWorldRevision`；
+- 普通 Proposal 的 `occurredAt = 当前权威 World.currentTime`；
+- `causeEventIds = []`。
+
+`world.time_advance.toTime` 仍由 Proposal 描述并由 Kernel 校验；成功推进后，后续 Proposal 使用新 Materialized State 的 `currentTime`。所有持久化变化必须经过现有 CommitKernel，Orchestrator 不直接写 Event、State 或 revision，也不能将 actor `fact.assert` 加回可执行 Proposal surface。
+
+有序 Proposal 按 committed-prefix 语义执行：零 Proposal 返回 `empty`；全部成功返回 `success`；首项 Kernel rejection 返回 `rejected`；已有成功提交后停止并返回 `partial`，不回滚前缀、不继续后续 Proposal，也不自动创建 `action.failed` Event。下一项只使用本次前一项成功 Commit 返回的 revision，不会静默采用其他写入者产生的更新 revision。
+
+由于 Simulation 是异步的，Orchestrator 在首个 Commit 前检查 Context revision；若 World 已变化，最多重建一次 Context 并重新 Simulation。第二次仍陈旧时返回稳定 stale 结果且不提交本轮 Event。首项发生 `STALE_WORLD_STATE` 也共享这一次重试额度；一旦已有 committed prefix，任何 stale 或其他 Kernel rejection 都只返回前缀，不自动重模拟。
+
 ## 3. Invariants
 
 以下是不变量。任何产生状态 Delta 的路径，包括玩家行动、后台事件、脚本和 LLM 候选，都必须经过这些规则的检查：
