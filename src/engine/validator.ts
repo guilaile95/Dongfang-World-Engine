@@ -232,6 +232,14 @@ function validateKnowledge(
       claimId: candidate.claimId,
     });
   }
+  if (sourceEvent.type === "character.learn_claim" && sourcePayload.knowledgeState !== candidate.knowledgeState) {
+    throw new KernelError("KNOWLEDGE_STATE_ESCALATION", "Claim Event provenance must preserve the source knowledge state exactly", {
+      sourceEventId: candidate.source.eventId,
+      claimId: candidate.claimId,
+      sourceKnowledgeState: sourcePayload.knowledgeState,
+      requestedKnowledgeState: candidate.knowledgeState,
+    });
+  }
 }
 
 function validateClaim(tx: any, candidate: Extract<CandidateEvent, { type: "claim.record" }>): void {

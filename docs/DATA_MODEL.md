@@ -46,6 +46,8 @@ Seed
 
 初始 Fact、Claim 和 CharacterKnowledge 必须通过 `source_seed_id` 指向该 World 的 Seed；这使初始设定不会退化为没有来源的 `initial` 标签。当前阶段不实现 World Pack loader。
 
+`SqliteWorldStore.seedWorld()` 会在事务写入前确定性检查所有 Seed Input 的 World 归属。CharacterKnowledge 的 `character_id`、`claim_id` 必须分别属于当前输入的 Character、Claim，非空 provenance 必须指向当前 Seed / World；Relationship 两端也必须属于当前 Character 集合。失败使用稳定的 `SEED_INVALID`，不会留下部分 Seed 状态。
+
 ### 2.3 Character
 
 表示玩家角色、NPC 或其他具有身份与行动能力的角色。
@@ -159,6 +161,8 @@ Candidate Event 使用结构化来源：
 ```
 
 `character` 来源表示另一个角色把 Claim 告诉当前角色；Hard Validator 必须确认来源角色属于同一个 World，并且自身拥有该 Claim。来源角色的 `knowledge_state` 不要求是 `confirmed`，`rumor` 也可以传播 `rumor`。当前精确复制规则要求传播 Event 的状态与来源角色完全相同。`event` 来源表示当前角色实际参与了该 Event；Hard Validator 必须确认来源 Event 属于同一个 World、时间不晚于学习 Event、角色位于该 Event 的 `actor_ids` 或 `target_ids`，且 Event 的结构化载荷确实关联该 Claim。只有 `claim.record` 或 `character.learn_claim` Event 可以成为 Claim 的 Event provenance。
+
+当 Event provenance 指向 `character.learn_claim` 时，来源载荷的 `knowledgeState` 必须与当前 Candidate 完全相同；不能通过引用旧的 `rumor` / `confirmed` 学习 Event 静默升级或降级。
 
 Seed State 可以同时包含客观 Fact、没有匹配 Fact 的 Claim，以及引用 Claim 的初始 CharacterKnowledge。此时 `source_type = initial`，`source_character_id` 和 `source_event_id` 都为空，但 `source_seed_id` 必须指向 Seed。普通角色不能仅因为 Fact 存在、数据库中存在某个 `fact.assert` Event 或看到其他角色的传播记录就自动获得 Claim。
 

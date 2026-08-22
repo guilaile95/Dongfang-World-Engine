@@ -123,7 +123,11 @@ Step 2.5 的 MVP 使用精确状态复制规则：`character` 来源的 `knowled
 
 `event` 来源表示当前学习者从亲自参与或观察到的 Event 中获得 Claim。Hard Validator 必须确认来源 Event 属于同一个 World、`eventTime` 不晚于学习 Event、学习者存在于来源 Event 的 `actorIds` 或 `targetIds`，并且来源 Event 的结构化载荷确实关联目标 Claim。只有 `claim.record` 或另一个 `character.learn_claim` Event 可以作为 Claim 的 Event provenance；Fact 的存在、某个无关的 `fact.assert` Event 或数据库中的传播记录，都不能自动授予其他角色 Claim。
 
+当来源 Event 是 `character.learn_claim` 时，来源载荷中的 `knowledgeState` 还必须与当前 Candidate 完全相同；这条规则防止通过引用旧的 `rumor` 学习 Event 静默升级为 `confirmed`，也防止静默降级。
+
 Candidate 的知识状态在当前 MVP 限定为 `unknown`、`rumor`、`suspected`、`believed`、`confirmed`。Seed State 可以包含没有匹配 Fact 的 Claim，也可以包含引用 Claim 的初始 CharacterKnowledge；初始记录使用 `source_type = initial`，但必须指向该 World 的可审计 Seed 身份。`claim.record` 只持久化命题，不创建或修改 Fact。
+
+`SqliteWorldStore.seedWorld()` 在写入前确定性验证 Seed、World、Location、Character、Fact、Claim、PredicatePolicy、CharacterKnowledge 和 Relationship 的 World 归属；Knowledge 的 Character/Claim 引用必须来自同一 Seed Input，存在的 `source_seed_id` 必须指向当前 Seed。任何失败都返回稳定的 `SEED_INVALID`，并且整个 Seed transaction 不产生部分写入。
 
 Step 2.6 的硬边界是：
 

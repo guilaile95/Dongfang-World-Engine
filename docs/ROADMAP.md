@@ -62,6 +62,7 @@ Separate non-authoritative epistemic propositions from objective Truth before an
 - refactor `CharacterKnowledge` to reference `claim_id`, never `fact_id`;
 - replace `character.learn_fact` with `character.learn_claim` and add narrowly-scoped `claim.record`;
 - keep character/event provenance, same-World validation, non-future checks, and exact-state propagation;
+- require Event provenance from `character.learn_claim` to preserve its payload `knowledgeState`, and validate Seed inputs deterministically before writing;
 - preserve Seed provenance for objective Facts, Claims, and initial CharacterKnowledge;
 - ensure Claim replay/rebuild never creates objective Facts and unrelated `fact.assert` Events cannot grant Claim knowledge;
 - preserve Step 2/2.5 revision, identity, policy, rollback, append-only, and mixed-candidate coverage.

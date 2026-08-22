@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CommitKernel, type CommitResult } from "../../src/engine/commit-kernel.js";
+import { KernelError } from "../../src/engine/errors.js";
 import { TEST_TIME, seedTestWorld } from "../../src/testkit/world-builder.js";
 import { rebuildState } from "../../src/engine/projector.js";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
@@ -7,6 +8,8 @@ import type {
   CharacterRecord,
   ClaimRecord,
   CommittedEvent,
+  FactRecord,
+  KnowledgeRecord,
   SeedRecord,
   WorldRecord,
   WorldSnapshot,
@@ -53,6 +56,18 @@ function expectFailure(result: CommitResult, code: string): void {
     throw new Error(`Expected ${code}, got a successful commit`);
   }
   expect(result.error.code).toBe(code);
+}
+
+function expectSeedFailure(action: () => void, code: string): void {
+  try {
+    action();
+    throw new Error(`Expected ${code}, but seedWorld succeeded`);
+  } catch (error) {
+    expect(error).toBeInstanceOf(KernelError);
+    if (error instanceof KernelError) {
+      expect(error.code).toBe(code);
+    }
+  }
 }
 
 function sortedSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
@@ -106,6 +121,7 @@ function insertRawEventForTemporalValidation(
 
 function seedForeignWorld(store: SqliteWorldStore): {
   world: WorldRecord;
+  seed: SeedRecord;
   character: CharacterRecord;
   claim: ClaimRecord;
 } {
@@ -150,7 +166,7 @@ function seedForeignWorld(store: SqliteWorldStore): {
     characters: [character],
     claims: [claim],
   });
-  return { world, character, claim };
+  return { world, seed, character, claim };
 }
 
 describe("World Engine Commit Kernel", () => {
@@ -500,6 +516,57 @@ describe("World Engine Commit Kernel", () => {
     store.close();
   });
 
+  it("prevents Claim Event provenance from escalating or downgrading KnowledgeState", () => {
+    const { store, ids, kernel } = createHarness();
+    const first = expectSuccess(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        knowledgeState: "rumor",
+        source: { kind: "character", characterId: ids.characters.npcA.id },
+        occurredAt: TEST_TIME,
+      }),
+    );
+    const beforeRejected = store.getSnapshot(ids.world.id);
+    expectFailure(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        knowledgeState: "confirmed",
+        source: { kind: "event", eventId: first.id },
+        occurredAt: TEST_TIME,
+      }),
+      "KNOWLEDGE_STATE_ESCALATION",
+    );
+    expect(store.listEvents(ids.world.id)).toHaveLength(1);
+    expect(store.getSnapshot(ids.world.id).world.revision).toBe(beforeRejected.world.revision);
+    expect(store.getSnapshot(ids.world.id)).toEqual(beforeRejected);
+
+    expectSuccess(
+      kernel.commit({
+        type: "character.learn_claim",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        claimId: ids.secretClaim.id,
+        knowledgeState: "rumor",
+        source: { kind: "event", eventId: first.id },
+        occurredAt: TEST_TIME,
+      }),
+    );
+    expect(store.getSnapshot(ids.world.id).knowledge).toContainEqual(expect.objectContaining({
+      characterId: ids.characters.player.id,
+      claimId: ids.secretClaim.id,
+      knowledgeState: "rumor",
+      sourceType: "event",
+      sourceEventId: first.id,
+    }));
+    store.close();
+  });
+
   it("rejects a source Character that does not know the Claim", () => {
     const { store, ids, kernel } = createHarness();
     expectFailure(
@@ -642,6 +709,114 @@ describe("World Engine Commit Kernel", () => {
       "CROSS_WORLD_REFERENCE",
     );
     expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    store.close();
+  });
+
+  it("rejects cross-World Seed inputs deterministically before any write", () => {
+    const { store } = createHarness();
+    const foreign = seedForeignWorld(store);
+    const worldA: WorldRecord = {
+      id: "world-seed-a",
+      name: "Seed World A",
+      currentTime: TEST_TIME,
+      revision: 0,
+      status: "active",
+    };
+    const seedA: SeedRecord = {
+      id: "seed-world-a-v1",
+      worldId: worldA.id,
+      sourceType: "test_fixture",
+      sourceRef: "tests/engine/commit-kernel.test.ts",
+      metadata: JSON.stringify({ name: "seed-world-a", version: 1 }),
+    };
+    const characterA: CharacterRecord = {
+      id: "character-seed-a",
+      worldId: worldA.id,
+      name: "Seed Character A",
+      type: "npc",
+      alive: true,
+      locationId: null,
+      identity: "seed-a",
+      currentGoal: "test seed isolation",
+    };
+    const crossWorldKnowledge: KnowledgeRecord = {
+      characterId: characterA.id,
+      claimId: foreign.claim.id,
+      knowledgeState: "rumor",
+      sourceType: "initial",
+      sourceCharacterId: null,
+      sourceEventId: null,
+      sourceSeedId: seedA.id,
+      learnedAt: TEST_TIME,
+    };
+
+    expectSeedFailure(
+      () => store.seedWorld({
+        world: worldA,
+        seed: seedA,
+        locations: [],
+        characters: [characterA],
+        claims: [],
+        knowledge: [crossWorldKnowledge],
+      }),
+      "SEED_INVALID",
+    );
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(worldA.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM seeds WHERE id = ?").get(seedA.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM characters WHERE id = ?").get(characterA.id)).toEqual({ count: 0 });
+
+    const worldC: WorldRecord = {
+      id: "world-seed-c",
+      name: "Seed World C",
+      currentTime: TEST_TIME,
+      revision: 0,
+      status: "active",
+    };
+    const seedC: SeedRecord = {
+      id: "seed-world-c-v1",
+      worldId: worldC.id,
+      sourceType: "test_fixture",
+      sourceRef: "tests/engine/commit-kernel.test.ts",
+      metadata: JSON.stringify({ name: "seed-world-c", version: 1 }),
+    };
+    const characterC: CharacterRecord = { ...characterA, id: "character-seed-c", worldId: worldC.id };
+    const crossSeedFact: FactRecord = {
+      id: "fact-cross-seed",
+      worldId: worldC.id,
+      subject: characterC.id,
+      predicate: "cross_seed_fact",
+      object: "invalid",
+      validFrom: TEST_TIME,
+      validTo: null,
+      sourceEventId: null,
+      sourceSeedId: foreign.seed.id,
+      sourceType: "initial_lore",
+    };
+    const crossSeedClaim: ClaimRecord = {
+      id: "claim-cross-seed",
+      worldId: worldC.id,
+      subject: characterC.id,
+      predicate: "cross_seed_claim",
+      object: "invalid",
+      sourceEventId: null,
+      sourceSeedId: foreign.seed.id,
+      recordedAt: TEST_TIME,
+    };
+
+    expectSeedFailure(
+      () => store.seedWorld({
+        world: worldC,
+        seed: seedC,
+        locations: [],
+        characters: [characterC],
+        facts: [crossSeedFact],
+        claims: [crossSeedClaim],
+      }),
+      "SEED_INVALID",
+    );
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(worldC.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM facts WHERE id = ?").get(crossSeedFact.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM claims WHERE id = ?").get(crossSeedClaim.id)).toEqual({ count: 0 });
     store.close();
   });
 
