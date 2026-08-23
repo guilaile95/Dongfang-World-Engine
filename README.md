@@ -84,7 +84,23 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证，以及 Vertical Slice 3 Authority proof、3.1 trusted binding、3.2 frozen real-model action sample、3.3 player-legible consequence、3.4 frozen real-Narrator sample 与 Issue #47 visibility-safe Claim semantic grounding 均已完成。当前产品阶段是 Issue #49 **Playable Local Loop**：通过真正的玩家入口证明自然语言连续游玩、文件型 SQLite 持久化与恢复、最小世界继续和可理解的 delayed consequence；不再增加 Canon 3.x proof runner。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证、Vertical Slice 3 Authority proof 系列、Issue #47 visibility-safe Claim semantic grounding，以及 Issue #49 **Playable Local Loop** 均已完成。项目现在拥有第一个可启动、可连续输入自然语言、可退出并从同一 SQLite 恢复、会发生最小 NPC/时间继续和可解释 delayed consequence 的本地玩家入口。下一系统必须由后续真实玩法 blocker 决定，不再增加 Canon 3.x proof runner。
+
+## 本地游玩
+
+安装依赖并设置一个 OpenAI-compatible Chat Completions 服务：
+
+```powershell
+npm ci
+$env:DWE_LLM_BASE_URL = "https://your-provider.example/v1"
+$env:DWE_LLM_API_KEY = "your-key"
+$env:DWE_LLM_MODEL = "your-model"
+npm run play
+```
+
+直接输入自然语言行动，输入 `:quit` 退出。权威世界默认保存在 `data/local/closed-inn.sqlite`；再次执行同一命令会恢复相同 World、Event Log、revision、角色状态、Claim 与 Knowledge，不会重新 Seed。可以用 `DWE_WORLD_FILE` 覆盖这一个文件路径，并用 `DWE_LLM_NARRATOR_MODEL` 为 Narrator 选择另一模型；这只是单世界文件配置，不是 Save-slot 系统。
+
+玩家回合始终走现有 `Context Builder → Simulation Adapter → Turn Orchestrator → CommitKernel`。每次输入后，Closed Inn 的场景内 continuation policy 通过同一 Orchestrator/Kernel 提交最小 NPC/时间回合；唯一的延迟关系反应由可信场景 producer 从 NPC 合法 Context 的 Knowledge source Event 绑定 cause，再作为 Candidate 交给 Hard Validator/CommitKernel，不直接写数据库。它不是 Scheduler。当前可玩词汇聚焦移动、Claim 传播、关系和时间推进；未结构化对话尚未成为 durable stimulus，真实玩法证明其阻塞前不建设 Dialogue Framework。
 
 第一阶段验证目标是：
 

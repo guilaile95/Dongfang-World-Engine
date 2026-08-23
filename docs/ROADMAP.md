@@ -253,9 +253,15 @@ The consumed sample is not rerun or tuned. Issue #47 closes the observed Behavio
 
 ## Product Stage — Playable Local Loop
 
-Status: active in Issue #49.
+Status: complete in Issue #49.
 
-The next proof must come from a real player entrypoint: natural-language Player turns through the existing authority chain, one file-backed SQLite world that resumes after process exit, minimal scenario-local world continuation, and a later player-legible consequence of an earlier action. Canon harnesses remain regression assets; no further Canon 3.x runner, generic Scheduler, Save system, Dialogue framework, Memory/RAG or UI is justified without a concrete playable blocker.
+- add `npm run play` as the first Player-oriented runtime entrypoint, using natural-language intent and the existing Context Builder → Simulation Adapter → Turn Orchestrator → CommitKernel path;
+- open or seed one authoritative file-backed Closed Inn SQLite World and resume its revision, Event Log, Character state, Claims, Knowledge and Relationships after process exit;
+- run one scenario-local NPC/time continuation after each Player interaction without a generic Scheduler or direct database write;
+- bind a Player Claim transmission to a later NPC relationship reaction, then expose the observed consequence through Claim/Knowledge provenance and #47 `displayText` without Fact/private-Knowledge access;
+- verify the actual entrypoint across two processes and 25 Player interactions (10 + exit + resume + 15), with continuous revisions, delayed causality, safe Narrator envelopes and canonical replay equality.
+
+The acceptance run uses a credential-free loopback OpenAI-compatible provider in CI. A formal real-model run remains optional and must follow no-reroll discipline; no credentials are stored in the repository. The next system remains unselected until play evidence identifies a concrete blocker. Canon harnesses remain regression assets; no further Canon runner, generic Scheduler, Save system, Dialogue framework, Memory/RAG or UI is justified speculatively.
 
 ## Later
 
