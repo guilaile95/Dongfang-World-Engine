@@ -357,6 +357,8 @@ describe("Narrative projection MVP", () => {
       "plain player-facing text",
       "authoritative outcomes",
       "observer-visible context",
+      "displayText",
+      "not objective Truth or new Knowledge",
       "new named characters",
       "secret histories",
       "ownership",

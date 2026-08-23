@@ -1,6 +1,6 @@
 import type { CommittedEvent, KnowledgeState } from "../domain/types.js";
 import { CommitKernel, type CommitResult } from "../engine/commit-kernel.js";
-import { ContextBuilder } from "../engine/context-builder.js";
+import { ContextBuilder, type ContextClaimGroundings } from "../engine/context-builder.js";
 import { rebuildState } from "../engine/projector.js";
 import { SimulationAdapter, type SimulationModelClient } from "../engine/simulation-adapter.js";
 import { TurnOrchestrator, type TurnResult } from "../engine/turn-orchestrator.js";
@@ -17,6 +17,17 @@ import { canonicalSnapshot } from "./closed-inn-harness.js";
 
 export const DEFAULT_CANON_DIVERGENCE_PLAYER_INTENT =
   "只能根据当前合法可见的地点选项，决定是否前往西塔阻止旧命令；不要声称任何未提交的客观事实。";
+
+export function canonDivergenceClaimGroundings(
+  fixture: Pick<CanonDivergenceFixtureIds, "worldId" | "playerId">,
+): ContextClaimGroundings {
+  return {
+    [fixture.playerId]: {
+      [`claim-player-observed-b-prime-${fixture.worldId}`]:
+        "The Gate Captain's patrol route changed to the West Tower.",
+    },
+  };
+}
 
 export interface CanonDivergenceHarnessOptions {
   store: SqliteWorldStore;

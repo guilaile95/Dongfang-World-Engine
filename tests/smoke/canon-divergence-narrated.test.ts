@@ -57,7 +57,7 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
       observerContext: {
         observer: { id: string };
         knowledge: Array<{
-          claim: { subject: string; predicate: string; object: string };
+          claim: { subject: string; predicate: string; object: string; displayText: string };
           knowledge: { knowledgeState: string };
           provenance: { sourceType: string; sourceEventType: string };
         }>;
@@ -71,7 +71,11 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
       toLocationId: expect.stringContaining("location-west-tower-formal-narrated-sample"),
     })]);
     expect(envelope.observerContext.knowledge).toEqual([expect.objectContaining({
-      claim: expect.objectContaining({ predicate: "watch_route", object: "west_tower" }),
+      claim: expect.objectContaining({
+        predicate: "watch_route",
+        object: "west_tower",
+        displayText: "The Gate Captain's patrol route changed to the West Tower.",
+      }),
       knowledge: expect.objectContaining({ knowledgeState: "confirmed" }),
       provenance: expect.objectContaining({ sourceType: "event", sourceEventType: "claim.record" }),
     })]);

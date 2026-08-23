@@ -249,7 +249,13 @@ Status: complete.
 - execute one formal sample from main `6f64c9aaed20bef984c6b55f0557a8eec9765814`: one Narrator call, zero Simulation provider calls, no reroll, Hard Gate PASS, revision/Event count `6/6`, and full canonical replay consistent;
 - classify player legibility as **NO**: the safe narrative rendered `watch_route = west_tower` ambiguously as surveillance and did not clearly name the Gate Captain, the route change or the Player-caused consequence.
 
-The observed gap is tracked as Behavioral P2 in Issue #47. Do not rerun or tune the consumed sample. Any later Slice must first prove the smallest visibility-safe semantic grounding needed for already-known Claims; it must not jump to a generic ontology, predicate DSL, Entity Resolver, prompt framework, Dialogue, Memory/RAG, Scheduler or new Truth authority.
+The consumed sample is not rerun or tuned. Issue #47 closes the observed Behavioral P2 with one optional, observer-and-Claim-scoped `displayText` added only after CharacterKnowledge visibility filtering. Raw Claim identity and KnowledgeState remain intact; no Character/Location metadata is auto-resolved, and Kernel, Validator, Projector, Fact/Claim authority and Narrator write boundaries remain unchanged.
+
+## Product Stage — Playable Local Loop
+
+Status: active in Issue #49.
+
+The next proof must come from a real player entrypoint: natural-language Player turns through the existing authority chain, one file-backed SQLite world that resumes after process exit, minimal scenario-local world continuation, and a later player-legible consequence of an earlier action. Canon harnesses remain regression assets; no further Canon 3.x runner, generic Scheduler, Save system, Dialogue framework, Memory/RAG or UI is justified without a concrete playable blocker.
 
 ## Later
 

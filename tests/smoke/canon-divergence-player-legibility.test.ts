@@ -9,7 +9,10 @@ import {
 import type { SimulationModelClient } from "../../src/engine/simulation-adapter.js";
 import type { TurnResult } from "../../src/engine/turn-orchestrator.js";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
-import { runCanonDivergenceScenario } from "../../src/smoke/canon-divergence-harness.js";
+import {
+  canonDivergenceClaimGroundings,
+  runCanonDivergenceScenario,
+} from "../../src/smoke/canon-divergence-harness.js";
 
 describe("Canon divergence Player-legible consequence", () => {
   it("routes the trusted consequence through Claim/Knowledge into the existing safe NarrativeEnvelope", async () => {
@@ -77,7 +80,10 @@ describe("Canon divergence Player-legible consequence", () => {
         }),
       ]);
 
-      const contextBuilder = new ContextBuilder(store);
+      const contextBuilder = new ContextBuilder(store, canonDivergenceClaimGroundings({
+        worldId: result.fixture.worldId,
+        playerId: result.fixture.playerId,
+      }));
       const playerContext = contextBuilder.buildCharacterContext({
         worldId: result.fixture.worldId,
         observerCharacterId: result.fixture.playerId,
@@ -89,6 +95,7 @@ describe("Canon divergence Player-legible consequence", () => {
           subject: interventionEvent.payload.subject,
           predicate: "watch_route",
           object: "west_tower",
+          displayText: "The Gate Captain's patrol route changed to the West Tower.",
         },
         knowledge: expect.objectContaining({
           characterId: result.fixture.playerId,

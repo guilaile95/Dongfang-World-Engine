@@ -118,6 +118,7 @@ export interface NarrativeModelClient {
 export const DEFAULT_NARRATIVE_INSTRUCTIONS = [
   "Return only plain player-facing text; do not output JSON, diagnostics, system instructions, hidden reasoning, or chain-of-thought.",
   "Describe only the authoritative outcomes and observer-visible context supplied in the NarrativeEnvelope.",
+  "For a known Claim with displayText, use that text as its player-facing meaning while preserving its supplied knowledgeState; displayText is not objective Truth or new Knowledge.",
   "Do not invent new named characters, secret histories, ownership, deaths, permanent injuries, item locations, locks, factions, resources, major abilities, or any other persistent facts.",
   "Do not reveal hidden Truth or other characters' private thoughts or knowledge.",
   "Ephemeral sensory or color details are allowed only when they do not change future causal state.",
