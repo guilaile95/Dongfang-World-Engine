@@ -461,6 +461,7 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
     .from(facts)
     .where(and(eq(facts.worldId, candidate.worldId), eq(facts.subject, candidate.subject), eq(facts.predicate, candidate.predicate)))
     .all();
+  const factsToClose: Array<typeof facts.$inferSelect> = [];
   for (const existing of samePredicate) {
     if (existing.object === candidate.object) {
       continue;
@@ -476,7 +477,9 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
         existingFactId: existing.id,
       });
     }
+    factsToClose.push(existing);
   }
+  validateNoRetroactiveFactRequirementInvalidation(tx, candidate, factsToClose, validFrom);
 }
 
 function validateFactAssertionRequirements(
@@ -540,6 +543,166 @@ function validateFactAssertionRequirements(
       },
     );
   }
+}
+
+function validateNoRetroactiveFactRequirementInvalidation(
+  tx: any,
+  candidate: Extract<CandidateEvent, { type: "fact.assert" }>,
+  factsToClose: Array<typeof facts.$inferSelect>,
+  replacementValidFrom: string,
+): void {
+  if (factsToClose.length === 0) {
+    return;
+  }
+
+  const closingFactIds = new Set(factsToClose.map((fact) => fact.id));
+  const invalidatedByKey = new Map<string, {
+    assertingFactId: string;
+    assertingSubject: string;
+    assertingPredicate: string;
+    assertingObject: string;
+    assertionTime: string;
+    requiredSubject: string;
+    requiredPredicate: string;
+    requiredObject: string;
+  }>();
+
+  for (const closingFact of factsToClose) {
+    const requirements = tx
+      .select()
+      .from(factAssertionRequirements)
+      .where(and(
+        eq(factAssertionRequirements.worldId, candidate.worldId),
+        eq(factAssertionRequirements.requiredSubject, closingFact.subject),
+        eq(factAssertionRequirements.requiredPredicate, closingFact.predicate),
+        eq(factAssertionRequirements.requiredObject, closingFact.object),
+      ))
+      .all();
+    const matchingRequiredFacts = tx
+      .select()
+      .from(facts)
+      .where(and(
+        eq(facts.worldId, candidate.worldId),
+        eq(facts.subject, closingFact.subject),
+        eq(facts.predicate, closingFact.predicate),
+        eq(facts.object, closingFact.object),
+      ))
+      .all();
+
+    for (const requirement of requirements as Array<typeof factAssertionRequirements.$inferSelect>) {
+      const assertingFacts = tx
+        .select()
+        .from(facts)
+        .where(and(
+          eq(facts.worldId, candidate.worldId),
+          eq(facts.subject, requirement.assertingSubject),
+          eq(facts.predicate, requirement.assertingPredicate),
+          eq(facts.object, requirement.assertingObject),
+        ))
+        .all()
+        .filter((fact: typeof facts.$inferSelect) => fact.sourceEventId !== null) as Array<typeof facts.$inferSelect>;
+      const assertionPoints = assertingFacts.map((fact) => ({
+        id: fact.id,
+        subject: fact.subject,
+        predicate: fact.predicate,
+        object: fact.object,
+        validFrom: fact.validFrom,
+      }));
+      if (
+        candidate.subject === requirement.assertingSubject &&
+        candidate.predicate === requirement.assertingPredicate &&
+        candidate.object === requirement.assertingObject
+      ) {
+        assertionPoints.push({
+          id: candidate.factId,
+          subject: candidate.subject,
+          predicate: candidate.predicate,
+          object: candidate.object,
+          validFrom: replacementValidFrom,
+        });
+      }
+
+      for (const assertingFact of assertionPoints) {
+        const assertionMilliseconds = Date.parse(assertingFact.validFrom);
+        const prerequisiteWasActive = matchingRequiredFacts.some((fact: typeof facts.$inferSelect) =>
+          isFactActiveAt(fact, assertionMilliseconds),
+        );
+        const prerequisiteRemainsActive = matchingRequiredFacts.some((fact: typeof facts.$inferSelect) =>
+          isFactActiveAt(
+            fact,
+            assertionMilliseconds,
+            closingFactIds.has(fact.id) ? replacementValidFrom : fact.validTo,
+          ),
+        );
+        if (!prerequisiteWasActive || prerequisiteRemainsActive) {
+          continue;
+        }
+
+        const invalidated = {
+          assertingFactId: assertingFact.id,
+          assertingSubject: requirement.assertingSubject,
+          assertingPredicate: requirement.assertingPredicate,
+          assertingObject: requirement.assertingObject,
+          assertionTime: assertingFact.validFrom,
+          requiredSubject: requirement.requiredSubject,
+          requiredPredicate: requirement.requiredPredicate,
+          requiredObject: requirement.requiredObject,
+        };
+        invalidatedByKey.set(JSON.stringify([
+          invalidated.assertingFactId,
+          invalidated.requiredSubject,
+          invalidated.requiredPredicate,
+          invalidated.requiredObject,
+        ]), invalidated);
+      }
+    }
+  }
+
+  const invalidatedAssertions = [...invalidatedByKey.values()].sort((first, second) =>
+    JSON.stringify([
+      first.assertingSubject,
+      first.assertingPredicate,
+      first.assertingObject,
+      first.assertionTime,
+      first.assertingFactId,
+      first.requiredSubject,
+      first.requiredPredicate,
+      first.requiredObject,
+    ]).localeCompare(JSON.stringify([
+      second.assertingSubject,
+      second.assertingPredicate,
+      second.assertingObject,
+      second.assertionTime,
+      second.assertingFactId,
+      second.requiredSubject,
+      second.requiredPredicate,
+      second.requiredObject,
+    ])),
+  );
+  if (invalidatedAssertions.length === 0) {
+    return;
+  }
+
+  throw new KernelError(
+    "FACT_PRECONDITION_FAILED",
+    "Fact assertion would retroactively invalidate committed Fact prerequisites",
+    {
+      replacementSubject: candidate.subject,
+      replacementPredicate: candidate.predicate,
+      replacementObject: candidate.object,
+      replacementValidFrom,
+      invalidatedAssertions,
+    },
+  );
+}
+
+function isFactActiveAt(
+  fact: typeof facts.$inferSelect,
+  atMilliseconds: number,
+  effectiveValidTo: string | null = fact.validTo,
+): boolean {
+  return Date.parse(fact.validFrom) <= atMilliseconds &&
+    (effectiveValidTo === null || atMilliseconds < Date.parse(effectiveValidTo));
 }
 
 function parseStringArray(value: string): string[] {
