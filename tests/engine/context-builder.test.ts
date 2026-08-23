@@ -171,6 +171,96 @@ describe("Context Builder MVP", () => {
     store.close();
   });
 
+  it("adds only explicit observer-scoped Claim display grounding after Knowledge visibility", () => {
+    const { store, ids } = createHarness();
+    const kernel = createKernel(store);
+    const hiddenReferenceClaim = expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "claim.record",
+      worldId: ids.world.id,
+      claimId: "claim-hidden-reference",
+      actorId: ids.characters.npcA.id,
+      subject: ids.characters.zhao.id,
+      predicate: "meeting_place",
+      object: ids.locations.hidden.id,
+      occurredAt: TEST_TIME,
+    }));
+    expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "character.learn_claim",
+      worldId: ids.world.id,
+      actorId: ids.characters.npcA.id,
+      claimId: "claim-hidden-reference",
+      knowledgeState: "rumor",
+      source: { kind: "event", eventId: hiddenReferenceClaim.id },
+      occurredAt: TEST_TIME,
+    }));
+    const prototypeNamedClaim = expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "claim.record",
+      worldId: ids.world.id,
+      claimId: "toString",
+      actorId: ids.characters.npcA.id,
+      subject: ids.characters.npcA.id,
+      predicate: "prototype_name_probe",
+      object: "ordinary-value",
+      occurredAt: TEST_TIME,
+    }));
+    expectCommitted(commitAtCurrentRevision(store, kernel, {
+      type: "character.learn_claim",
+      worldId: ids.world.id,
+      actorId: ids.characters.npcA.id,
+      claimId: "toString",
+      knowledgeState: "rumor",
+      source: { kind: "event", eventId: prototypeNamedClaim.id },
+      occurredAt: TEST_TIME,
+    }));
+    const builder = new ContextBuilder(store, {
+      [ids.characters.npcA.id]: {
+        [ids.unverifiedClaim.id]: "A low-profile witness may belong to Organization A.",
+      },
+    });
+    const snapshotBeforeContext = store.getSnapshot(ids.world.id);
+    const eventsBeforeContext = store.listEvents(ids.world.id);
+
+    const npcAContext = builder.buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.npcA.id,
+      budget: 10,
+    });
+    expect(npcAContext.knowledge.find((bundle) => bundle.claim.id === ids.unverifiedClaim.id)?.claim)
+      .toEqual({
+        id: ids.unverifiedClaim.id,
+        subject: ids.unverifiedClaim.subject,
+        predicate: ids.unverifiedClaim.predicate,
+        object: ids.unverifiedClaim.object,
+        displayText: "A low-profile witness may belong to Organization A.",
+      });
+    const hiddenBundle = npcAContext.knowledge.find((bundle) => bundle.claim.id === "claim-hidden-reference");
+    expect(hiddenBundle?.claim).toEqual({
+      id: "claim-hidden-reference",
+      subject: ids.characters.zhao.id,
+      predicate: "meeting_place",
+      object: ids.locations.hidden.id,
+    });
+    expect(hiddenBundle?.knowledge.knowledgeState).toBe("rumor");
+    expect(JSON.stringify(hiddenBundle)).not.toContain(ids.characters.zhao.name);
+    expect(JSON.stringify(hiddenBundle)).not.toContain(ids.characters.zhao.identity);
+    expect(JSON.stringify(hiddenBundle)).not.toContain(ids.locations.hidden.name);
+    expect(npcAContext.knowledge.find((bundle) => bundle.claim.id === "toString")?.claim)
+      .not.toHaveProperty("displayText");
+
+    const npcBContext = builder.buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.npcB.id,
+      budget: 10,
+    });
+    expect(npcBContext.knowledge.find((bundle) => bundle.claim.id === ids.unverifiedClaim.id)?.claim)
+      .not.toHaveProperty("displayText");
+    expect(JSON.stringify(npcBContext)).not.toContain("A low-profile witness");
+    expect(npcBContext).not.toHaveProperty("facts");
+    expect(store.getSnapshot(ids.world.id)).toEqual(snapshotBeforeContext);
+    expect(store.listEvents(ids.world.id)).toEqual(eventsBeforeContext);
+    store.close();
+  });
+
   it("does not leak Claim database provenance through a later Character knowledge chain", () => {
     const { store, ids, builder } = createHarness();
     const kernel = createKernel(store);

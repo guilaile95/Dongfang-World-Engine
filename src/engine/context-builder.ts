@@ -37,7 +37,12 @@ export interface ContextClaimProjection {
   subject: string;
   predicate: string;
   object: string;
+  displayText?: string;
 }
+
+export type ContextClaimGroundings = Readonly<
+  Record<string, Readonly<Record<string, string>>>
+>;
 
 export interface ContextRelationshipProjection {
   sourceCharacterId: string;
@@ -90,7 +95,10 @@ type ContextUnit =
   | { kind: "relationship"; value: ContextRelationshipProjection };
 
 export class ContextBuilder {
-  public constructor(private readonly store: SqliteWorldStore) {}
+  public constructor(
+    private readonly store: SqliteWorldStore,
+    private readonly claimGroundings: ContextClaimGroundings = {},
+  ) {}
 
   public buildCharacterContext(input: BuildCharacterContextInput): CharacterContext {
     const budget = normalizeBudget(input.budget);
@@ -164,7 +172,8 @@ export class ContextBuilder {
           ? null
           : eventById.get(knowledge.sourceEventId) ?? null;
         return {
-          claim: toClaimProjection(claim),
+          // Visibility is decided by CharacterKnowledge before any display grounding is consulted.
+          claim: toClaimProjection(claim, getClaimDisplayText(this.claimGroundings, observer.id, claim.id)),
           knowledge: { ...knowledge },
           provenance: {
             sourceType: knowledge.sourceType,
@@ -266,13 +275,28 @@ function toPublicCharacterProjection(character: CharacterRecord): PublicCharacte
   };
 }
 
-function toClaimProjection(claim: ClaimRecord): ContextClaimProjection {
+function toClaimProjection(claim: ClaimRecord, displayText: string | undefined): ContextClaimProjection {
   return {
     id: claim.id,
     subject: claim.subject,
     predicate: claim.predicate,
     object: claim.object,
+    ...(displayText === undefined ? {} : { displayText }),
   };
+}
+
+function getClaimDisplayText(
+  groundings: ContextClaimGroundings,
+  observerId: string,
+  claimId: string,
+): string | undefined {
+  if (!Object.hasOwn(groundings, observerId)) {
+    return undefined;
+  }
+  const observerGroundings = groundings[observerId];
+  return observerGroundings && Object.hasOwn(observerGroundings, claimId)
+    ? observerGroundings[claimId]
+    : undefined;
 }
 
 function toRelationshipProjection(relationship: RelationshipRecord): ContextRelationshipProjection {

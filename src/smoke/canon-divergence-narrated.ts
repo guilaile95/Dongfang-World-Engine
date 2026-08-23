@@ -16,6 +16,7 @@ import type { TurnResult } from "../engine/turn-orchestrator.js";
 import { SqliteWorldStore } from "../persistence/sqlite-store.js";
 import {
   DEFAULT_CANON_DIVERGENCE_PLAYER_INTENT,
+  canonDivergenceClaimGroundings,
   runCanonDivergenceScenario,
   type CanonDivergenceRunResult,
 } from "./canon-divergence-harness.js";
@@ -176,7 +177,13 @@ async function executeCanonDivergenceNarratedSample(
       contextBuilds: 1,
       simulationAttempts: 1,
     };
-    const envelope = new NarrativeEnvelopeBuilder(new ContextBuilder(store)).build({
+    const envelope = new NarrativeEnvelopeBuilder(new ContextBuilder(
+      store,
+      canonDivergenceClaimGroundings({
+        worldId: result.fixture.worldId,
+        playerId: result.fixture.playerId,
+      }),
+    )).build({
       intent: DEFAULT_CANON_DIVERGENCE_PLAYER_INTENT,
       turnResult,
     });
