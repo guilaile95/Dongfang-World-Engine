@@ -454,6 +454,94 @@ describe("Seed-authoritative Fact assertion requirements", () => {
     }
   });
 
+  it("orders multiple invalidated assertions by stable code units", () => {
+    const suffix = "stable-invalidation-order";
+    const zCharacterId = `character-z-${suffix}`;
+    const umlautCharacterId = `character-ä-${suffix}`;
+    const harness = createHarness(suffix, (fixture) => {
+      const characterTemplate = fixture.input.characters[3]!;
+      fixture.input.characters.push(
+        { ...characterTemplate, id: zCharacterId, name: "Z Courier" },
+        { ...characterTemplate, id: umlautCharacterId, name: "Umlaut Courier" },
+      );
+      for (const assertingSubject of [zCharacterId, umlautCharacterId]) {
+        fixture.input.factAssertionRequirements!.push({
+          worldId: fixture.ids.worldId,
+          assertingSubject,
+          assertingPredicate: "dependent_outcome",
+          assertingObject: "committed",
+          requiredSubject: fixture.ids.npcAId,
+          requiredPredicate: "watch_route",
+          requiredObject: "east_gate",
+        });
+      }
+    });
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      commitBaselineB(harness);
+      const zAssertion = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-dependent-z-${suffix}`,
+        subject: zCharacterId,
+        predicate: "dependent_outcome",
+        object: "committed",
+        validFrom: T3,
+        occurredAt: T3,
+      }));
+      const umlautAssertion = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-dependent-umlaut-${suffix}`,
+        subject: umlautCharacterId,
+        predicate: "dependent_outcome",
+        object: "committed",
+        validFrom: T3,
+        occurredAt: T3,
+      }));
+      const beforeRejectedState = harness.store.getSnapshot(harness.ids.worldId);
+      const beforeRejectedEvents = harness.store.listEvents(harness.ids.worldId);
+      const rejection = expectRejected(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-replacement-${suffix}`,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T2,
+        occurredAt: T4,
+      }), "FACT_PRECONDITION_FAILED");
+
+      expect(rejection.context).toEqual(expect.objectContaining({
+        invalidatedAssertions: [
+          {
+            assertingFactId: zAssertion.payload.factId,
+            assertingSubject: zCharacterId,
+            assertingPredicate: "dependent_outcome",
+            assertingObject: "committed",
+            assertionTime: T3,
+            requiredSubject: harness.ids.npcAId,
+            requiredPredicate: "watch_route",
+            requiredObject: "east_gate",
+          },
+          {
+            assertingFactId: umlautAssertion.payload.factId,
+            assertingSubject: umlautCharacterId,
+            assertingPredicate: "dependent_outcome",
+            assertingObject: "committed",
+            assertionTime: T3,
+            requiredSubject: harness.ids.npcAId,
+            requiredPredicate: "watch_route",
+            requiredObject: "east_gate",
+          },
+        ],
+      }));
+      expect(harness.store.getSnapshot(harness.ids.worldId)).toEqual(beforeRejectedState);
+      expect(harness.store.listEvents(harness.ids.worldId)).toEqual(beforeRejectedEvents);
+      expect(beforeRejectedState.world.revision).toBe(3);
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
   it("rejects a replacement that would invalidate its own prerequisite at validFrom", () => {
     const harness = createHarness("self-invalidating-replacement", (fixture) => {
       fixture.input.factAssertionRequirements!.push({

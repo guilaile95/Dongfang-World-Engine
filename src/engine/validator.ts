@@ -658,8 +658,8 @@ function validateNoRetroactiveFactRequirementInvalidation(
     }
   }
 
-  const invalidatedAssertions = [...invalidatedByKey.values()].sort((first, second) =>
-    JSON.stringify([
+  const invalidatedAssertions = [...invalidatedByKey.values()].sort((first, second) => {
+    const firstKey = JSON.stringify([
       first.assertingSubject,
       first.assertingPredicate,
       first.assertingObject,
@@ -668,7 +668,8 @@ function validateNoRetroactiveFactRequirementInvalidation(
       first.requiredSubject,
       first.requiredPredicate,
       first.requiredObject,
-    ]).localeCompare(JSON.stringify([
+    ]);
+    const secondKey = JSON.stringify([
       second.assertingSubject,
       second.assertingPredicate,
       second.assertingObject,
@@ -677,8 +678,9 @@ function validateNoRetroactiveFactRequirementInvalidation(
       second.requiredSubject,
       second.requiredPredicate,
       second.requiredObject,
-    ])),
-  );
+    ]);
+    return firstKey < secondKey ? -1 : firstKey > secondKey ? 1 : 0;
+  });
   if (invalidatedAssertions.length === 0) {
     return;
   }
