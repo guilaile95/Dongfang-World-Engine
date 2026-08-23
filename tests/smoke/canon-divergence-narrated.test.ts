@@ -1,8 +1,11 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
 import {
   readCanonDivergenceNarratedConfig,
   runCanonDivergenceNarratedSample,
   safeCanonDivergenceNarratedError,
+  validateCanonDivergenceFormalPreflight,
 } from "../../src/smoke/canon-divergence-narrated.js";
 
 describe("Canon divergence real-Narrator sample entrypoint", () => {
@@ -96,6 +99,8 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
       kind: "canon_divergence_player_legibility",
       executionMode: "injected_test",
       formalSample: false,
+      exactHeadSha: null,
+      sampleConsumed: true,
       rerollAllowed: false,
       model: "test-narrator-model",
       simulationProviderCalls: 0,
@@ -122,8 +127,11 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
     expect(output.result.finalWorldRevision).toBe(6);
     expect(output.result.committedEventCount).toBe(6);
     expect(output.result.replayConsistent).toBe(true);
+    expect(output.providerOutcome).toBe("success");
+    expect(output.providerError).toBeNull();
     expect(output.narrative).toBe("你赶到西塔后确认，守卫路线已经改往西塔。");
     expect(output.narrativeRedacted).toBe(false);
+    expect(output.narrativeRedactionReason).toBeNull();
 
     const safeOutput = JSON.stringify(output);
     expect(safeOutput).not.toContain(apiKey);
@@ -167,11 +175,15 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
     const output = await runCanonDivergenceNarratedSample({
       baseUrl: "https://model.example/v1",
       apiKey: secret,
-      model: "test-narrator-model",
+      model: `test-narrator-model-${secret}`,
       fetchImpl: fakeFetch,
     });
     expect(output.narrative).toBeNull();
     expect(output.narrativeRedacted).toBe(true);
+    expect(output.narrativeRedactionReason).toBe("configured_secret");
+    expect(output.providerOutcome).toBe("redacted_output_after_attempt");
+    expect(output.protocol.sampleConsumed).toBe(true);
+    expect(output.protocol.model).toBe("[model omitted because it contained the configured secret]");
     expect(JSON.stringify(output)).not.toContain(secret);
 
     expect(safeCanonDivergenceNarratedError(new Error(`transport exposed ${secret}`), secret)).toEqual({
@@ -180,5 +192,134 @@ describe("Canon divergence real-Narrator sample entrypoint", () => {
       message: "Canon divergence narrated sample failed",
     });
     expect(safeCanonDivergenceNarratedError(new Error("x".repeat(1_000))).message).toHaveLength(500);
+  });
+
+  it("preserves a consumed-sample receipt when the provider attempt fails", async () => {
+    let requests = 0;
+    const fakeFetch = (async (): Promise<Response> => {
+      requests += 1;
+      return new Response("unavailable", { status: 503 });
+    }) as typeof fetch;
+
+    const output = await runCanonDivergenceNarratedSample({
+      baseUrl: "https://model.example/v1",
+      apiKey: "test-key",
+      model: "test-narrator-model",
+      fetchImpl: fakeFetch,
+    });
+
+    expect(requests).toBe(1);
+    expect(output.protocol).toEqual(expect.objectContaining({
+      executionMode: "injected_test",
+      formalSample: false,
+      exactHeadSha: null,
+      sampleConsumed: true,
+      rerollAllowed: false,
+      narratorProviderCalls: 1,
+    }));
+    expect(output.providerOutcome).toBe("unknown_after_attempt");
+    expect(output.providerError).toEqual({
+      code: "NARRATIVE_TRANSPORT_ERROR",
+      message: "Narrator model transport failed",
+    });
+    expect(output.narrative).toBeNull();
+    expect(output.result.authoredConsequence.triggered).toBe(true);
+    expect(output.result.oldCanonAttempt.rejectionLeftStateUnchanged).toBe(true);
+    expect(output.result.replayConsistent).toBe(true);
+  });
+
+  it("fails closed on redirects after exactly one wire request", async () => {
+    const requests: string[] = [];
+    const server = createServer((request, response) => {
+      requests.push(request.url ?? "");
+      if (request.url === "/v1/chat/completions") {
+        response.writeHead(307, { Location: "/v1/redirected" });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: { content: "redirected" } }] }));
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    try {
+      const address = server.address() as AddressInfo;
+      const output = await runCanonDivergenceNarratedSample({
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "redirect-test-key",
+        model: "test-narrator-model",
+      });
+
+      expect(requests).toEqual(["/v1/chat/completions"]);
+      expect(output.protocol).toEqual(expect.objectContaining({
+        executionMode: "default_transport",
+        formalSample: false,
+        exactHeadSha: null,
+        sampleConsumed: true,
+        narratorProviderCalls: 1,
+      }));
+      expect(output.providerOutcome).toBe("unknown_after_attempt");
+      expect(output.providerError?.code).toBe("NARRATIVE_TRANSPORT_ERROR");
+      expect(output.narrative).toBeNull();
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("redacts a provider echo of the raw request while retaining the receipt", async () => {
+    const fakeFetch = (async (_input: string | URL | Request, init?: RequestInit): Promise<Response> =>
+      new Response(JSON.stringify({
+        choices: [{ message: { content: String(init?.body) } }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+
+    const output = await runCanonDivergenceNarratedSample({
+      baseUrl: "https://model.example/v1",
+      apiKey: "test-key",
+      model: "test-narrator-model",
+      fetchImpl: fakeFetch,
+    });
+
+    expect(output.protocol.sampleConsumed).toBe(true);
+    expect(output.protocol.narratorProviderCalls).toBe(1);
+    expect(output.providerOutcome).toBe("redacted_output_after_attempt");
+    expect(output.providerError).toBeNull();
+    expect(output.narrative).toBeNull();
+    expect(output.narrativeRedacted).toBe(true);
+    expect(output.narrativeRedactionReason).toBe("request_artifact");
+    const safeOutput = JSON.stringify(output);
+    expect(safeOutput).not.toContain("messages");
+    expect(safeOutput).not.toContain("DEFAULT_NARRATIVE_INSTRUCTIONS");
+    expect(safeOutput).not.toContain("observerContext");
+  });
+
+  it("marks only a direct clean exact-main process without preloads as formal", () => {
+    const headSha = "a".repeat(40);
+    const valid = {
+      directExecution: true,
+      branch: "main",
+      headSha,
+      originMainSha: headSha,
+      worktreeStatus: "",
+      execArgv: [],
+      nodeOptions: "",
+    };
+    expect(validateCanonDivergenceFormalPreflight(valid)).toEqual({ commitSha: headSha });
+
+    expect(() => validateCanonDivergenceFormalPreflight({ ...valid, branch: "feature/not-main" }))
+      .toThrow("requires the main branch");
+    expect(() => validateCanonDivergenceFormalPreflight({ ...valid, originMainSha: "b".repeat(40) }))
+      .toThrow("requires exact origin/main HEAD");
+    expect(() => validateCanonDivergenceFormalPreflight({ ...valid, worktreeStatus: " M file.ts" }))
+      .toThrow("requires a clean worktree");
+    expect(() => validateCanonDivergenceFormalPreflight({ ...valid, execArgv: ["--import", "fake-loader"] }))
+      .toThrow("forbids Node preload or execution flags");
+    expect(() => validateCanonDivergenceFormalPreflight({ ...valid, nodeOptions: "--require fake-loader" }))
+      .toThrow("forbids Node preload or execution flags");
   });
 });
