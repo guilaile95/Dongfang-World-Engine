@@ -82,6 +82,25 @@ function sortedSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
       `${a.characterId}:${a.claimId}`.localeCompare(`${b.characterId}:${b.claimId}`),
     ),
     predicatePolicies: [...snapshot.predicatePolicies].sort((a, b) => a.predicate.localeCompare(b.predicate)),
+    factAssertionRequirements: [...snapshot.factAssertionRequirements].sort((a, b) =>
+      JSON.stringify([
+        a.worldId,
+        a.assertingSubject,
+        a.assertingPredicate,
+        a.assertingObject,
+        a.requiredSubject,
+        a.requiredPredicate,
+        a.requiredObject,
+      ]).localeCompare(JSON.stringify([
+        b.worldId,
+        b.assertingSubject,
+        b.assertingPredicate,
+        b.assertingObject,
+        b.requiredSubject,
+        b.requiredPredicate,
+        b.requiredObject,
+      ])),
+    ),
     locationConnections: [...snapshot.locationConnections].sort((a, b) =>
       `${a.fromLocationId}:${a.toLocationId}`.localeCompare(`${b.fromLocationId}:${b.toLocationId}`),
     ),

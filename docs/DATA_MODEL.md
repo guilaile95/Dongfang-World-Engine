@@ -234,6 +234,27 @@ PredicatePolicy
 
 策略属于单个 World，持久化在 World State 边界内，不引入 DSL。未知或缺失策略默认 `one`，确保 Fact 冲突不会因为未配置而被放行。
 
+### 2.9.1 FactAssertionRequirement
+
+表示 Seed 声明的精确 Fact 断言前置条件。它是 World-scoped、Seed-static Authority State，不由 Candidate、Event 或 LLM 创建。
+
+```text
+FactAssertionRequirement
+  world_id
+  asserting_subject
+  asserting_predicate
+  asserting_object
+  required_subject
+  required_predicate
+  required_object
+```
+
+关系按完整七元组唯一。`asserting_*` 精确匹配一个 `fact.assert` 的 proposition；同一 asserting 三元组的多行全部必须满足（AND），没有匹配行则不增加限制。每个 required 精确三元组必须在 asserting Candidate 的 `valid_from` 时点满足半开区间：`required.valid_from <= asserting.valid_from < required.valid_to`，其中开放 Fact 的 `required.valid_to = null`。
+
+Seed validation 必须确认两个 subject 都是当前 Seed World 的 Character、Location 或 World，并拒绝跨 World、空 predicate/object 与重复关系。required Fact 不要求在 Seed 中已经存在，因为它可以由较早的合法 Event 产生。
+
+该关系只阻止不满足前置条件的新 Fact assertion；它不自动产生、撤销或重算 Fact，不支持 OR、NOT、递归、优先级或通用规则求值。`FACT_PRECONDITION_FAILED` 拒绝保持 Event、Materialized State 和 World revision 不变。
+
 ### 2.10 Relationship
 
 表示角色之间的关系。不要只保存一个“好感度”，因为信任、敌意和亲近程度可能同时变化，且方向未必一致。
@@ -374,6 +395,7 @@ World
   ├── LocationConnection ──> Location + Location
   ├── Event ──< cause_event_ids >── Event
  ├── Fact
+ ├── FactAssertionRequirement ──> asserting Fact triple + required Fact triple
  ├── Relationship ──> Character + updated_by_event_id
  ├── PredicatePolicy
  ├── Item / Asset ──> Character / Location
@@ -413,6 +435,7 @@ Event = 已提交的变化及其因果
 | 非权威命题 | Claim |
 | NPC 对命题的认知 | CharacterKnowledge |
 | Fact 基数策略 | PredicatePolicy |
+| Fact 断言前置条件 | Seed FactAssertionRequirement |
 | 初始 Fact / Knowledge 来源 | Seed |
 | NPC 过去经历 | Event + Memory |
 | 长期对话召回 | Memory |
@@ -450,7 +473,7 @@ Player
 - Context Builder 只读并按角色权限过滤上下文；
 - Context Builder 先执行确定性的 observer visibility gate，再进行有界 packing；它不产生任何事实写入；
 - Simulation LLM 只生成候选，不拥有事实写权限；
-- Validator 负责检查来源、时间、显式有向 LocationConnection、知识权限、关系约束、Claim 跨 World 引用和互斥事实；
+- Validator 负责检查来源、时间、显式有向 LocationConnection、知识权限、关系约束、Claim 跨 World 引用、互斥事实，以及匹配 Seed `FactAssertionRequirement` 的有效前置 Fact；
 - Commit Event 是进入事实层的唯一入口；
 - Materialized State 只能由已提交事件或初始化过程更新；
 - Narrator 只能读取已确认结果并生成展示文本；
@@ -472,4 +495,4 @@ Player
 9. Memory 只作为可替换召回接口；
 10. 连续运行 30～50 轮后，可以从 Event 解释当前事实、时间、位置、人物认知和因果。
 
-当前 Slice 已将 World、Seed、Character、Location、LocationConnection、Fact、Claim、CharacterKnowledge、PredicatePolicy、Relationship 和 Event 物理化到 SQLite，并实现七类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。
+当前 Slice 已将 World、Seed、Character、Location、LocationConnection、Fact、Claim、CharacterKnowledge、PredicatePolicy、FactAssertionRequirement、Relationship 和 Event 物理化到 SQLite，并实现 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。

@@ -115,6 +115,32 @@ export const predicatePolicies = sqliteTable(
   }),
 );
 
+export const factAssertionRequirements = sqliteTable(
+  "fact_assertion_requirements",
+  {
+    worldId: text("world_id").notNull().references(() => worlds.id),
+    assertingSubject: text("asserting_subject").notNull(),
+    assertingPredicate: text("asserting_predicate").notNull(),
+    assertingObject: text("asserting_object").notNull(),
+    requiredSubject: text("required_subject").notNull(),
+    requiredPredicate: text("required_predicate").notNull(),
+    requiredObject: text("required_object").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [
+        table.worldId,
+        table.assertingSubject,
+        table.assertingPredicate,
+        table.assertingObject,
+        table.requiredSubject,
+        table.requiredPredicate,
+        table.requiredObject,
+      ],
+    }),
+  }),
+);
+
 export const relationships = sqliteTable(
   "relationships",
   {
@@ -142,6 +168,7 @@ export const schema = {
   facts,
   characterKnowledge,
   predicatePolicies,
+  factAssertionRequirements,
   relationships,
 };
 
@@ -236,6 +263,24 @@ CREATE TABLE IF NOT EXISTS predicate_policies (
   predicate TEXT NOT NULL,
   cardinality TEXT NOT NULL CHECK (cardinality IN ('one', 'many')),
   PRIMARY KEY (world_id, predicate)
+);
+CREATE TABLE IF NOT EXISTS fact_assertion_requirements (
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  asserting_subject TEXT NOT NULL,
+  asserting_predicate TEXT NOT NULL,
+  asserting_object TEXT NOT NULL,
+  required_subject TEXT NOT NULL,
+  required_predicate TEXT NOT NULL,
+  required_object TEXT NOT NULL,
+  PRIMARY KEY (
+    world_id,
+    asserting_subject,
+    asserting_predicate,
+    asserting_object,
+    required_subject,
+    required_predicate,
+    required_object
+  )
 );
 CREATE TABLE IF NOT EXISTS relationships (
   source_character_id TEXT NOT NULL REFERENCES characters(id),
