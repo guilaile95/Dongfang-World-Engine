@@ -237,6 +237,20 @@ Status: complete.
 
 Vertical Slice 3.3 deliberately does not add a new Event or Candidate, generic observation/perception framework, Dialogue or durable utterance system, Context/Narrator Fact access, generic consequence engine, Scheduler, Memory/RAG, UI or another real-model invocation.
 
+## Vertical Slice 3.4 — One Frozen Real-Narrator Canon Consequence Sample
+
+Status: complete.
+
+- add one opt-in runner that uses deterministic local Simulation and the unchanged 3.3 Canon/Knowledge path;
+- require B′, confirmed Player Knowledge, old-C atomic rejection and canonical replay before any Narrator request;
+- permit exactly one Narrator provider attempt, fail closed on redirects, never retry, and preserve an auditable consumed-sample receipt for success, transport uncertainty, invalid output or redaction;
+- allow formal classification only from a direct, clean, no-preload CLI on exact `origin/main`, recording the verified SHA;
+- redact configured secrets and provider echoes of request, system instruction or observer envelope;
+- execute one formal sample from main `6f64c9aaed20bef984c6b55f0557a8eec9765814`: one Narrator call, zero Simulation provider calls, no reroll, Hard Gate PASS, revision/Event count `6/6`, and full canonical replay consistent;
+- classify player legibility as **NO**: the safe narrative rendered `watch_route = west_tower` ambiguously as surveillance and did not clearly name the Gate Captain, the route change or the Player-caused consequence.
+
+The observed gap is tracked as Behavioral P2 in Issue #47. Do not rerun or tune the consumed sample. Any later Slice must first prove the smallest visibility-safe semantic grounding needed for already-known Claims; it must not jump to a generic ontology, predicate DSL, Entity Resolver, prompt framework, Dialogue, Memory/RAG, Scheduler or new Truth authority.
+
 ## Later
 
 Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.

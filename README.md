@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证，以及 Vertical Slice 3 Authority proof、3.1 trusted binding、3.2 frozen real-model action sample 与 3.3 player-legible consequence 均已完成。Vertical Slice 3 后的 Stage Review 还确认并加固了回溯 Fact 替换的前置条件边界；没有尚未完成的工程 Slice，下一项能力必须由新的玩家可感知问题或真实运行失败驱动。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证，以及 Vertical Slice 3 Authority proof、3.1 trusted binding、3.2 frozen real-model action sample、3.3 player-legible consequence 与 3.4 frozen real-Narrator sample 均已完成。Vertical Slice 3 后的 Stage Review 还确认并加固了回溯 Fact 替换的前置条件边界。当前没有已冻结的下一工程 Slice；Issue #47 仅记录真实 Narrator 样本暴露的 Behavioral P2，后续能力仍必须由该玩家可感知证据驱动。
 
 第一阶段验证目标是：
 
@@ -128,6 +128,8 @@ Vertical Slice 3.2 提供一个冻结的、开发者 opt-in real-model action-se
 该正式样本已从 exact main `0c4efff7e45ecd2f507a8034dccdf165a44b2f8a` 执行一次：`providerCalls = 1`、`repair = 0`、无 reroll。真实模型基于合法 observer Context 提交了 Player `character.move`；scenario-local trusted producer 随后经 CommitKernel 产生 B′，精确旧 C 的直接提交以 `FACT_PRECONDITION_FAILED` 被拒绝且没有部分状态，独立 D 继续成功，最终 `worldRevision = committed Event count = 4`，full canonical replay 一致。正式输出未记录凭据、raw prompt/response、hidden reasoning、WorldSnapshot 或 private Knowledge。
 
 Vertical Slice 3.3 让该 authoritative consequence 对 Player 合法可知，而不向 Context 或 Narrator 暴露 objective Fact。只在 trusted B′ 成功后，scenario-local producer 经 CommitKernel 记录一条与 B′ 命题一致的 Player-observed Claim，再以该 `claim.record` Event 作为结构化来源提交 Player `character.learn_claim = confirmed`。现有 Context Builder 随后自然提供完整 Claim / CharacterKnowledge / acquisition provenance bundle，现有 NarrativeEnvelope 只收到该合法认知与原始 Player move；B′ Fact、前置条件、旧 C rejection、独立 D、raw Event payload 和其他角色私有认知仍不可见。该 Slice 没有修改 Candidate、Validator、Context Builder、Narrator 或 Event 类型，也没有进行新的真实 provider 调用。
+
+Vertical Slice 3.4 从 exact main `6f64c9aaed20bef984c6b55f0557a8eec9765814` 执行了一次冻结的真实 Narrator 样本：确定性本地 Simulation 不调用 provider，Narrator provider 只调用一次，禁止 redirect/retry，任何失败也会返回 `sampleConsumed = true` 的安全 receipt。该样本 Hard Gate 通过：B′、Player confirmed Knowledge、旧 C 原子拒绝、独立 D 和 full canonical replay 均保持正确，没有观察到 Truth/private-Knowledge/凭据/raw request 泄漏。行为问题判定为 **NO**：Narrative 虽提到 Player 已确认与西塔有关的路线信息，却把 `watch_route` 模糊表达为“有人监视西塔的路线”，没有清楚说明守卫队长的巡逻路线改到西塔或玩家行动产生的后果。该结果是 Behavioral P2，不是 Truth Authority 缺陷；样本不重跑，最小语义 grounding 问题记录于 Issue #47。
 
 Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 与 `claim.transmit` 是合法的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 
