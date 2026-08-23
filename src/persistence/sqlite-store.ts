@@ -176,7 +176,12 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
     }
   }
   for (const connection of input.locationConnections) {
-    const connectionKey = `${connection.fromLocationId}:${connection.toLocationId}`;
+    if (connection.fromLocationId === connection.toLocationId) {
+      invalid("LocationConnection cannot connect a Location to itself", {
+        locationId: connection.fromLocationId,
+      });
+    }
+    const connectionKey = JSON.stringify([connection.fromLocationId, connection.toLocationId]);
     if (connectionKeys.has(connectionKey)) {
       invalid("Seed contains a duplicate LocationConnection", { connectionKey });
     }
