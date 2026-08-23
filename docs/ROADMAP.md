@@ -191,6 +191,22 @@ Prove that canon is a causal baseline rather than an immutable script, using one
 
 Vertical Slice 3 deliberately does not include a generic Canon/Rule/Timeline Engine, automatic consequence scheduling, recursive inference, Branch/Multiverse, World Pack Compiler, Dialogue, Scheduler, Memory/RAG, UI, or real-model execution.
 
+## Vertical Slice 3.1 — Trusted Authored Consequence Binding
+
+Status: complete.
+
+Close the smallest integration gap between a non-authoritative actor action and a trusted canon consequence:
+
+- run the Player turn through the existing Context Builder → Simulation Adapter → Turn Orchestrator path;
+- keep `fact.assert` unavailable to actor proposals;
+- bind only the Store-confirmed current-Head Player move to the declared intervention Location;
+- let one scenario-local trusted producer submit B′ through CommitKernel with the move Event as cause;
+- prove raw intent, empty/malformed output, missing Events, another actor and another destination cannot trigger B′;
+- prove control C succeeds, intervention old C is directly rejected without partial state, independent D continues, and both runs are canonical-replay consistent;
+- return only a safe result projection without raw Context, Snapshot, prompt, model response, hidden Fact or requirement data.
+
+Vertical Slice 3.1 deliberately does not add a generic Action/Effect Resolver, trigger DSL, Canon/Rule/Timeline Engine, Scheduler, new Candidate/Event type, actor Fact authority, Narrator redesign, real-model formal sample, or UI.
+
 ## Later
 
 Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.
