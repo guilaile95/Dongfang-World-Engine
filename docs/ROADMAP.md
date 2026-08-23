@@ -207,6 +207,19 @@ Close the smallest integration gap between a non-authoritative actor action and 
 
 Vertical Slice 3.1 deliberately does not add a generic Action/Effect Resolver, trigger DSL, Canon/Rule/Timeline Engine, Scheduler, new Candidate/Event type, actor Fact authority, Narrator redesign, real-model formal sample, or UI.
 
+## Vertical Slice 3.2 — One Frozen Real-model Canon Divergence Action Sample
+
+Status: runner complete; formal sample pending credentials.
+
+- add one opt-in entrypoint around the existing 3.1 harness and OpenAI-compatible Simulation client;
+- freeze the directed Player intent and one-sample/no-reroll protocol;
+- emit only execution mode, formal-sample marker, model id, provider-call count and the existing safe harness result;
+- redact configured credentials from bounded errors;
+- prove the HTTP path with injected fake fetch, mark it non-formal, and keep CI credential-free;
+- execute the formal provider sample only after merge on exact main, if all three required credentials are present.
+
+Vertical Slice 3.2 deliberately does not add Narrator, provider routing/fallback, new retry behavior, provider-specific structured output, actor Fact authority, generic rules, Scheduler, Dialogue, Memory/RAG or UI. If credentials are unavailable after merge, the runner may be complete while the formal experiment remains open and blocked; no fake result may substitute for it.
+
 ## Later
 
 Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.

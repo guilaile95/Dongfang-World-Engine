@@ -8,6 +8,7 @@
     "harness:closed-inn": "npm run build && node dist/smoke/closed-inn-harness.js",
     "harness:closed-inn-30": "npm run build && node dist/smoke/closed-inn-30-turn.js",
     "lint": "tsc --noEmit",
+    "smoke:canon-divergence": "npm run build && node dist/smoke/canon-divergence-real-model.js",
     "smoke:narrated": "npm run build && node dist/smoke/narrated-smoke.js",
     "smoke:real-model": "npm run build && node dist/smoke/real-model-smoke.js",
     "test": "vitest run",
