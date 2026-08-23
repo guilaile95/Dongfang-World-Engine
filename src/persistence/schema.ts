@@ -35,6 +35,18 @@ export const characters = sqliteTable("characters", {
   currentGoal: text("current_goal").notNull(),
 });
 
+export const locationConnections = sqliteTable(
+  "location_connections",
+  {
+    worldId: text("world_id").notNull().references(() => worlds.id),
+    fromLocationId: text("from_location_id").notNull().references(() => locations.id),
+    toLocationId: text("to_location_id").notNull().references(() => locations.id),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.worldId, table.fromLocationId, table.toLocationId] }),
+  }),
+);
+
 export const events = sqliteTable("events", {
   sequence: integer("sequence").primaryKey({ autoIncrement: true }),
   id: text("id").notNull().unique(),
@@ -124,6 +136,7 @@ export const schema = {
   seeds,
   locations,
   characters,
+  locationConnections,
   events,
   claims,
   facts,
@@ -163,6 +176,12 @@ CREATE TABLE IF NOT EXISTS characters (
   location_id TEXT,
   identity TEXT NOT NULL,
   current_goal TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS location_connections (
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  from_location_id TEXT NOT NULL REFERENCES locations(id),
+  to_location_id TEXT NOT NULL REFERENCES locations(id),
+  PRIMARY KEY (world_id, from_location_id, to_location_id)
 );
 CREATE TABLE IF NOT EXISTS events (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,

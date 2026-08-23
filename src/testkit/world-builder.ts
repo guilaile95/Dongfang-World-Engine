@@ -2,6 +2,7 @@ import type {
   CharacterRecord,
   ClaimRecord,
   FactRecord,
+  LocationConnectionRecord,
   KnowledgeRecord,
   LocationRecord,
   PredicatePolicyRecord,
@@ -15,7 +16,7 @@ export const TEST_TIME = "2019-03-12T12:00:00.000Z";
 
 export interface TestWorldIds {
   world: WorldRecord;
-  locations: Record<"beijing" | "tokyo" | "office", LocationRecord>;
+  locations: Record<"beijing" | "tokyo" | "office" | "hidden", LocationRecord>;
   characters: Record<"player" | "zhao" | "npcA" | "npcB" | "npcC", CharacterRecord>;
   secretFact: FactRecord;
   secretClaim: ClaimRecord;
@@ -60,7 +61,14 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
       parentId: "location-beijing",
       type: "building",
     },
-  } satisfies Record<"beijing" | "tokyo" | "office", LocationRecord>;
+    hidden: {
+      id: "location-hidden",
+      worldId: TEST_WORLD_ID,
+      name: "隐藏地点",
+      parentId: null,
+      type: "room",
+    },
+  } satisfies Record<"beijing" | "tokyo" | "office" | "hidden", LocationRecord>;
   const characters = {
     player: {
       id: "character-player",
@@ -194,11 +202,20 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
       cardinality: "many",
     },
   ];
+  const locationConnections: LocationConnectionRecord[] = [
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.office.id, toLocationId: locations.beijing.id },
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.office.id, toLocationId: locations.tokyo.id },
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.beijing.id, toLocationId: locations.office.id },
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.beijing.id, toLocationId: locations.tokyo.id },
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.tokyo.id, toLocationId: locations.beijing.id },
+    { worldId: TEST_WORLD_ID, fromLocationId: locations.tokyo.id, toLocationId: locations.office.id },
+  ];
 
   store.seedWorld({
     world,
     seed,
     locations: Object.values(locations),
+    locationConnections,
     characters: Object.values(characters),
     facts: [secretFact],
     claims: [secretClaim, unverifiedClaim],
@@ -401,11 +418,34 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
       updatedByEventId: null,
     },
   ];
+  const locationConnections: LocationConnectionRecord[] = [
+    {
+      worldId: CLOSED_INN_WORLD_ID,
+      fromLocationId: locations.hall.id,
+      toLocationId: locations.cellar.id,
+    },
+    {
+      worldId: CLOSED_INN_WORLD_ID,
+      fromLocationId: locations.hall.id,
+      toLocationId: locations.guestRoom.id,
+    },
+    {
+      worldId: CLOSED_INN_WORLD_ID,
+      fromLocationId: locations.cellar.id,
+      toLocationId: locations.hall.id,
+    },
+    {
+      worldId: CLOSED_INN_WORLD_ID,
+      fromLocationId: locations.guestRoom.id,
+      toLocationId: locations.hall.id,
+    },
+  ];
 
   store.seedWorld({
     world,
     seed,
     locations: Object.values(locations),
+    locationConnections,
     characters: Object.values(characters),
     facts: [hiddenTruth],
     claims: Object.values(claims),

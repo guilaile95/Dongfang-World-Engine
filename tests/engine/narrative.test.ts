@@ -124,6 +124,7 @@ function makeContext(): CharacterContext {
       parentId: null,
       type: "building",
     },
+    movementOptions: [],
     coLocatedCharacters: [],
     knowledge: [],
     relationships: [],

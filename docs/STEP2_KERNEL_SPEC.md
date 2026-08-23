@@ -59,6 +59,8 @@ The slice is complete only when:
 - failed commit leaves no partial state;
 - committed Events cannot be updated/deleted through normal domain paths;
 - dead characters cannot perform ordinary movement;
+- `character.move` can only follow an explicit Seed-authored directed `LocationConnection` from the Character's current Location;
+- observer-facing movement targets contain only stable `locationId` and `name` projections, while the Hard Validator remains authoritative;
 - knowledge cannot appear without an auditable source;
 - contradictory current Facts are rejected or correctly superseded;
 - directional relationships remain independent;

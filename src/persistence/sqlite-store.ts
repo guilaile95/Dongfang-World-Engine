@@ -8,6 +8,7 @@ import type {
   CommittedEvent,
   FactRecord,
   KnowledgeRecord,
+  LocationConnectionRecord,
   LocationRecord,
   PredicatePolicyRecord,
   RelationshipRecord,
@@ -23,6 +24,7 @@ import {
   events,
   facts,
   locations,
+  locationConnections,
   predicatePolicies,
   relationships,
   schema,
@@ -36,6 +38,7 @@ export interface SeedWorldInput {
   world: WorldRecord;
   seed: SeedRecord;
   locations: LocationRecord[];
+  locationConnections: LocationConnectionRecord[];
   characters: CharacterRecord[];
   facts?: FactRecord[];
   claims?: ClaimRecord[];
@@ -91,6 +94,9 @@ export class SqliteWorldStore {
           })),
         ).run();
       }
+      if (input.locationConnections.length > 0) {
+        tx.insert(locationConnections).values(input.locationConnections).run();
+      }
       if (input.facts && input.facts.length > 0) {
         tx.insert(facts).values(input.facts).run();
       }
@@ -145,6 +151,7 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
   };
   const charactersById = new Set(input.characters.map((character) => character.id));
   const locationsById = new Set(input.locations.map((location) => location.id));
+  const connectionKeys = new Set<string>();
   const claimsById = new Set((input.claims ?? []).map((claim) => claim.id));
 
   if (input.seed.worldId !== worldId) {
@@ -165,6 +172,25 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
       invalid("Character location references a Location outside the Seed", {
         characterId: character.id,
         locationId: character.locationId,
+      });
+    }
+  }
+  for (const connection of input.locationConnections) {
+    if (connection.fromLocationId === connection.toLocationId) {
+      invalid("LocationConnection cannot connect a Location to itself", {
+        locationId: connection.fromLocationId,
+      });
+    }
+    const connectionKey = JSON.stringify([connection.fromLocationId, connection.toLocationId]);
+    if (connectionKeys.has(connectionKey)) {
+      invalid("Seed contains a duplicate LocationConnection", { connectionKey });
+    }
+    connectionKeys.add(connectionKey);
+    requireWorld("LocationConnection", connectionKey, connection.worldId);
+    if (!locationsById.has(connection.fromLocationId) || !locationsById.has(connection.toLocationId)) {
+      invalid("LocationConnection references a Location outside the Seed", {
+        fromLocationId: connection.fromLocationId,
+        toLocationId: connection.toLocationId,
       });
     }
   }
@@ -270,6 +296,12 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
   }
 
   const locationRows = executor.select().from(locations).where(eq(locations.worldId, worldId)).all();
+  const locationConnectionRows = executor
+    .select()
+    .from(locationConnections)
+    .where(eq(locationConnections.worldId, worldId))
+    .orderBy(asc(locationConnections.fromLocationId), asc(locationConnections.toLocationId))
+    .all();
   const characterRows = executor.select().from(characters).where(eq(characters.worldId, worldId)).all();
   const factRows = executor.select().from(facts).where(eq(facts.worldId, worldId)).all();
   const claimRows = executor.select().from(claims).where(eq(claims.worldId, worldId)).all();
@@ -307,6 +339,11 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       name: location.name,
       parentId: location.parentId,
       type: location.type,
+    })),
+    locationConnections: locationConnectionRows.map((connection: typeof locationConnectionRows[number]) => ({
+      worldId: connection.worldId,
+      fromLocationId: connection.fromLocationId,
+      toLocationId: connection.toLocationId,
     })),
     characters: characterRows.map((character: typeof characterRows[number]) => ({
       id: character.id,
@@ -394,6 +431,23 @@ export function findCharacter(executor: any, characterId: string): typeof charac
 
 export function findLocation(executor: any, locationId: string): typeof locations.$inferSelect | undefined {
   return executor.select().from(locations).where(eq(locations.id, locationId)).get();
+}
+
+export function findLocationConnection(
+  executor: any,
+  worldId: string,
+  fromLocationId: string,
+  toLocationId: string,
+): typeof locationConnections.$inferSelect | undefined {
+  return executor
+    .select()
+    .from(locationConnections)
+    .where(and(
+      eq(locationConnections.worldId, worldId),
+      eq(locationConnections.fromLocationId, fromLocationId),
+      eq(locationConnections.toLocationId, toLocationId),
+    ))
+    .get();
 }
 
 export function findFact(executor: any, factId: string): typeof facts.$inferSelect | undefined {

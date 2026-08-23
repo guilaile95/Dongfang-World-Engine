@@ -179,7 +179,7 @@ function seedForeignWorld(store: SqliteWorldStore): CharacterRecord {
     identity: "foreign",
     currentGoal: "test world boundary",
   };
-  store.seedWorld({ world, seed, locations: [location], characters: [character] });
+  store.seedWorld({ world, seed, locations: [location], locationConnections: [], characters: [character] });
   return character;
 }
 
@@ -271,6 +271,32 @@ describe("Turn Orchestrator MVP", () => {
       causeEventIds: [],
     });
     expect(store.listEvents(ids.world.id)).toHaveLength(1);
+    store.close();
+  });
+
+  it("keeps the Hard Validator authoritative for an unconnected same-World destination", async () => {
+    const store = new SqliteWorldStore();
+    const ids = seedTestWorld(store);
+    const beforeSnapshot = store.getSnapshot(ids.world.id);
+    const planner = new FakePlanner(() => makePlan(makeMove(ids.characters.player.id, ids.locations.hidden.id)));
+    const commitKernel = new RecordingCommitKernel((input) => createKernel(store, "turn").commit(input));
+
+    const result = await createOrchestrator(store, planner, commitKernel).runActorTurn({
+      worldId: ids.world.id,
+      actorCharacterId: ids.characters.player.id,
+      intent: "移动到没有被连接声明的隐藏地点",
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.rejection).toMatchObject({
+      kind: "kernel_rejection",
+      code: "LOCATION_NOT_CONNECTED",
+      proposalIndex: 0,
+    });
+    expect(result.committedEvents).toEqual([]);
+    expect(commitKernel.inputs).toHaveLength(1);
+    expect(store.listEvents(ids.world.id)).toHaveLength(0);
+    expect(store.getSnapshot(ids.world.id)).toEqual(beforeSnapshot);
     store.close();
   });
 

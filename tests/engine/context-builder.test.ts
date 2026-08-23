@@ -3,7 +3,7 @@ import { CommitKernel, type CommitResult } from "../../src/engine/commit-kernel.
 import { ContextBuilder } from "../../src/engine/context-builder.js";
 import { KernelError } from "../../src/engine/errors.js";
 import type { CharacterRecord, CommittedEvent, SeedRecord, WorldRecord } from "../../src/domain/types.js";
-import { TEST_TIME, seedTestWorld } from "../../src/testkit/world-builder.js";
+import { TEST_TIME, seedClosedInnWorld, seedTestWorld } from "../../src/testkit/world-builder.js";
 import { SqliteWorldStore } from "../../src/persistence/sqlite-store.js";
 
 function createHarness() {
@@ -78,7 +78,7 @@ function seedForeignWorld(store: SqliteWorldStore): { world: WorldRecord; charac
     identity: "foreign",
     currentGoal: "remain isolated",
   };
-  store.seedWorld({ world, seed, locations: [], characters: [character] });
+  store.seedWorld({ world, seed, locations: [], locationConnections: [], characters: [character] });
   return { world, character };
 }
 
@@ -307,6 +307,68 @@ describe("Context Builder MVP", () => {
     });
     expect(context.observer).toEqual(ids.characters.player);
     expect(context.location).toEqual(ids.locations.office);
+    store.close();
+  });
+
+  it("exposes only explicit off-location movement targets with safe stable identity", () => {
+    const { store, ids, builder } = createHarness();
+
+    const context = builder.buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.player.id,
+      budget: 0,
+    });
+
+    expect(context.movementOptions).toEqual([
+      { locationId: ids.locations.beijing.id, name: ids.locations.beijing.name },
+      { locationId: ids.locations.tokyo.id, name: ids.locations.tokyo.name },
+    ]);
+    expect(context.movementOptions).not.toContainEqual({
+      locationId: ids.locations.office.id,
+      name: ids.locations.office.name,
+    });
+    expect(context.movementOptions).not.toContainEqual({
+      locationId: ids.locations.hidden.id,
+      name: ids.locations.hidden.name,
+    });
+    for (const option of context.movementOptions) {
+      expect(Object.keys(option).sort()).toEqual(["locationId", "name"]);
+    }
+    expect(JSON.stringify(context.movementOptions)).not.toContain("parentId");
+    expect(JSON.stringify(context.movementOptions)).not.toContain("worldId");
+    expect(context.packing.usedUnits).toBe(0);
+
+    store.close();
+  });
+
+  it("grounds Closed Inn destinations from the current hall without exposing the raw Location records", () => {
+    const store = new SqliteWorldStore();
+    const ids = seedClosedInnWorld(store);
+    const context = new ContextBuilder(store).buildCharacterContext({
+      worldId: ids.world.id,
+      observerCharacterId: ids.characters.player.id,
+    });
+
+    expect(context.movementOptions).toEqual([
+      { locationId: ids.locations.cellar.id, name: ids.locations.cellar.name },
+      { locationId: ids.locations.guestRoom.id, name: ids.locations.guestRoom.name },
+    ]);
+    expect(context.movementOptions[0]).not.toHaveProperty("type");
+    expect(context.movementOptions[0]).not.toHaveProperty("parentId");
+
+    store.close();
+  });
+
+  it("returns no movement options for an observer without a current Location", () => {
+    const store = new SqliteWorldStore();
+    const foreign = seedForeignWorld(store);
+    const context = new ContextBuilder(store).buildCharacterContext({
+      worldId: foreign.world.id,
+      observerCharacterId: foreign.character.id,
+    });
+
+    expect(context.location).toBeNull();
+    expect(context.movementOptions).toEqual([]);
     store.close();
   });
 

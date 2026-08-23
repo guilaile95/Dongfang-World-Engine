@@ -60,6 +60,9 @@ function canonicalSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
   return {
     world: snapshot.world,
     locations: [...snapshot.locations].sort((a, b) => a.id.localeCompare(b.id)),
+    locationConnections: [...snapshot.locationConnections].sort((a, b) =>
+      `${a.fromLocationId}:${a.toLocationId}`.localeCompare(`${b.fromLocationId}:${b.toLocationId}`),
+    ),
     characters: [...snapshot.characters].sort((a, b) => a.id.localeCompare(b.id)),
     facts: [...snapshot.facts].sort((a, b) => a.id.localeCompare(b.id)),
     claims: [...snapshot.claims].sort((a, b) => a.id.localeCompare(b.id)),

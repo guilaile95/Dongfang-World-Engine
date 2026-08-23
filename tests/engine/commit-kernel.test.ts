@@ -82,6 +82,9 @@ function sortedSnapshot(snapshot: WorldSnapshot): WorldSnapshot {
       `${a.characterId}:${a.claimId}`.localeCompare(`${b.characterId}:${b.claimId}`),
     ),
     predicatePolicies: [...snapshot.predicatePolicies].sort((a, b) => a.predicate.localeCompare(b.predicate)),
+    locationConnections: [...snapshot.locationConnections].sort((a, b) =>
+      `${a.fromLocationId}:${a.toLocationId}`.localeCompare(`${b.fromLocationId}:${b.toLocationId}`),
+    ),
     relationships: [...snapshot.relationships].sort((a, b) =>
       `${a.sourceCharacterId}:${a.targetCharacterId}`.localeCompare(`${b.sourceCharacterId}:${b.targetCharacterId}`),
     ),
@@ -172,6 +175,7 @@ function seedForeignWorld(store: SqliteWorldStore): {
     world,
     seed,
     locations: [location],
+    locationConnections: [],
     characters: [character],
     claims: [claim],
   });
@@ -241,6 +245,7 @@ function createSeedInput(suffix: string): SeedWorldInput {
     world,
     seed,
     locations: [location],
+    locationConnections: [],
     characters: [characterA, characterB],
     facts: [fact],
     claims: [claim],
@@ -278,6 +283,116 @@ describe("World Engine Commit Kernel", () => {
 
     const rebuilt = rebuildState(initial, store.listEvents(ids.world.id));
     expect(sortedSnapshot(rebuilt)).toEqual(sortedSnapshot(store.getSnapshot(ids.world.id)));
+    store.close();
+  });
+
+  it("allows a directed LocationConnection but rejects the undeclared reverse without mutating state", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("directed-connection");
+    const locationA = input.locations[0]!;
+    const locationB: LocationRecord = {
+      ...locationA,
+      id: "location-seed-directed-b",
+      name: "Seed Location directed B",
+    };
+    input.locations = [locationA, locationB];
+    input.locationConnections = [{
+      worldId: input.world.id,
+      fromLocationId: locationA.id,
+      toLocationId: locationB.id,
+    }];
+    store.seedWorld(input);
+    const kernel = new CommitKernel(store, {
+      clock: () => TEST_TIME,
+      idFactory: (() => {
+        let nextId = 0;
+        return () => `event-directed-${String(++nextId).padStart(4, "0")}`;
+      })(),
+    });
+
+    const forward = kernel.commit({
+      type: "character.move",
+      worldId: input.world.id,
+      expectedWorldRevision: 0,
+      actorId: input.characters[0]!.id,
+      toLocationId: locationB.id,
+      occurredAt: TEST_TIME,
+    });
+    expectSuccess(forward);
+
+    const beforeReverseSnapshot = store.getSnapshot(input.world.id);
+    const beforeReverseEvents = store.listEvents(input.world.id);
+    const reverse = kernel.commit({
+      type: "character.move",
+      worldId: input.world.id,
+      expectedWorldRevision: beforeReverseSnapshot.world.revision,
+      actorId: input.characters[0]!.id,
+      toLocationId: locationA.id,
+      occurredAt: TEST_TIME,
+    });
+    expectFailure(reverse, "LOCATION_NOT_CONNECTED");
+    expect(store.listEvents(input.world.id)).toEqual(beforeReverseEvents);
+    expect(store.getSnapshot(input.world.id)).toEqual(beforeReverseSnapshot);
+    expect(store.getSnapshot(input.world.id).world.revision).toBe(beforeReverseSnapshot.world.revision);
+    store.close();
+  });
+
+  it("rejects a same-World destination without an explicit Seed LocationConnection", () => {
+    const { store, ids, kernel } = createHarness();
+    const beforeSnapshot = store.getSnapshot(ids.world.id);
+    const beforeEvents = store.listEvents(ids.world.id);
+
+    expectFailure(
+      kernel.commit({
+        type: "character.move",
+        worldId: ids.world.id,
+        actorId: ids.characters.player.id,
+        toLocationId: ids.locations.hidden.id,
+        occurredAt: TEST_TIME,
+      }),
+      "LOCATION_NOT_CONNECTED",
+    );
+
+    expect(store.listEvents(ids.world.id)).toEqual(beforeEvents);
+    expect(store.getSnapshot(ids.world.id)).toEqual(beforeSnapshot);
+    store.close();
+  });
+
+  it("rejects a move when the Character has no current Location", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("unplaced-character");
+    input.characters[0] = { ...input.characters[0]!, locationId: null };
+    store.seedWorld(input);
+    const kernel = new CommitKernel(store, {
+      clock: () => TEST_TIME,
+      idFactory: () => "event-unplaced-character",
+    });
+
+    expectFailure(kernel.commit({
+      type: "character.move",
+      worldId: input.world.id,
+      expectedWorldRevision: 0,
+      actorId: input.characters[0]!.id,
+      toLocationId: input.locations[0]!.id,
+      occurredAt: TEST_TIME,
+    }), "LOCATION_NOT_CONNECTED");
+    expect(store.listEvents(input.world.id)).toHaveLength(0);
+    store.close();
+  });
+
+  it("rejects a self-loop LocationConnection before writing the Seed", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("self-loop");
+    const locationId = input.locations[0]!.id;
+    input.locationConnections = [{
+      worldId: input.world.id,
+      fromLocationId: locationId,
+      toLocationId: locationId,
+    }];
+
+    expectSeedFailure(() => store.seedWorld(input), "SEED_INVALID");
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(input.world.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM location_connections WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
     store.close();
   });
 
@@ -1014,6 +1129,7 @@ describe("World Engine Commit Kernel", () => {
         world: worldA,
         seed: seedA,
         locations: [],
+        locationConnections: [],
         characters: [characterA],
         claims: [],
         knowledge: [crossWorldKnowledge],
@@ -1067,6 +1183,7 @@ describe("World Engine Commit Kernel", () => {
         world: worldC,
         seed: seedC,
         locations: [],
+        locationConnections: [],
         characters: [characterC],
         facts: [crossSeedFact],
         claims: [crossSeedClaim],
@@ -1148,6 +1265,68 @@ describe("World Engine Commit Kernel", () => {
     expect(snapshot.relationships).toHaveLength(1);
     expect(snapshot.characters[0]!.locationId).toBe(valid.locations[0]!.id);
     expect(snapshot.locations[0]!.parentId).toBeNull();
+    store.close();
+  });
+
+  it("rejects Seed LocationConnection endpoints outside the Seed before any write", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("connection-endpoint");
+    input.locationConnections = [{
+      worldId: input.world.id,
+      fromLocationId: input.locations[0]!.id,
+      toLocationId: "location-missing",
+    }];
+
+    expectSeedFailure(() => store.seedWorld(input), "SEED_INVALID");
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(input.world.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM location_connections WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+    store.close();
+  });
+
+  it("rejects duplicate Seed LocationConnections before any write", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("duplicate-connection");
+    const locationA = input.locations[0]!;
+    const locationB: LocationRecord = {
+      ...locationA,
+      id: "location-seed-duplicate-b",
+      name: "Seed Location duplicate B",
+    };
+    input.locations = [locationA, locationB];
+    input.locationConnections = [
+      { worldId: input.world.id, fromLocationId: locationA.id, toLocationId: locationB.id },
+      { worldId: input.world.id, fromLocationId: locationA.id, toLocationId: locationB.id },
+    ];
+
+    expectSeedFailure(() => store.seedWorld(input), "SEED_INVALID");
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM worlds WHERE id = ?").get(input.world.id)).toEqual({ count: 0 });
+    expect(store.sqlite.prepare("SELECT COUNT(*) AS count FROM location_connections WHERE world_id = ?").get(input.world.id)).toEqual({ count: 0 });
+    store.close();
+  });
+
+  it("accepts distinct LocationConnection tuples whose delimiter strings collide", () => {
+    const store = new SqliteWorldStore();
+    const input = createSeedInput("tuple-connection");
+    const locationTemplate = input.locations[0]!;
+    const locations: LocationRecord[] = [
+      { ...locationTemplate, id: "a:b", name: "a:b" },
+      { ...locationTemplate, id: "c", name: "c" },
+      { ...locationTemplate, id: "a", name: "a" },
+      { ...locationTemplate, id: "b:c", name: "b:c" },
+    ];
+    input.locations = locations;
+    input.characters = input.characters.map((character) => ({ ...character, locationId: locations[0]!.id }));
+    input.locationConnections = [
+      { worldId: input.world.id, fromLocationId: "a:b", toLocationId: "c" },
+      { worldId: input.world.id, fromLocationId: "a", toLocationId: "b:c" },
+    ];
+
+    store.seedWorld(input);
+    expect(store.getSnapshot(input.world.id).locationConnections).toEqual(expect.arrayContaining([
+      { worldId: input.world.id, fromLocationId: "a:b", toLocationId: "c" },
+      { worldId: input.world.id, fromLocationId: "a", toLocationId: "b:c" },
+    ]));
+    expect(store.getSnapshot(input.world.id).locationConnections).toHaveLength(2);
     store.close();
   });
 
