@@ -61,6 +61,14 @@ describe("Canon divergence trusted authored action binding", () => {
         sourceEventWorldRevision: null,
         committedEventWorldRevision: null,
       });
+      expect(result.playerConsequenceKnowledge).toEqual({
+        acquired: false,
+        claim: null,
+        knowledgeState: null,
+        sourceEventType: null,
+        claimEventWorldRevision: null,
+        learnEventWorldRevision: null,
+      });
       expect(result.oldCanonAttempt).toEqual({
         committed: true,
         rejectionCode: null,
@@ -78,6 +86,9 @@ describe("Canon divergence trusted authored action binding", () => {
       }));
       expect(snapshot.facts.some((fact) => fact.object === "west_tower" && fact.predicate === "watch_route"))
         .toBe(false);
+      expect(snapshot.claims.some((claim) => claim.object === "west_tower" && claim.predicate === "watch_route"))
+        .toBe(false);
+      expect(snapshot.knowledge.some((knowledge) => knowledge.characterId === result.fixture.playerId)).toBe(false);
       expect(model.requests).toHaveLength(1);
     } finally {
       store.close();
@@ -119,6 +130,18 @@ describe("Canon divergence trusted authored action binding", () => {
       const interventionEvent = interventionFact?.sourceEventId
         ? store.getEvent(interventionFact.sourceEventId)
         : null;
+      const consequenceClaim = snapshot.claims.find(
+        (claim) => claim.predicate === "watch_route" && claim.object === "west_tower",
+      );
+      const consequenceClaimEvent = consequenceClaim?.sourceEventId
+        ? store.getEvent(consequenceClaim.sourceEventId)
+        : null;
+      const consequenceKnowledge = snapshot.knowledge.find(
+        (knowledge) => knowledge.characterId === result.fixture.playerId && knowledge.claimId === consequenceClaim?.id,
+      );
+      const consequenceLearnEvent = events.find(
+        (event) => event.type === "character.learn_claim" && event.payload.claimId === consequenceClaim?.id,
+      );
 
       expect(interventionLocationId).toBe(result.fixture.interventionLocationId);
       expect(result.playerTurn).toEqual({
@@ -131,14 +154,26 @@ describe("Canon divergence trusted authored action binding", () => {
         sourceEventWorldRevision: 2,
         committedEventWorldRevision: 3,
       });
+      expect(result.playerConsequenceKnowledge).toEqual({
+        acquired: true,
+        claim: {
+          subject: interventionFact?.subject,
+          predicate: "watch_route",
+          object: "west_tower",
+        },
+        knowledgeState: "confirmed",
+        sourceEventType: "claim.record",
+        claimEventWorldRevision: 4,
+        learnEventWorldRevision: 5,
+      });
       expect(result.oldCanonAttempt).toEqual({
         committed: false,
         rejectionCode: "FACT_PRECONDITION_FAILED",
         rejectionLeftStateUnchanged: true,
       });
-      expect(result.independentEvent).toEqual({ type: "fact.assert", worldRevision: 4 });
-      expect(result.finalWorldRevision).toBe(4);
-      expect(result.committedEventCount).toBe(4);
+      expect(result.independentEvent).toEqual({ type: "fact.assert", worldRevision: 6 });
+      expect(result.finalWorldRevision).toBe(6);
+      expect(result.committedEventCount).toBe(6);
       expect(result.replayConsistent).toBe(true);
 
       expect(snapshot.characters.find((character) => character.id === result.fixture.playerId)?.locationId)
@@ -151,6 +186,28 @@ describe("Canon divergence trusted authored action binding", () => {
       }));
       expect(interventionEvent?.actorIds).toEqual([result.fixture.playerId]);
       expect(interventionEvent?.causeEventIds).toEqual([moveEvent?.id]);
+      expect(consequenceClaimEvent).toEqual(expect.objectContaining({
+        type: "claim.record",
+        actorIds: [result.fixture.playerId],
+        worldRevision: 4,
+      }));
+      expect(consequenceClaimEvent?.causeEventIds).toEqual([interventionEvent?.id]);
+      expect(consequenceLearnEvent).toEqual(expect.objectContaining({
+        type: "character.learn_claim",
+        actorIds: [result.fixture.playerId],
+        worldRevision: 5,
+      }));
+      expect(consequenceLearnEvent?.causeEventIds).toEqual([consequenceClaimEvent?.id]);
+      expect(consequenceKnowledge).toEqual(expect.objectContaining({
+        characterId: result.fixture.playerId,
+        claimId: consequenceClaim?.id,
+        knowledgeState: "confirmed",
+        sourceType: "event",
+        sourceEventId: consequenceClaimEvent?.id,
+        sourceCharacterId: null,
+        sourceSeedId: null,
+      }));
+      expect(snapshot.knowledge.filter((knowledge) => knowledge.claimId === consequenceClaim?.id)).toHaveLength(1);
       expect(snapshot.facts.some((fact) => fact.object === "old_canon_arrest")).toBe(false);
       expect(snapshot.facts).toContainEqual(expect.objectContaining({
         predicate: "dawn_market_status",
@@ -200,6 +257,7 @@ describe("Canon divergence trusted authored action binding", () => {
         code: "MODEL_OUTPUT_INVALID",
       });
       expect(result.authoredConsequence.triggered).toBe(false);
+      expect(result.playerConsequenceKnowledge.acquired).toBe(false);
       expect(result.oldCanonAttempt.committed).toBe(true);
       expect(result.finalWorldRevision).toBe(3);
       expect(result.committedEventCount).toBe(3);

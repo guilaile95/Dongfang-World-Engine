@@ -1,4 +1,4 @@
-import type { CommittedEvent } from "../domain/types.js";
+import type { CommittedEvent, KnowledgeState } from "../domain/types.js";
 import { CommitKernel, type CommitResult } from "../engine/commit-kernel.js";
 import { ContextBuilder } from "../engine/context-builder.js";
 import { rebuildState } from "../engine/projector.js";
@@ -48,6 +48,18 @@ export interface CanonDivergenceRunResult {
     triggered: boolean;
     sourceEventWorldRevision: number | null;
     committedEventWorldRevision: number | null;
+  };
+  playerConsequenceKnowledge: {
+    acquired: boolean;
+    claim: {
+      subject: string;
+      predicate: string;
+      object: string;
+    } | null;
+    knowledgeState: KnowledgeState | null;
+    sourceEventType: CommittedEvent["type"] | null;
+    claimEventWorldRevision: number | null;
+    learnEventWorldRevision: number | null;
   };
   oldCanonAttempt: {
     committed: boolean;
@@ -152,6 +164,35 @@ export async function runCanonDivergenceScenario(
     break;
   }
 
+  const consequenceClaimId = `claim-player-observed-b-prime-${fixture.worldId}`;
+  let consequenceClaimEvent: CommittedEvent | null = null;
+  let consequenceLearnEvent: CommittedEvent | null = null;
+  if (authoredConsequenceEvent !== null) {
+    consequenceClaimEvent = requireCommitted(commitKernel.commit({
+      type: "claim.record",
+      worldId: fixture.worldId,
+      expectedWorldRevision: options.store.getSnapshot(fixture.worldId).world.revision,
+      claimId: consequenceClaimId,
+      actorId: fixture.playerId,
+      subject: fixture.npcAId,
+      predicate: "watch_route",
+      object: "west_tower",
+      occurredAt: CANON_DIVERGENCE_T2,
+      causeEventIds: [authoredConsequenceEvent.id],
+    }), "Player-observed B' Claim");
+    consequenceLearnEvent = requireCommitted(commitKernel.commit({
+      type: "character.learn_claim",
+      worldId: fixture.worldId,
+      expectedWorldRevision: options.store.getSnapshot(fixture.worldId).world.revision,
+      actorId: fixture.playerId,
+      claimId: consequenceClaimId,
+      knowledgeState: "confirmed",
+      source: { kind: "event", eventId: consequenceClaimEvent.id },
+      occurredAt: CANON_DIVERGENCE_T2,
+      causeEventIds: [consequenceClaimEvent.id],
+    }), "Player-observed B' Knowledge");
+  }
+
   const beforeOldCanonState = options.store.getSnapshot(fixture.worldId);
   const beforeOldCanonEvents = options.store.listEvents(fixture.worldId);
   const oldCanonAttempt = commitTrustedFact(options.store, commitKernel, {
@@ -184,6 +225,19 @@ export async function runCanonDivergenceScenario(
   const finalSnapshot = options.store.getSnapshot(fixture.worldId);
   const committedEvents = options.store.listEvents(fixture.worldId);
   const rebuilt = rebuildState(initialSnapshot, committedEvents);
+  const playerConsequenceKnowledge = finalSnapshot.knowledge.find(
+    (knowledge) => knowledge.characterId === fixture.playerId && knowledge.claimId === consequenceClaimId,
+  );
+  const playerConsequenceClaim = finalSnapshot.claims.find((claim) => claim.id === consequenceClaimId);
+  const knowledgeSourceEvent = playerConsequenceKnowledge?.sourceEventId
+    ? options.store.getEvent(playerConsequenceKnowledge.sourceEventId)
+    : null;
+  if (
+    authoredConsequenceEvent !== null &&
+    (!consequenceClaimEvent || !consequenceLearnEvent || !playerConsequenceClaim || !playerConsequenceKnowledge)
+  ) {
+    throw new Error("Trusted B' consequence did not materialize the complete Player Knowledge bundle");
+  }
 
   return {
     fixture: {
@@ -202,6 +256,20 @@ export async function runCanonDivergenceScenario(
       triggered: authoredConsequenceEvent !== null,
       sourceEventWorldRevision: authoredConsequenceSource?.worldRevision ?? null,
       committedEventWorldRevision: authoredConsequenceEvent?.worldRevision ?? null,
+    },
+    playerConsequenceKnowledge: {
+      acquired: playerConsequenceKnowledge !== undefined,
+      claim: playerConsequenceClaim
+        ? {
+          subject: playerConsequenceClaim.subject,
+          predicate: playerConsequenceClaim.predicate,
+          object: playerConsequenceClaim.object,
+        }
+        : null,
+      knowledgeState: playerConsequenceKnowledge?.knowledgeState ?? null,
+      sourceEventType: knowledgeSourceEvent?.type ?? null,
+      claimEventWorldRevision: consequenceClaimEvent?.worldRevision ?? null,
+      learnEventWorldRevision: consequenceLearnEvent?.worldRevision ?? null,
     },
     oldCanonAttempt: {
       committed: oldCanonAttempt.ok,

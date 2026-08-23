@@ -77,14 +77,26 @@ describe("Canon divergence real-model sample entrypoint", () => {
       { type: "character.move", worldRevision: 2 },
     ]);
     expect(output.result.authoredConsequence.triggered).toBe(true);
+    expect(output.result.playerConsequenceKnowledge).toEqual({
+      acquired: true,
+      claim: {
+        subject: expect.stringContaining("character-npc-a-"),
+        predicate: "watch_route",
+        object: "west_tower",
+      },
+      knowledgeState: "confirmed",
+      sourceEventType: "claim.record",
+      claimEventWorldRevision: 4,
+      learnEventWorldRevision: 5,
+    });
     expect(output.result.oldCanonAttempt).toEqual({
       committed: false,
       rejectionCode: "FACT_PRECONDITION_FAILED",
       rejectionLeftStateUnchanged: true,
     });
-    expect(output.result.independentEvent).toEqual({ type: "fact.assert", worldRevision: 4 });
-    expect(output.result.finalWorldRevision).toBe(4);
-    expect(output.result.committedEventCount).toBe(4);
+    expect(output.result.independentEvent).toEqual({ type: "fact.assert", worldRevision: 6 });
+    expect(output.result.finalWorldRevision).toBe(6);
+    expect(output.result.committedEventCount).toBe(6);
     expect(output.result.replayConsistent).toBe(true);
 
     const safeJson = JSON.stringify(output);

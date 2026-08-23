@@ -222,6 +222,18 @@ The frozen formal sample was executed exactly once from main `0c4efff7e45ecd2f50
 
 Vertical Slice 3.2 deliberately does not add Narrator, provider routing/fallback, new retry behavior, provider-specific structured output, actor Fact authority, generic rules, Scheduler, Dialogue, Memory/RAG or UI. The successful sample does not by itself justify any of those deferred systems; a later Slice requires a new player-perceivable question or an observed runtime failure.
 
+## Vertical Slice 3.3 — Player-legible Canon Consequence
+
+Status: complete.
+
+- after and only after trusted B′ commits, record one scenario-authored Claim whose proposition mirrors the Player-observable route consequence;
+- attribute the Claim observation to the Player whose committed move was the exact trusted trigger, and cause the Claim Event from B′;
+- commit one `character.learn_claim = confirmed` through CommitKernel using that matching Claim Event as structured provenance;
+- expose the resulting Claim / CharacterKnowledge / acquisition provenance through the unchanged Context Builder and NarrativeEnvelope paths;
+- prove other characters do not receive the Claim, objective Facts and requirements remain hidden, Narration is read-only, old C still rejects atomically, D continues, and full canonical replay remains consistent.
+
+Vertical Slice 3.3 deliberately does not add a new Event or Candidate, generic observation/perception framework, Dialogue or durable utterance system, Context/Narrator Fact access, generic consequence engine, Scheduler, Memory/RAG, UI or another real-model invocation.
+
 ## Later
 
 Lore retrieval, long-term Memory, choice branching, desktop UI, multiple worlds and advanced simulation are deliberately deferred until the core authority chain is stable.
