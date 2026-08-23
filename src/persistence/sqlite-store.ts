@@ -6,6 +6,7 @@ import type {
   CharacterRecord,
   ClaimRecord,
   CommittedEvent,
+  FactAssertionRequirementRecord,
   FactRecord,
   KnowledgeRecord,
   LocationConnectionRecord,
@@ -22,6 +23,7 @@ import {
   claims,
   createSchemaSql,
   events,
+  factAssertionRequirements,
   facts,
   locations,
   locationConnections,
@@ -44,6 +46,7 @@ export interface SeedWorldInput {
   claims?: ClaimRecord[];
   knowledge?: KnowledgeRecord[];
   predicatePolicies?: PredicatePolicyRecord[];
+  factAssertionRequirements?: FactAssertionRequirementRecord[];
   relationships?: RelationshipRecord[];
 }
 
@@ -109,6 +112,9 @@ export class SqliteWorldStore {
       if (input.predicatePolicies && input.predicatePolicies.length > 0) {
         tx.insert(predicatePolicies).values(input.predicatePolicies).run();
       }
+      if (input.factAssertionRequirements && input.factAssertionRequirements.length > 0) {
+        tx.insert(factAssertionRequirements).values(input.factAssertionRequirements).run();
+      }
       if (input.relationships && input.relationships.length > 0) {
         tx.insert(relationships).values(input.relationships).run();
       }
@@ -152,6 +158,7 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
   const charactersById = new Set(input.characters.map((character) => character.id));
   const locationsById = new Set(input.locations.map((location) => location.id));
   const connectionKeys = new Set<string>();
+  const factRequirementKeys = new Set<string>();
   const claimsById = new Set((input.claims ?? []).map((claim) => claim.id));
 
   if (input.seed.worldId !== worldId) {
@@ -208,6 +215,57 @@ function validateSeedInput(tx: any, input: SeedWorldInput): void {
   }
   for (const policy of input.predicatePolicies ?? []) {
     requireWorld("PredicatePolicy", policy.predicate, policy.worldId);
+  }
+  for (const requirement of input.factAssertionRequirements ?? []) {
+    requireWorld(
+      "FactAssertionRequirement",
+      JSON.stringify([
+        requirement.assertingSubject,
+        requirement.assertingPredicate,
+        requirement.assertingObject,
+      ]),
+      requirement.worldId,
+    );
+    for (const [field, value] of [
+      ["assertingPredicate", requirement.assertingPredicate],
+      ["assertingObject", requirement.assertingObject],
+      ["requiredPredicate", requirement.requiredPredicate],
+      ["requiredObject", requirement.requiredObject],
+    ] as const) {
+      if (typeof value !== "string" || value.length === 0) {
+        invalid("FactAssertionRequirement values must be non-empty", { field });
+      }
+    }
+    validateSeedSubject(
+      requirement.assertingSubject,
+      worldId,
+      charactersById,
+      locationsById,
+      "FactAssertionRequirement asserting",
+      requirement.assertingSubject,
+      invalid,
+    );
+    validateSeedSubject(
+      requirement.requiredSubject,
+      worldId,
+      charactersById,
+      locationsById,
+      "FactAssertionRequirement required",
+      requirement.requiredSubject,
+      invalid,
+    );
+    const requirementKey = JSON.stringify([
+      requirement.assertingSubject,
+      requirement.assertingPredicate,
+      requirement.assertingObject,
+      requirement.requiredSubject,
+      requirement.requiredPredicate,
+      requirement.requiredObject,
+    ]);
+    if (factRequirementKeys.has(requirementKey)) {
+      invalid("Seed contains a duplicate FactAssertionRequirement", { requirementKey });
+    }
+    factRequirementKeys.add(requirementKey);
   }
   for (const knowledge of input.knowledge ?? []) {
     if (!charactersById.has(knowledge.characterId)) {
@@ -317,6 +375,19 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
     .from(predicatePolicies)
     .where(eq(predicatePolicies.worldId, worldId))
     .all();
+  const factAssertionRequirementRows = executor
+    .select()
+    .from(factAssertionRequirements)
+    .where(eq(factAssertionRequirements.worldId, worldId))
+    .orderBy(
+      asc(factAssertionRequirements.assertingSubject),
+      asc(factAssertionRequirements.assertingPredicate),
+      asc(factAssertionRequirements.assertingObject),
+      asc(factAssertionRequirements.requiredSubject),
+      asc(factAssertionRequirements.requiredPredicate),
+      asc(factAssertionRequirements.requiredObject),
+    )
+    .all();
 
   return {
     world: {
@@ -392,6 +463,17 @@ export function readSnapshot(executor: any, worldId: string): WorldSnapshot {
       predicate: policy.predicate,
       cardinality: policy.cardinality as PredicatePolicyRecord["cardinality"],
     })),
+    factAssertionRequirements: factAssertionRequirementRows.map(
+      (requirement: typeof factAssertionRequirementRows[number]) => ({
+        worldId: requirement.worldId,
+        assertingSubject: requirement.assertingSubject,
+        assertingPredicate: requirement.assertingPredicate,
+        assertingObject: requirement.assertingObject,
+        requiredSubject: requirement.requiredSubject,
+        requiredPredicate: requirement.requiredPredicate,
+        requiredObject: requirement.requiredObject,
+      }),
+    ),
     relationships: relationshipRows.map((relationship: typeof relationshipRows[number]) => ({
       sourceCharacterId: relationship.sourceCharacterId,
       targetCharacterId: relationship.targetCharacterId,

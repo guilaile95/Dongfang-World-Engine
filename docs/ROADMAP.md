@@ -163,7 +163,7 @@ Step 7 deliberately does not include Item, the closed-inn fixture, NPC Scheduler
 
 ## Vertical Slice 0 — Closed Inn 10-turn Causal Loop Proof
 
-Status: in progress.
+Status: complete.
 
 Prove the first actual multi-character causal loop in a closed scene with deterministic information transmission:
 
@@ -174,6 +174,22 @@ Prove the first actual multi-character causal loop in a closed scene with determ
 - verify all 9 hard assertions: zero Truth leaks, zero unauthorized knowledge leaks, no direct Truth writes, explainable provenance, and 100% replay/rebuild consistency.
 
 Vertical Slice 0 deliberately does not include Item/inventory framework, dialogue framework, generic interaction layer, NPC Scheduler, Memory/RAG, belief transition lattice, UI, or distributed platform.
+
+## Vertical Slice 3 — Hand-authored Canon Divergence Micro-Slice
+
+Status: complete.
+
+Prove that canon is a causal baseline rather than an immutable script, using one purpose-built deterministic fixture:
+
+- persist one Seed-static exact `FactAssertionRequirement` relation inside World authority state;
+- evaluate all matching requirements at `fact.assert.validFrom` with half-open Fact intervals;
+- keep zero-row behavior unchanged and use AND semantics for multiple requirements;
+- prove control `A → B → C` and independent `D`;
+- prove Player-attributed `B'` closes `B`, then a direct old-`C` Candidate is rejected with zero partial state while `D` still commits;
+- preserve the static authority relation in `WorldSnapshot` and full canonical replay comparison;
+- keep Candidate/Event schemas, actor Proposal capabilities and cause provenance semantics unchanged.
+
+Vertical Slice 3 deliberately does not include a generic Canon/Rule/Timeline Engine, automatic consequence scheduling, recursive inference, Branch/Multiverse, World Pack Compiler, Dialogue, Scheduler, Memory/RAG, UI, or real-model execution.
 
 ## Later
 

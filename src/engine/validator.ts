@@ -6,6 +6,7 @@ import {
   characterKnowledge,
   characters,
   events,
+  factAssertionRequirements,
   facts,
   locations,
   worlds,
@@ -449,6 +450,7 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
   if (validTo && Date.parse(validTo) <= Date.parse(validFrom)) {
     throw new KernelError("INVALID_TIME", "Fact validTo must be after validFrom", { validFrom, validTo });
   }
+  validateFactAssertionRequirements(tx, candidate, validFrom);
   const configuredPolicy = findPredicatePolicy(tx, candidate.worldId, candidate.predicate);
   const cardinality = configuredPolicy?.cardinality === "many" ? "many" : "one";
   if (cardinality === "many") {
@@ -474,6 +476,69 @@ function validateFact(tx: any, candidate: Extract<CandidateEvent, { type: "fact.
         existingFactId: existing.id,
       });
     }
+  }
+}
+
+function validateFactAssertionRequirements(
+  tx: any,
+  candidate: Extract<CandidateEvent, { type: "fact.assert" }>,
+  assertionTime: string,
+): void {
+  const requirements = tx
+    .select()
+    .from(factAssertionRequirements)
+    .where(and(
+      eq(factAssertionRequirements.worldId, candidate.worldId),
+      eq(factAssertionRequirements.assertingSubject, candidate.subject),
+      eq(factAssertionRequirements.assertingPredicate, candidate.predicate),
+      eq(factAssertionRequirements.assertingObject, candidate.object),
+    ))
+    .all();
+
+  const assertionMilliseconds = Date.parse(assertionTime);
+  const unmetRequirements: Array<{ subject: string; predicate: string; object: string }> = requirements.flatMap(
+    (requirement: typeof factAssertionRequirements.$inferSelect) => {
+      const matchingFacts = tx
+        .select()
+        .from(facts)
+        .where(and(
+          eq(facts.worldId, candidate.worldId),
+          eq(facts.subject, requirement.requiredSubject),
+          eq(facts.predicate, requirement.requiredPredicate),
+          eq(facts.object, requirement.requiredObject),
+        ))
+        .all();
+      const prerequisiteIsActive = matchingFacts.some((fact: typeof facts.$inferSelect) =>
+        Date.parse(fact.validFrom) <= assertionMilliseconds &&
+        (fact.validTo === null || assertionMilliseconds < Date.parse(fact.validTo)),
+      );
+
+      return prerequisiteIsActive
+        ? []
+        : [{
+          subject: requirement.requiredSubject,
+          predicate: requirement.requiredPredicate,
+          object: requirement.requiredObject,
+        }];
+    },
+  );
+  unmetRequirements.sort((first, second) =>
+    JSON.stringify([first.subject, first.predicate, first.object])
+      .localeCompare(JSON.stringify([second.subject, second.predicate, second.object])),
+  );
+
+  if (unmetRequirements.length > 0) {
+    throw new KernelError(
+      "FACT_PRECONDITION_FAILED",
+      "Fact assertion prerequisites are not satisfied at the asserted Fact's validFrom time",
+      {
+        assertingSubject: candidate.subject,
+        assertingPredicate: candidate.predicate,
+        assertingObject: candidate.object,
+        assertionTime,
+        unmetRequirements,
+      },
+    );
   }
 }
 

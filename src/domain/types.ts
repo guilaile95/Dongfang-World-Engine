@@ -42,6 +42,16 @@ export interface PredicatePolicyRecord {
   cardinality: PredicateCardinality;
 }
 
+export interface FactAssertionRequirementRecord {
+  worldId: string;
+  assertingSubject: string;
+  assertingPredicate: string;
+  assertingObject: string;
+  requiredSubject: string;
+  requiredPredicate: string;
+  requiredObject: string;
+}
+
 export interface LocationRecord {
   id: string;
   worldId: string;
@@ -137,5 +147,6 @@ export interface WorldSnapshot {
   claims: ClaimRecord[];
   knowledge: KnowledgeRecord[];
   predicatePolicies: PredicatePolicyRecord[];
+  factAssertionRequirements: FactAssertionRequirementRecord[];
   relationships: RelationshipRecord[];
 }

@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport 与 Step 7 Minimal Narrator 已完成；当前实现 **Vertical Slice 0 — Closed Inn 10-turn Causal Loop Proof**。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator 与 Closed Inn 系列验证已完成；当前实现 **Vertical Slice 3 — Hand-authored Canon Divergence Micro-Slice**。
 
 第一阶段验证目标是：
 
@@ -118,6 +118,8 @@ Step 7 增加一个 observer-scoped `NarrativeEnvelope`：Turn 完成后重新�
 Vertical Slice 0 增加 Closed Inn 最小测试场景与同地点 source-authored `claim.transmit` 传播能力：由拥有该 Claim 认知的角色主动发起传播，经同地点和存在性严格校验后为目标角色生成具备确定性 Event Provenance 的 CharacterKnowledge，且不赋予任何客观 Truth 权威；配备无通用 Scheduler 依赖的 10-turn Headless Test Harness。
 
 Step 2.5 进一步冻结了内核的审计边界：每个 World 从 `revision = 0` 开始，Candidate 必须携带 `expectedWorldRevision`，成功提交同时产生全局 `sequence` 和该 World 的 `worldRevision`；过期 Candidate 以 `STALE_WORLD_STATE` 拒绝且不产生副作用。Fact 的谓词可以按 World 配置为 `one` 或 `many`，未配置时保守采用 `one`。初始 Fact、Claim 与 CharacterKnowledge 通过可审计 Seed 身份追溯，知识传播只允许结构化 character/event provenance，且角色传播必须精确复制来源知识状态。
+
+Vertical Slice 3 增加 Seed-authoritative `FactAssertionRequirement`：手写 World 可以声明某个精确 Fact 三元组在被断言时所需的精确前置 Fact。Hard Validator 在 Candidate 的 `validFrom` 时点按半开有效区间检查全部前置条件；不满足时以稳定错误拒绝，且不追加 Event、不投影 Fact、不推进 revision。该关系不进入 actor Proposal、Event payload 或角色 Context，也不是通用 Canon / Rule / Timeline Engine。
 
 Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 与 `claim.transmit` 是合法的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 
