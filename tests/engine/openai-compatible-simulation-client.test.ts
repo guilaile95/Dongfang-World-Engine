@@ -52,8 +52,23 @@ function fakeContext(): CharacterContext {
       revision: 0,
       status: "active",
     },
-    observer: { id: "character-player" },
-  } as CharacterContext;
+    observer: {
+      id: "character-player",
+      worldId: "world-test",
+      name: "Player",
+      type: "player",
+      alive: true,
+      locationId: null,
+      identity: "test-player",
+      currentGoal: "test",
+    },
+    location: null,
+    movementOptions: [],
+    coLocatedCharacters: [],
+    knowledge: [],
+    relationships: [],
+    packing: { budget: 0, visibleUnits: 0, usedUnits: 0, truncated: false },
+  };
 }
 
 function modelRequest(overrides: Partial<SimulationModelRequest> = {}): SimulationModelRequest {

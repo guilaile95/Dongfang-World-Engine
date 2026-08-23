@@ -50,6 +50,12 @@ export interface LocationRecord {
   type: string;
 }
 
+export interface LocationConnectionRecord {
+  worldId: string;
+  fromLocationId: string;
+  toLocationId: string;
+}
+
 export interface CharacterRecord {
   id: string;
   worldId: string;
@@ -125,6 +131,7 @@ export interface WorldSnapshot {
   world: WorldRecord;
   seed: SeedRecord;
   locations: LocationRecord[];
+  locationConnections: LocationConnectionRecord[];
   characters: CharacterRecord[];
   facts: FactRecord[];
   claims: ClaimRecord[];

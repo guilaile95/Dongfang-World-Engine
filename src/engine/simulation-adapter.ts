@@ -171,7 +171,7 @@ export const DEFAULT_SIMULATION_INSTRUCTIONS = [
   "Return JSON only: do not use markdown code fences, prose, explanations, comments, or hidden reasoning.",
   "An empty proposal list is valid: {\"proposals\":[]}.",
   "Use only the following seven actor Proposal types and exact fields. In these examples, \"string\" means a non-empty string value, not the literal word string.",
-  "1. character.move: {\"type\":\"character.move\",\"actorId\":\"string\",\"toLocationId\":\"string\"}. actorId must equal context.observer.id.",
+  "1. character.move: {\"type\":\"character.move\",\"actorId\":\"string\",\"toLocationId\":\"string\"}. actorId must equal context.observer.id, and toLocationId must be one of context.movementOptions.locationId values.",
   "2. character.die: {\"type\":\"character.die\",\"actorId\":\"string\"}. actorId must equal context.observer.id.",
   "3. character.learn_claim: {\"type\":\"character.learn_claim\",\"actorId\":\"string\",\"claimId\":\"string\",\"knowledgeState\":\"unknown | rumor | suspected | believed | confirmed\",\"source\":OPTIONAL}. If source exists, it must be {\"kind\":\"character\",\"characterId\":\"string\"} or {\"kind\":\"event\",\"eventId\":\"string\"}. actorId must equal context.observer.id.",
   "4. relationship.change: {\"type\":\"relationship.change\",\"sourceCharacterId\":\"string\",\"targetCharacterId\":\"string\",\"trustDelta\":OPTIONAL_INTEGER_-100_TO_100,\"hostilityDelta\":OPTIONAL_INTEGER_-100_TO_100,\"closenessDelta\":OPTIONAL_INTEGER_-100_TO_100,\"relationshipType\":OPTIONAL_NON_EMPTY_STRING}. At least one change field is required. sourceCharacterId must equal context.observer.id.",

@@ -141,6 +141,11 @@ describe("Simulation Adapter MVP", () => {
     expect(model.calls).toHaveLength(1);
     expect(model.calls[0]!.context).toBe(context);
     expect(model.calls[0]!.intent).toBe("观察周围");
+    expect(model.calls[0]!.context.movementOptions).toEqual([
+      { locationId: ids.locations.beijing.id, name: ids.locations.beijing.name },
+      { locationId: ids.locations.tokyo.id, name: ids.locations.tokyo.name },
+    ]);
+    expect(model.calls[0]!.instructions).toContain("context.movementOptions");
     expect(model.calls[0]!.instructions).toContain("worldId");
     expect(model.calls[0]!.attempt).toBe(1);
     expect(model.calls[0]).not.toHaveProperty("store");

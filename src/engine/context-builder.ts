@@ -63,10 +63,16 @@ export interface ContextKnowledgeBundle {
   provenance: ContextKnowledgeProvenance;
 }
 
+export interface MovementOption {
+  locationId: string;
+  name: string;
+}
+
 export interface CharacterContext {
   world: ContextWorldEnvelope;
   observer: CharacterRecord;
   location: LocationRecord | null;
+  movementOptions: MovementOption[];
   coLocatedCharacters: PublicCharacterProjection[];
   knowledge: ContextKnowledgeBundle[];
   relationships: ContextRelationshipProjection[];
@@ -121,6 +127,24 @@ export class ContextBuilder {
         worldId: input.worldId,
       });
     }
+
+    const locationsById = new Map(snapshot.locations.map((candidate) => [candidate.id, candidate]));
+    const movementOptions = location === null
+      ? []
+      : snapshot.locationConnections
+        .filter((connection) => connection.fromLocationId === location.id)
+        .filter((connection) => connection.toLocationId !== location.id)
+        .sort((first, second) => compareIds(first.toLocationId, second.toLocationId))
+        .map((connection) => {
+          const target = locationsById.get(connection.toLocationId);
+          if (!target) {
+            throw new KernelError("LOCATION_NOT_FOUND", "Movement target Location does not exist in the requested World", {
+              locationId: connection.toLocationId,
+              worldId: input.worldId,
+            });
+          }
+          return { locationId: target.id, name: target.name } satisfies MovementOption;
+        });
 
     const eventById = new Map(this.store.listEvents(input.worldId).map((event) => [event.id, event]));
     const claimById = new Map(snapshot.claims.map((claim) => [claim.id, claim]));
@@ -194,6 +218,7 @@ export class ContextBuilder {
       },
       observer: { ...observer },
       location: location ? { ...location } : null,
+      movementOptions,
       coLocatedCharacters: packedCoLocatedCharacters,
       knowledge: packedKnowledge,
       relationships: packedRelationships,

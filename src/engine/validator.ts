@@ -16,6 +16,7 @@ import {
   findEvent,
   findFact,
   findLocation,
+  findLocationConnection,
   findPredicatePolicy,
   findRelationship,
 } from "../persistence/sqlite-store.js";
@@ -115,6 +116,18 @@ function validateMove(tx: any, candidate: Extract<CandidateEvent, { type: "chara
   }
   if (!character.alive) {
     throw new KernelError("CHARACTER_DEAD", "A dead Character cannot move", { characterId: candidate.actorId });
+  }
+  if (
+    character.locationId === null ||
+    character.locationId === candidate.toLocationId ||
+    !findLocationConnection(tx, candidate.worldId, character.locationId, candidate.toLocationId)
+  ) {
+    throw new KernelError("LOCATION_NOT_CONNECTED", "Character cannot move along an undeclared LocationConnection", {
+      characterId: character.id,
+      fromLocationId: character.locationId,
+      toLocationId: candidate.toLocationId,
+      worldId: candidate.worldId,
+    });
   }
 }
 

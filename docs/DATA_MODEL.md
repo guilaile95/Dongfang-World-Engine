@@ -86,6 +86,19 @@ Location
 
 `parent_id` 支持地点层级，例如大陆、城市、建筑和房间。角色位置变化不能只靠文本描述，必须有来源事件或明确的初始状态。
 
+#### 2.4.1 LocationConnection
+
+表示 Seed 声明的有向、World 内地点连接。当前 MVP 中，它同时表示“已暴露且当前允许直接选择的一步 movement transition”，不是完整的 physical topology。连接由 `world_id + from_location_id + to_location_id` 唯一确定；同一 World 内的地点不会因为存在于同一个 World 就自动互相可达，也不按角色单独维护移动白名单。
+
+```text
+LocationConnection
+  world_id
+  from_location_id
+  to_location_id
+```
+
+Seed 校验必须确认连接两端都属于当前 Seed 的 Location 集合。`parentId` 只表示层级关系，不表示 adjacency。`character.move` 只能沿当前 Location 到目标 Location 的显式有向连接提交；Context Builder 只将当前地点的目标投影为稳定的 `{ locationId, name }` movement option。只有未来出现真实的 hidden/undiscovered passage 需求时，才拆分独立的 Visibility / Reachability 语义。
+
 ### 2.5 Fact
 
 表示客观世界事实，即“世界实际上是什么”。
@@ -309,9 +322,9 @@ Lore 是世界背景设定、初始规则和 Canon 约束，可以作为初始�
 
 ### 2.15 Context Builder（只读观察者视图）
 
-Context Builder 不新增事实表，也不写入 Event、Materialized State 或 World revision。它从一个 World 的当前快照和 Event Log 构造结构化观察者上下文，包含 World envelope、observer 自身 Character、当前位置、同地点角色的安全公共投影、observer 自己的 `CharacterKnowledge + Claim + provenance` causal bundle，以及 observer 作为 source 的有向 Relationship。
+Context Builder 不新增事实表，也不写入 Event、Materialized State 或 World revision。它从一个 World 的当前快照和 Event Log 构造结构化观察者上下文，包含 World envelope、observer 自身 Character、当前位置、当前地点显式连接到的安全 `movementOptions`、同地点角色的安全公共投影、observer 自己的 `CharacterKnowledge + Claim + provenance` causal bundle，以及 observer 作为 source 的有向 Relationship。
 
-可见性过滤先于预算 packing。MVP budget 表示可选 context unit 的数量上限，不是固定 token 方案；core envelope、self 和当前位置始终保留，Knowledge bundle 以完整因果单元参与截断。Context Builder 不输出一般 Fact，不通过 Claim 与 Fact 的字段匹配泄露 Truth，不合并其他角色的认知或隐藏 Character 字段，也不输出 raw Event payload、actor/target 列表。
+可见性过滤先于预算 packing。MVP budget 表示可选 context unit 的数量上限，不是固定 token 方案；core envelope、self、当前位置和 movement options 始终保留，Knowledge bundle 以完整因果单元参与截断。Context Builder 不输出一般 Fact，不通过 Claim 与 Fact 的字段匹配泄露 Truth，不合并其他角色的认知或隐藏 Character 字段，也不输出 raw Event payload、actor/target 列表或 raw LocationConnection topology。
 
 确定性的 visibility gate 是后续任何概率相关性排序、Embedding、RAG 或 LLM 的前置边界；本 Slice 不实现这些能力。
 
@@ -319,7 +332,7 @@ Context Builder 不新增事实表，也不写入 Event、Materialized State 或
 
 Simulation Adapter 只接收 `CharacterContext + actorCharacterId + intent`，并通过可注入 Model Client 返回六类 actor-supported、结构化、有序的 Proposal 列表。Proposal 是待后续 Orchestrator 绑定并验证的草案，不是 Candidate Event，也不携带模型可控制的 `worldId`、`expectedWorldRevision`、`occurredAt` 或 `causeEventIds`；`world.time_advance.toTime` 仍是 Effect 字段。actor 模型暂不拥有 `fact.assert`，Kernel capability 不等于 actor-model capability；Adapter 不读取原始 Snapshot、Facts 或 SQLite Store，不执行 Commit。
 
-模型输出先经过确定性 schema validation；system instruction 明确声明顶层 `{ "proposals": [...] }`、空 Proposal 合法、六类 Proposal 精确字段、actor ownership 和禁止的 authority 字段。Malformed output 最多允许一次 repair；repair 只收到固定上限内的 schema issue path/code/message，或 invalid JSON / actor mismatch 的具体原因。第二次仍失败则返回包含最后安全 validation summary 的稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于 Turn Orchestrator。
+模型输出先经过确定性 schema validation；system instruction 明确声明顶层 `{ "proposals": [...] }`、空 Proposal 合法、七类 Proposal 精确字段、actor ownership 和禁止的 authority 字段；`character.move.toLocationId` 必须从 `context.movementOptions` 选择。Malformed output 最多允许一次 repair；repair 只收到固定上限内的 schema issue path/code/message，或 invalid JSON / actor mismatch 的具体原因。第二次仍失败则返回包含最后安全 validation summary 的稳定 Adapter error，transport/provider failure 不进行 retry storm。revision 绑定、逐 Proposal 提交和读取新 revision 属于 Turn Orchestrator。
 
 ### 2.17 Turn Orchestrator（可信 Commit 绑定）
 
@@ -357,8 +370,9 @@ Narrator 只接收 Narrative Envelope 和 provider-agnostic narrative instructio
 World
  ├── Seed
  ├── Character ──< CharacterKnowledge >── Claim
- ├── Location
- ├── Event ──< cause_event_ids >── Event
+  ├── Location
+  ├── LocationConnection ──> Location + Location
+  ├── Event ──< cause_event_ids >── Event
  ├── Fact
  ├── Relationship ──> Character + updated_by_event_id
  ├── PredicatePolicy
@@ -393,6 +407,7 @@ Event = 已提交的变化及其因果
 | World revision | World State / Commit Kernel |
 | 人物是否存活 | Character / Event |
 | 人物位置 | World State（由 Event 更新） |
+| 移动可达性 | Seed LocationConnection（有向、World 内） |
 | 已发生事件 | Event Log |
 | 客观秘密 | Fact |
 | 非权威命题 | Claim |
@@ -435,7 +450,7 @@ Player
 - Context Builder 只读并按角色权限过滤上下文；
 - Context Builder 先执行确定性的 observer visibility gate，再进行有界 packing；它不产生任何事实写入；
 - Simulation LLM 只生成候选，不拥有事实写权限；
-- Validator 负责检查来源、时间、位置、知识权限、关系约束、Claim 跨 World 引用和互斥事实；
+- Validator 负责检查来源、时间、显式有向 LocationConnection、知识权限、关系约束、Claim 跨 World 引用和互斥事实；
 - Commit Event 是进入事实层的唯一入口；
 - Materialized State 只能由已提交事件或初始化过程更新；
 - Narrator 只能读取已确认结果并生成展示文本；
@@ -457,4 +472,4 @@ Player
 9. Memory 只作为可替换召回接口；
 10. 连续运行 30～50 轮后，可以从 Event 解释当前事实、时间、位置、人物认知和因果。
 
-当前 Slice 已将 World、Seed、Character、Location、Fact、Claim、CharacterKnowledge、PredicatePolicy、Relationship 和 Event 物理化到 SQLite，并实现七类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。
+当前 Slice 已将 World、Seed、Character、Location、LocationConnection、Fact、Claim、CharacterKnowledge、PredicatePolicy、Relationship 和 Event 物理化到 SQLite，并实现七类 Candidate Event 的校验、事务提交、物化投影和事件重建。当前仍不绑定腾讯 Agent Memory 或其他 Memory Provider，不引入复杂 RAG、数据库外部服务或大规模模拟。
