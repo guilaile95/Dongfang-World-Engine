@@ -84,7 +84,7 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证、Vertical Slice 3 Authority proof 与 3.1 trusted binding 已完成；当前阶段是 **Vertical Slice 3.2 — One Frozen Real-model Canon Divergence Action Sample**（runner complete；formal sample pending credentials）。
+Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证，以及 Vertical Slice 3 Authority proof、3.1 trusted binding 与 3.2 frozen real-model action sample 均已完成。当前处于 Vertical Slice 3 后的 Stage Review；没有尚未完成的工程 Slice，下一项能力必须由新的玩家可感知问题或真实运行失败驱动。
 
 第一阶段验证目标是：
 
@@ -124,6 +124,8 @@ Vertical Slice 3 增加 Seed-authoritative `FactAssertionRequirement`：手写 W
 Vertical Slice 3.1 用一个 purpose-built headless scenario 证明最小 action-to-consequence 绑定：玩家仍只能通过现有 actor Proposal 提交合法 `character.move`；scenario-local trusted producer 只根据 Store 中当前 Head 的精确已提交 move Event ID，经 CommitKernel 断言 B′，并把该 move Event 记录为 cause。raw intent、未提交 Proposal、错误角色、错误目的地或被拒绝 Turn 都不能触发 B′；actor 模型仍不能生成 `fact.assert`。该证明不增加通用 Action/Effect Resolver、Rule Engine 或 Scheduler。
 
 Vertical Slice 3.2 提供一个冻结的、开发者 opt-in real-model action-selection 入口：`npm run smoke:canon-divergence`。它只读取 `DWE_LLM_BASE_URL`、`DWE_LLM_API_KEY`、`DWE_LLM_MODEL`，复用现有 OpenAI-compatible transport 与 3.1 harness，并只输出 model identifier、execution mode、no-reroll protocol marker、provider call count 和 safe result。CI 的 injected fake fetch 明确标记为 `injected_test / formalSample=false`；只有非注入 CLI 网络路径标记为 `formal_network / formalSample=true`。正式样本必须在 exact-main 上调用一次，不能因结果不理想而重跑。
+
+该正式样本已从 exact main `0c4efff7e45ecd2f507a8034dccdf165a44b2f8a` 执行一次：`providerCalls = 1`、`repair = 0`、无 reroll。真实模型基于合法 observer Context 提交了 Player `character.move`；scenario-local trusted producer 随后经 CommitKernel 产生 B′，精确旧 C 的直接提交以 `FACT_PRECONDITION_FAILED` 被拒绝且没有部分状态，独立 D 继续成功，最终 `worldRevision = committed Event count = 4`，full canonical replay 一致。正式输出未记录凭据、raw prompt/response、hidden reasoning、WorldSnapshot 或 private Knowledge。
 
 Step 2.6 明确冻结认知边界：`Fact` 只表示客观世界 Truth，`Claim` 表示可能为真、为假、过时、不完整或未解决的命题，`CharacterKnowledge` 只记录角色对 Claim 的认知。Claim 不会自动成为 Fact，Fact 也不会自动授予角色 Claim；`character.learn_claim` 与 `claim.transmit` 是合法的 Claim 认知变更事件，`claim.record` 只记录命题，不创建或修改 Fact。
 

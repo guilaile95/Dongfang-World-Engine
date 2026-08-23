@@ -209,7 +209,7 @@ Vertical Slice 3.1 deliberately does not add a generic Action/Effect Resolver, t
 
 ## Vertical Slice 3.2 — One Frozen Real-model Canon Divergence Action Sample
 
-Status: runner complete; formal sample pending credentials.
+Status: complete.
 
 - add one opt-in entrypoint around the existing 3.1 harness and OpenAI-compatible Simulation client;
 - freeze the directed Player intent and one-sample/no-reroll protocol;
@@ -218,7 +218,9 @@ Status: runner complete; formal sample pending credentials.
 - prove the HTTP path with injected fake fetch, mark it non-formal, and keep CI credential-free;
 - execute the formal provider sample only after merge on exact main, if all three required credentials are present.
 
-Vertical Slice 3.2 deliberately does not add Narrator, provider routing/fallback, new retry behavior, provider-specific structured output, actor Fact authority, generic rules, Scheduler, Dialogue, Memory/RAG or UI. If credentials are unavailable after merge, the runner may be complete while the formal experiment remains open and blocked; no fake result may substitute for it.
+The frozen formal sample was executed exactly once from main `0c4efff7e45ecd2f507a8034dccdf165a44b2f8a`: one provider call, zero repair calls and no reroll. The real model selected the legal Player `character.move`; the trusted producer committed B′ through CommitKernel, the exact old C attempt was rejected with `FACT_PRECONDITION_FAILED` without partial state, independent D committed, and the final revision and committed Event count were both 4 with full canonical replay consistency. No new P0/P1 was observed.
+
+Vertical Slice 3.2 deliberately does not add Narrator, provider routing/fallback, new retry behavior, provider-specific structured output, actor Fact authority, generic rules, Scheduler, Dialogue, Memory/RAG or UI. The successful sample does not by itself justify any of those deferred systems; a later Slice requires a new player-perceivable question or an observed runtime failure.
 
 ## Later
 
