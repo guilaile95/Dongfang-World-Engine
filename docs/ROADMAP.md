@@ -186,10 +186,13 @@ Prove that canon is a causal baseline rather than an immutable script, using one
 - keep zero-row behavior unchanged and use AND semantics for multiple requirements;
 - prove control `A → B → C` and independent `D`;
 - prove Player-attributed `B'` closes `B`, then a direct old-`C` Candidate is rejected with zero partial state while `D` still commits;
+- reject a later-committed retroactive `B'` when its projected close time would make an already committed `C` lose `B` at `C.validFrom`, while preserving unrelated historical replacements and replacements after the dependent assertion time;
 - preserve the static authority relation in `WorldSnapshot` and full canonical replay comparison;
 - keep Candidate/Event schemas, actor Proposal capabilities and cause provenance semantics unchanged.
 
-Vertical Slice 3 deliberately does not include a generic Canon/Rule/Timeline Engine, automatic consequence scheduling, recursive inference, Branch/Multiverse, World Pack Compiler, Dialogue, Scheduler, Memory/RAG, UI, or real-model execution.
+The post-Slice audit confirmed that canonical replay consistency alone cannot prove causal legality: replay could faithfully reproduce a state where a retroactive cardinality-one close had invalidated a committed Fact prerequisite. The Validator therefore rejects that direct invalidation before append/projection, including a replacement that would invalidate its own prerequisite. It does not automatically delete, retract or recompute downstream Facts.
+
+Vertical Slice 3 deliberately does not include a generic Canon/Rule/Timeline Engine, automatic consequence scheduling, recursive inference, truth maintenance, Branch/Multiverse, World Pack Compiler, Dialogue, Scheduler, Memory/RAG, UI, or real-model execution.
 
 ## Vertical Slice 3.1 — Trusted Authored Consequence Binding
 

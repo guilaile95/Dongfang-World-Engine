@@ -394,6 +394,275 @@ describe("Seed-authoritative Fact assertion requirements", () => {
     }
   });
 
+  it("rejects a retroactive replacement that would invalidate a committed Fact prerequisite", () => {
+    const harness = createHarness("retroactive-regression");
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      const baselineB = commitBaselineB(harness);
+      const oldC = expectCommitted(commitOldCanonC(harness, T3, T3, [baselineB.id]));
+      const beforeRejectedState = harness.store.getSnapshot(harness.ids.worldId);
+      const beforeRejectedEvents = harness.store.listEvents(harness.ids.worldId);
+      const rejection = expectRejected(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-retroactive-b-prime-${harness.ids.worldId}`,
+        actorId: harness.ids.playerId,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T2,
+        occurredAt: T4,
+      }), "FACT_PRECONDITION_FAILED");
+      const final = harness.store.getSnapshot(harness.ids.worldId);
+      const persistedB = final.facts.find((fact) => fact.id === baselineB.payload.factId);
+      const persistedC = final.facts.find((fact) => fact.id === oldC.payload.factId);
+
+      expect(rejection.context).toEqual({
+        replacementSubject: harness.ids.npcAId,
+        replacementPredicate: "watch_route",
+        replacementObject: "west_tower",
+        replacementValidFrom: T2,
+        invalidatedAssertions: [{
+          assertingFactId: oldC.payload.factId,
+          assertingSubject: harness.ids.npcCId,
+          assertingPredicate: "delivery_outcome",
+          assertingObject: "old_canon_arrest",
+          assertionTime: T3,
+          requiredSubject: harness.ids.npcAId,
+          requiredPredicate: "watch_route",
+          requiredObject: "east_gate",
+        }],
+      });
+      expect(final).toEqual(beforeRejectedState);
+      expect(harness.store.listEvents(harness.ids.worldId)).toEqual(beforeRejectedEvents);
+      expect([baselineB.worldRevision, oldC.worldRevision]).toEqual([1, 2]);
+      expect(final.world).toEqual(expect.objectContaining({ currentTime: T3, revision: 2 }));
+      expect(persistedB).toEqual(expect.objectContaining({
+        object: "east_gate",
+        validFrom: T1,
+        validTo: null,
+      }));
+      expect(persistedC).toEqual(expect.objectContaining({
+        object: "old_canon_arrest",
+        validFrom: T3,
+        validTo: null,
+      }));
+      expect(final.facts.some((fact) => fact.object === "west_tower" && fact.predicate === "watch_route"))
+        .toBe(false);
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it("orders multiple invalidated assertions by stable code units", () => {
+    const suffix = "stable-invalidation-order";
+    const zCharacterId = `character-z-${suffix}`;
+    const umlautCharacterId = `character-ä-${suffix}`;
+    const harness = createHarness(suffix, (fixture) => {
+      const characterTemplate = fixture.input.characters[3]!;
+      fixture.input.characters.push(
+        { ...characterTemplate, id: zCharacterId, name: "Z Courier" },
+        { ...characterTemplate, id: umlautCharacterId, name: "Umlaut Courier" },
+      );
+      for (const assertingSubject of [zCharacterId, umlautCharacterId]) {
+        fixture.input.factAssertionRequirements!.push({
+          worldId: fixture.ids.worldId,
+          assertingSubject,
+          assertingPredicate: "dependent_outcome",
+          assertingObject: "committed",
+          requiredSubject: fixture.ids.npcAId,
+          requiredPredicate: "watch_route",
+          requiredObject: "east_gate",
+        });
+      }
+    });
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      commitBaselineB(harness);
+      const zAssertion = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-dependent-z-${suffix}`,
+        subject: zCharacterId,
+        predicate: "dependent_outcome",
+        object: "committed",
+        validFrom: T3,
+        occurredAt: T3,
+      }));
+      const umlautAssertion = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-dependent-umlaut-${suffix}`,
+        subject: umlautCharacterId,
+        predicate: "dependent_outcome",
+        object: "committed",
+        validFrom: T3,
+        occurredAt: T3,
+      }));
+      const beforeRejectedState = harness.store.getSnapshot(harness.ids.worldId);
+      const beforeRejectedEvents = harness.store.listEvents(harness.ids.worldId);
+      const rejection = expectRejected(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-replacement-${suffix}`,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T2,
+        occurredAt: T4,
+      }), "FACT_PRECONDITION_FAILED");
+
+      expect(rejection.context).toEqual(expect.objectContaining({
+        invalidatedAssertions: [
+          {
+            assertingFactId: zAssertion.payload.factId,
+            assertingSubject: zCharacterId,
+            assertingPredicate: "dependent_outcome",
+            assertingObject: "committed",
+            assertionTime: T3,
+            requiredSubject: harness.ids.npcAId,
+            requiredPredicate: "watch_route",
+            requiredObject: "east_gate",
+          },
+          {
+            assertingFactId: umlautAssertion.payload.factId,
+            assertingSubject: umlautCharacterId,
+            assertingPredicate: "dependent_outcome",
+            assertingObject: "committed",
+            assertionTime: T3,
+            requiredSubject: harness.ids.npcAId,
+            requiredPredicate: "watch_route",
+            requiredObject: "east_gate",
+          },
+        ],
+      }));
+      expect(harness.store.getSnapshot(harness.ids.worldId)).toEqual(beforeRejectedState);
+      expect(harness.store.listEvents(harness.ids.worldId)).toEqual(beforeRejectedEvents);
+      expect(beforeRejectedState.world.revision).toBe(3);
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it("rejects a replacement that would invalidate its own prerequisite at validFrom", () => {
+    const harness = createHarness("self-invalidating-replacement", (fixture) => {
+      fixture.input.factAssertionRequirements!.push({
+        worldId: fixture.ids.worldId,
+        assertingSubject: fixture.ids.npcAId,
+        assertingPredicate: "watch_route",
+        assertingObject: "west_tower",
+        requiredSubject: fixture.ids.npcAId,
+        requiredPredicate: "watch_route",
+        requiredObject: "east_gate",
+      });
+    });
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      const baselineB = commitBaselineB(harness);
+      const beforeRejectedState = harness.store.getSnapshot(harness.ids.worldId);
+      const beforeRejectedEvents = harness.store.listEvents(harness.ids.worldId);
+      const replacementFactId = `fact-self-invalidating-${harness.ids.worldId}`;
+      const rejection = expectRejected(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: replacementFactId,
+        actorId: harness.ids.playerId,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T2,
+        occurredAt: T2,
+      }), "FACT_PRECONDITION_FAILED");
+
+      expect(rejection.context).toEqual(expect.objectContaining({
+        replacementValidFrom: T2,
+        invalidatedAssertions: [{
+          assertingFactId: replacementFactId,
+          assertingSubject: harness.ids.npcAId,
+          assertingPredicate: "watch_route",
+          assertingObject: "west_tower",
+          assertionTime: T2,
+          requiredSubject: harness.ids.npcAId,
+          requiredPredicate: "watch_route",
+          requiredObject: "east_gate",
+        }],
+      }));
+      expect(harness.store.getSnapshot(harness.ids.worldId)).toEqual(beforeRejectedState);
+      expect(harness.store.listEvents(harness.ids.worldId)).toEqual(beforeRejectedEvents);
+      expect(beforeRejectedState.world.revision).toBe(1);
+      expect(beforeRejectedState.facts.find((fact) => fact.id === baselineB.payload.factId)?.validTo).toBeNull();
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it("allows a historical replacement when it invalidates no committed Fact prerequisite", () => {
+    const harness = createHarness("retroactive-unrelated");
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      const baselineB = commitBaselineB(harness);
+      const independentD = commitIndependentD(harness, T3);
+      const intervention = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-retroactive-unrelated-${harness.ids.worldId}`,
+        actorId: harness.ids.playerId,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T2,
+        occurredAt: T4,
+      }));
+      const final = harness.store.getSnapshot(harness.ids.worldId);
+
+      expect([baselineB.worldRevision, independentD.worldRevision, intervention.worldRevision]).toEqual([1, 2, 3]);
+      expect(final.world).toEqual(expect.objectContaining({ currentTime: T4, revision: 3 }));
+      expect(final.facts.find((fact) => fact.id === baselineB.payload.factId)?.validTo).toBe(T2);
+      expect(final.facts).toContainEqual(expect.objectContaining({
+        id: intervention.payload.factId,
+        object: "west_tower",
+        validFrom: T2,
+        validTo: null,
+      }));
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
+  it("allows a later replacement that preserves the prerequisite at the committed assertion time", () => {
+    const harness = createHarness("replacement-after-assertion");
+    try {
+      const initial = harness.store.getSnapshot(harness.ids.worldId);
+      const baselineB = commitBaselineB(harness);
+      const oldC = expectCommitted(commitOldCanonC(harness, T2, T2, [baselineB.id]));
+      const intervention = expectCommitted(commitFact(harness.store, harness.kernel, {
+        worldId: harness.ids.worldId,
+        factId: `fact-later-b-prime-${harness.ids.worldId}`,
+        actorId: harness.ids.playerId,
+        subject: harness.ids.npcAId,
+        predicate: "watch_route",
+        object: "west_tower",
+        validFrom: T3,
+        occurredAt: T4,
+      }));
+      const final = harness.store.getSnapshot(harness.ids.worldId);
+
+      expect([baselineB.worldRevision, oldC.worldRevision, intervention.worldRevision]).toEqual([1, 2, 3]);
+      expect(final.facts.find((fact) => fact.id === baselineB.payload.factId)?.validTo).toBe(T3);
+      expect(final.facts).toContainEqual(expect.objectContaining({
+        id: oldC.payload.factId,
+        validFrom: T2,
+        validTo: null,
+      }));
+      expect(final.facts).toContainEqual(expect.objectContaining({
+        id: intervention.payload.factId,
+        validFrom: T3,
+        validTo: null,
+      }));
+      expectCanonicalReplay(harness, initial);
+    } finally {
+      harness.store.close();
+    }
+  });
+
   it("enforces AND requirements before cardinality handling while leaving unmatched Fact triples unrestricted", () => {
     const harness = createHarness("and", (fixture) => {
       fixture.input.predicatePolicies!.push({

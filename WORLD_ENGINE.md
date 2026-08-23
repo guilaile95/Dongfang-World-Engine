@@ -172,9 +172,9 @@ required.validFrom <= candidate.validFrom
 (required.validTo == null || candidate.validFrom < required.validTo)
 ```
 
-因此 Fact Truth 的前置条件按 `validFrom / validTo` 判断，而不是按 `occurredAt` 或旧 cause Event 是否仍存在判断。前置条件不满足时返回稳定的 `FACT_PRECONDITION_FAILED`，同一事务内不得产生 Event、Fact projection 或 revision 变化。
+因此 Fact Truth 的前置条件按 `validFrom / validTo` 判断，而不是按 `occurredAt` 或旧 cause Event 是否仍存在判断。对于 `PredicatePolicy = one` 的替换，Validator 还必须先模拟本次投影会关闭哪些旧 Fact：如果关闭后的半开区间会使某个已提交 Fact，或本次待提交 Fact，在它自己的 `validFrom` 时失去精确前置条件，则同样返回稳定的 `FACT_PRECONDITION_FAILED`。拒绝发生在 Event append 和 Fact projection 之前，同一事务内不得产生 Event、State 或 revision 变化。
 
-这是 assertion-time guard：它阻止前置条件失效后仍直接提交旧的后续 Fact，但不会自动调度结果、递归求值、撤销已经提交的后果或形成 Canon / Timeline / Quest / Rule DSL。
+这是 assertion-time 与 direct-invalidation guard：它既阻止前置条件失效后仍直接提交旧的后续 Fact，也阻止回溯替换在投影时把已承诺的直接前置条件历史切断。与任何已提交断言依赖无关的历史替换仍按原有基数规则处理。它不会自动调度结果、递归求值、撤销或重算已经提交的后果，也不会形成 Canon / Timeline / Quest / Rule DSL。
 
 ### 2.6 LLM Proposes, Engine Validates
 
@@ -324,7 +324,7 @@ Step 7 的 narrated smoke 使用同一个窄 OpenAI-compatible chat transport，
 - Memory 不得直接覆盖 Truth；
 - Narrative 不得直接 Commit 状态；
 - 对 `PredicatePolicy = one` 的谓词，不允许两个互相矛盾的当前事实同时有效；`many` 谓词按显式策略允许多个不同 object 并存。
-- 匹配 Seed `FactAssertionRequirement` 的 Fact 断言，必须在该 Fact 的 `validFrom` 时满足全部精确前置 Fact；旧 cause Event 不能替代当前有效前置条件。
+- 匹配 Seed `FactAssertionRequirement` 的 Fact 断言，必须在该 Fact 的 `validFrom` 时满足全部精确前置 Fact；`one` 基数的回溯替换也不得通过关闭旧 Fact，使已提交或本次待提交的匹配断言在其 `validFrom` 时失去前置条件；旧 cause Event 不能替代有效前置 Fact。
 - Claim 的存在不得自动创建 Fact；Fact 的存在不得自动创建 CharacterKnowledge。
 
 “有因”或“有来源”必须能指向合法的已提交事件、明确的初始设定或可审计的系统规则，而不是只存在于一段不可验证的自由文本中。

@@ -253,7 +253,7 @@ FactAssertionRequirement
 
 Seed validation 必须确认两个 subject 都是当前 Seed World 的 Character、Location 或 World，并拒绝跨 World、空 predicate/object 与重复关系。required Fact 不要求在 Seed 中已经存在，因为它可以由较早的合法 Event 产生。
 
-该关系只阻止不满足前置条件的新 Fact assertion；它不自动产生、撤销或重算 Fact，不支持 OR、NOT、递归、优先级或通用规则求值。`FACT_PRECONDITION_FAILED` 拒绝保持 Event、Materialized State 和 World revision 不变。
+该关系既阻止不满足前置条件的新 Fact assertion，也阻止 `PredicatePolicy = one` 的替换投影回溯关闭所需 Fact，从而让已由 Event 提交或本次待提交的匹配 assertion 在其 `valid_from` 时失去前置条件。检查只覆盖本次替换会直接关闭的精确 required Fact；Seed 初始 Fact 不会被追溯解释为曾经过 Candidate 前置校验，与现有依赖无关或发生在依赖断言之后的历史替换仍可提交。它不自动产生、撤销或重算 Fact，不支持 OR、NOT、递归、优先级或通用规则求值。`FACT_PRECONDITION_FAILED` 拒绝保持 Event、Materialized State 和 World revision 不变。
 
 ### 2.10 Relationship
 
@@ -473,7 +473,7 @@ Player
 - Context Builder 只读并按角色权限过滤上下文；
 - Context Builder 先执行确定性的 observer visibility gate，再进行有界 packing；它不产生任何事实写入；
 - Simulation LLM 只生成候选，不拥有事实写权限；
-- Validator 负责检查来源、时间、显式有向 LocationConnection、知识权限、关系约束、Claim 跨 World 引用、互斥事实，以及匹配 Seed `FactAssertionRequirement` 的有效前置 Fact；
+- Validator 负责检查来源、时间、显式有向 LocationConnection、知识权限、关系约束、Claim 跨 World 引用、互斥事实，以及匹配 Seed `FactAssertionRequirement` 的有效前置 Fact；`one` 基数替换还必须在投影前检查其直接关闭不会回溯破坏既有断言的前置条件；
 - Commit Event 是进入事实层的唯一入口；
 - Materialized State 只能由已提交事件或初始化过程更新；
 - Narrator 只能读取已确认结果并生成展示文本；
