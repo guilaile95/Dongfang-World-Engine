@@ -12,7 +12,7 @@ Active owner Issue: **[#68 — Owner Greenfield Reset](https://github.com/guilai
 
 This Owner decision **outranks** previous GitHub Issues, PRs, ADRs, and Notion current-route pages.
 
-Canonical write-up: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
+Product spec (intent only): [`PRODUCT.md`](PRODUCT.md). Governance: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
 
 ### What this means
 
@@ -37,10 +37,11 @@ Canonical write-up: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
 ## Read First — GitHub
 
 1. `AGENTS.md`
-2. `docs/GREENFIELD_RESET.md`
-3. this file
-4. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
-5. Notion pages listed below (intent only)
+2. `docs/PRODUCT.md` — North Star, invariants, non-goals, v1 success
+3. `docs/GREENFIELD_RESET.md` — archive / do-not-restore
+4. this file
+5. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
+6. Notion pages listed below (intent only; same product spec)
 
 Do **not** treat `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/SCENE_TURN_CONTRACT.md`, `docs/ROADMAP.md`, `docs/COMPOSITION_REUSE_AUDIT.md`, or `WORLD_ENGINE.md` as live implementation requirements. They are historical evidence.
 
@@ -51,7 +52,7 @@ Use Notion for durable product intent. Do not copy GitHub timelines.
 Start with:
 
 - `东方狂想｜Dongfang World Engine` (root; Greenfield banner)
-- `东方狂想｜Greenfield Reset：North Star、不变量与失败经验（2026-08-24）` — https://app.notion.com/p/3c655152dfe881bb8e06edd007391884
+- Product spec page (same content as `docs/PRODUCT.md`) — https://app.notion.com/p/3c655152dfe881bb8e06edd007391884
 - Historical / Superseded: Chat-first 纠偏、Owner 解冻、Build-vs-Borrow 审计、项目复盘、Vertical Slice 策略、旧 Authority 实现页
 
 ## Recovery Output

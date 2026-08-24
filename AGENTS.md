@@ -24,7 +24,7 @@ Before significant work:
 
 Owner decision: **[#68 Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)**. It outranks previous Issues, PRs, ADRs, and Notion “current route” pages.
 
-Read `docs/GREENFIELD_RESET.md`.
+Read `docs/PRODUCT.md` for product intent. Read `docs/GREENFIELD_RESET.md` for archive / do-not-restore.
 
 Hard rules:
 
@@ -60,12 +60,12 @@ NEXT_ACTION:
 
 ## Product North Star
 
-Preserve the freedom of **chat-first** long-form text roleplay (as in a web AI chat) while a persistent local world prevents long-session forgetting, attention drift, missing plot, OOC, rule loss, information leakage, causal contradiction, and **the world orbiting the player**.
+Canonical page: `docs/PRODUCT.md`.
 
 > **Engine constrains consequences, not imagination.**
-> **The world must not orbit the player.**
+> **The world does not orbit the player.**
 
-The North Star is a product problem. It does not grant authority to any current file, class, table, or library choice.
+Do not promote any current file, class, table, or framework into an invariant.
 
 ## Compose-first
 

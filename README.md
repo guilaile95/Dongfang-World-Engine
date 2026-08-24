@@ -88,7 +88,7 @@ Player
 
 恢复入口：[AGENTS.md](AGENTS.md)、[docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)、[docs/GREENFIELD_RESET.md](docs/GREENFIELD_RESET.md)。新实现只在 `greenfield/owner-reset`。Git 锚点：`archive/pre-greenfield-reset`。
 
-产品意图仍然继承：网页 AI chat 式自由输入；Engine 约束后果而非想象力；**世界不围绕玩家存在**；LLM/Memory 不是事实库。实现形状不继承。
+产品规格见 [docs/PRODUCT.md](docs/PRODUCT.md)。实现形状不继承。
 
 North Star：**Engine constrains consequences, not imagination.** **The world must not orbit the player.**
 
