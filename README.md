@@ -84,13 +84,13 @@ Player
 
 ## 当前阶段
 
-Authority core 与 Playable Local Loop（#49）已经完成，并且必须保留。当前产品阶段是 **Chat-first Scene Loop**（#55）。
+**Owner Greenfield Reset（[#68](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)）。** 此前 Production Runtime、#52–#59 Roadmap、#63 freeze、#65 audit PR、#66/#67 chat-first 增量路径均已封存，**不是**当前实现路线。不要 Merge #65/#67。不要为了测试/CI/沉没成本保留旧 API、Schema 或类。
 
-第一阶段真实 `npm run play` 证明 Kernel 可用，但交互层把自然语言压成七类 Proposal，导致否定被替换成移动、吃饭无法发生、提问变成 `claim.transmit`、每条原始输入都推进世界时间。纠偏文档见 [docs/CHAT_FIRST_PRODUCT_RESET.md](docs/CHAT_FIRST_PRODUCT_RESET.md)。
+恢复入口：[AGENTS.md](AGENTS.md)、[docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)、[docs/GREENFIELD_RESET.md](docs/GREENFIELD_RESET.md)。新实现只在 `greenfield/owner-reset`。Git 锚点：`archive/pre-greenfield-reset`。
 
-M0 已冻结 Scene Turn 合同：[docs/SCENE_TURN_CONTRACT.md](docs/SCENE_TURN_CONTRACT.md)（#57）。下一步是 M1 实现 intent-faithful Scene + Ephemeral lane，而不是独立修补 #52 / #53 / #54。
+产品意图仍然继承：网页 AI chat 式自由输入；Engine 约束后果而非想象力；**世界不围绕玩家存在**；LLM/Memory 不是事实库。实现形状不继承。
 
-North Star：保留自由 Chat 角色扮演；Engine 只在后台约束长期后果。**Engine constrains consequences, not imagination.**
+North Star：**Engine constrains consequences, not imagination.** **The world must not orbit the player.**
 
 ## 本地游玩
 

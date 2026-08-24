@@ -13,30 +13,32 @@ Before significant work:
    - Open PRs / Draft PRs;
    - latest review comments;
    - relevant CI;
-   - code and tests for the current blocker.
+   - code and tests for the **current** Stage only.
 3. Read the GitHub documents named in `docs/CURRENT_STAGE.md`.
 4. If long-term context is needed, use the connected Notion workspace and read only the page titles named in `docs/CURRENT_STAGE.md`.
 5. Do not ask the user to reconstruct previous chats.
 
-`docs/CURRENT_STAGE.md` contains recovery coordinates, not Engineering Truth. If it is stale, report the conflict and follow live GitHub for current implementation state.
+`docs/CURRENT_STAGE.md` contains recovery coordinates, not Engineering Truth. If it is stale, report the conflict and follow live GitHub.
 
-For detailed governance, use `docs/PROJECT_HANDOVER_PROTOCOL.md`.
+## Owner Greenfield Reset (active)
 
-## Freeze override
+Owner decision: **[#68 Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)**. It outranks previous Issues, PRs, ADRs, and Notion “current route” pages.
 
-If `docs/CURRENT_STAGE.md` declares **FULL PROJECT FREEZE**:
+Read `docs/GREENFIELD_RESET.md`.
 
-- the freeze overrides ordinary autonomous implementation workflow;
-- do not write Production Runtime / feature code;
-- do not resume closed historical roadmap Issues;
-- do not run frozen real-model acceptance experiments;
-- perform only the audit / research work explicitly allowed by the active freeze Issue;
-- treat already-merged code as replaceable audit evidence, not protected architecture;
-- do not unfreeze based on Agent judgment alone — explicit project-owner approval is required.
+Hard rules:
+
+- Do **not** resume, merge, or continue **#65 / #66 / #67** or Roadmap Issues **#52–#59** as the product path.
+- Do **not** restore old Production Runtime, APIs, schemas, class names, or compatibility layers because of tests, CI, PRs, or sunk cost.
+- Old git objects are preserved as archive tags/branches (`archive/pre-greenfield-reset`, `archive/chat-first-pr-67`, `archive/composition-audit-pr-65`). Use them as evidence, not as the live architecture.
+- New implementation happens on `greenfield/owner-reset`. Old runtime **may be deleted** on that branch.
+- Product problems and long-term **invariants** from real play still apply. Implementations do not.
+
+Do not treat a green CI on an archive branch as permission to merge the old route.
 
 ## First output
 
-Before implementation or freeze-audit work, report:
+Before implementation, report:
 
 ```text
 CURRENT ENGINEERING STATE
@@ -54,58 +56,37 @@ SOURCE_CONFLICTS:
 NEXT_ACTION:
 ```
 
-If the project is not frozen and the next action is clear and does not hit a Stop / Escalation condition, continue autonomously.
-
-If the project is frozen, `NEXT_ACTION` must be an allowed audit action only.
+`NEXT_ACTION` must obey the Greenfield Reset. Do not pick up archived Issues/PRs.
 
 ## Product North Star
 
-Preserve the freedom and intelligence of chat-first roleplay while using a persistent world layer to prevent long-session forgetting, OOC, information leakage, rule loss and causal drift.
+Preserve the freedom of **chat-first** long-form text roleplay (as in a web AI chat) while a persistent local world prevents long-session forgetting, attention drift, missing plot, OOC, rule loss, information leakage, causal contradiction, and **the world orbiting the player**.
 
 > **Engine constrains consequences, not imagination.**
+> **The world must not orbit the player.**
 
-The North Star defines the product problem. It does not grant architectural authority to any current implementation.
+The North Star is a product problem. It does not grant authority to any current file, class, table, or library choice.
 
-## Product requirements vs implementation
+## Compose-first
 
-Current product invariants / requirements may constrain outcomes, but the code used to satisfy them is not sacred.
+Prefer ADOPT / ADAPT / BORROW of mature projects before KEEP / OWN. KEEP / OWN need evidence that alternatives are unsuitable.
 
-Examples:
-
-- `Database is Truth` does not require the current Store implementation;
-- Fact / Claim / CharacterKnowledge separation does not require the current exact schema;
-- no direct LLM persistent write authority does not require the current exact Kernel class;
-- deterministic visibility before probabilistic relevance does not require the current exact ContextBuilder implementation.
-
-If the active project stage is a Composition / Reuse Audit, current modules must be evaluated on equal footing with mature external alternatives.
-
-## Recovery discipline
-
-- Do not duplicate work already present in an Open PR.
-- Do not treat green CI or implementer self-report as proof; inspect the actual diff and acceptance criteria.
-- Do not reopen settled architecture unless current code, tests, real usage or explicit new product direction contradict it.
-- Read only the code needed for the current Stage first; recovery is not permission for an unrelated repository-wide redesign.
-- Reuse existing mature capability before adding infrastructure.
-- For a new subsystem, prefer ADOPT / ADAPT / BORROW before KEEP / OWN; KEEP / OWN require evidence that mature alternatives are unsuitable.
-- Do not preserve code because of sunk cost.
+Do not vendor SillyTavern (AGPL) or RisuAI (GPL) into this MIT repository.
 
 ## Source roles
 
-**GitHub** is current Engineering Reality: code, `main`, Issues, PRs, reviews, CI and frozen/current engineering decisions.
+**GitHub** is Engineering Reality: code, `main`, Issues, PRs, reviews, CI, tags.
 
-**Notion** is long-term product / architecture context: North Star, durable lessons, architecture direction and stage reasoning.
+**Notion** is long-term product intent: North Star, invariants, architecture reasons, cross-stage lessons. Do not duplicate the GitHub timeline there.
 
-If GitHub implementation and Notion intent disagree, report it as an Intent-vs-Reality finding rather than silently overwriting either side.
+If GitHub implementation and Notion intent disagree, report Intent-vs-Reality. After this Reset, Notion “current route” pages that predate Greenfield are **Historical / Superseded**.
 
 ## Handover rule
 
-A normal cross-model handover should contain only:
-
 ```text
-Repository: <owner/repo>
+Repository: guilaile95/Dongfang-World-Engine
 Read AGENTS.md and recover from live GitHub + connected Notion.
 Do not rely on chat history.
-Return CURRENT ENGINEERING STATE, then obey the active Stage / freeze state.
+Do not restore archived runtime (#65/#66/#67, Closed Inn RPG-adapter path).
+Return CURRENT ENGINEERING STATE, then obey the Greenfield Reset.
 ```
-
-Pass recovery coordinates, not rewritten project history.

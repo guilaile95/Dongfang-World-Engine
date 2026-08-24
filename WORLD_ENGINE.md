@@ -1,5 +1,7 @@
 # World Engine Constitution
 
+> **Historical / Superseded as implementation.** Owner Greenfield Reset (`docs/GREENFIELD_RESET.md`) outranks this file. Product invariants may be extracted; current classes, schemas, and APIs are not required to survive.
+
 ## 世界引擎宪法
 
 本文档定义 Persistent AI World Simulator 的核心架构和不可轻易破坏的规则。它优先约束事实、因果、知识边界和提交流程，而不是规定 UI、提示词风格或具体供应商实现。

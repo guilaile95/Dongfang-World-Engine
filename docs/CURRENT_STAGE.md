@@ -6,165 +6,62 @@ This file is a **recovery pointer**, not a second task database. Always verify l
 
 ## PROJECT STATUS
 
-# FULL PROJECT FREEZE
+# OWNER GREENFIELD RESET
 
-Active owner Issue: **#63 — PROJECT FREEZE: Full Composition / Reuse Audit before any further implementation**
+Active owner Issue: **[#68 — Owner Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)**.
 
-Freeze baseline at decision time:
+This Owner decision **outranks** previous GitHub Issues, PRs, ADRs, and Notion current-route pages.
 
-`main = 2bda6c38a032a0297a3b4b755399d95c77454e55`
+Canonical write-up: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
 
-There were no Open PRs when the freeze began.
+### What this means
 
-The previous implementation roadmap is no longer active:
+- Previous Production Runtime may be discarded. No compatibility layers.
+- Do not merge or continue **#65**, **#66**, **#67**.
+- Do not reopen **#52–#59** or the Closed Inn Proposal-menu path as the product.
+- New work: branch `greenfield/owner-reset`.
+- Recover old bits only from archive tags:
+  - `archive/pre-greenfield-reset` (`main` = `092f0442ccba92956c045e025ef5beb38ab0cb66`)
+  - `archive/chat-first-pr-67`
+  - `archive/composition-audit-pr-65`
 
-- #52 closed `not_planned` — evidence preserved;
-- #53 closed `not_planned` — M2 implementation frozen;
-- #54 closed `not_planned` — evidence preserved;
-- #55 closed `not_planned` — Chat-first Scene Loop sequencing no longer presumed correct;
-- #59 closed `not_planned` — M1 acceptance frozen; merged M1 code is not certified as the future architecture.
+### What still applies (product, not code)
 
-Do **not** reopen or continue these Issues mechanically.
-
-## Product problem
-
-The product still aims to preserve the freedom and intelligence of chat-first roleplay while preventing long-session forgetting, OOC, information leakage, rule loss and causal contradiction.
-
-> **Engine constrains consequences, not imagination.**
-
-This product goal does **not** imply that the current engine implementation must survive.
-
-## Freeze meaning
-
-No Production Runtime / feature implementation may proceed until #63 is complete and the project owner explicitly unfreezes development.
-
-During the freeze:
-
-- no M1 real-model acceptance run;
-- no M2 / targeted NPC implementation;
-- no Memory / RAG implementation;
-- no UI / desktop implementation;
-- no provider refactor;
-- no new Dialogue / Scheduler / Item / World-Pack system;
-- no speculative refactor preparing future architecture.
-
-Allowed work is audit-only:
-
-- read current code;
-- inspect mature external projects / libraries;
-- license analysis;
-- compatibility and integration analysis;
-- architecture comparison;
-- narrowly scoped non-production compatibility spikes only when evidence cannot be obtained otherwise;
-- documentation of findings.
-
-## No sacred implementation
-
-**Sunk cost provides zero architectural authority.**
-
-Every already-merged subsystem is eligible for:
-
-- ADOPT external solution;
-- ADAPT external solution behind a narrow boundary;
-- BORROW protocol / format / pattern;
-- KEEP current implementation;
-- REPLACE current implementation;
-- DELETE unnecessary implementation;
-- DEFER capability entirely.
-
-This includes, without exception:
-
-- provider client / model transport;
-- Simulation Adapter;
-- Scene Interpreter / Scene Resolver;
-- Context Builder;
-- Narrative layer;
-- `play.ts` loop;
-- persistence / SQLite wiring;
-- Candidate / Kernel / Validator / Event implementation;
-- replay / test harnesses;
-- schema and API shapes.
-
-A product requirement may remain while its current implementation is replaced.
-
-Examples:
-
-- `Database is Truth` does not make the current Store sacred;
-- `Fact != Claim != CharacterKnowledge` does not make current tables sacred;
-- no direct LLM write authority does not make the current Kernel class sacred;
-- deterministic visibility before relevance does not make the current ContextBuilder sacred.
-
-## Audit principle
-
-> **Compose-first. Own only the irreducible product core.**
-
-For every subsystem, mature alternatives must be named and evaluated before KEEP / OWN is allowed.
-
-At minimum inspect relevant capabilities from:
-
-- SillyTavern;
-- RisuAI;
-- Vercel AI SDK / provider ecosystem;
-- Mem0;
-- Letta;
-- additional current mature alternatives discovered during the audit.
-
-These are candidates, not predetermined winners.
-
-## Required output of #63
-
-The audit must produce:
-
-1. Current Capability Map;
-2. Ecosystem Map;
-3. Reuse Matrix: ADOPT / ADAPT / BORROW / KEEP / REPLACE / DELETE / DEFER;
-4. License / Distribution Matrix;
-5. Target Composition Architecture;
-6. Deletion / Migration Plan for already-written code;
-7. Owned Core Justification for every remaining custom subsystem;
-8. explicit Unfreeze Proposal.
-
-No subsystem may be marked KEEP / OWN merely because it already exists.
+- Chat-first freeform play (web AI chat), not an engine-verb menu.
+- Engine constrains consequences, not imagination.
+- The world must not orbit the player.
+- Persistent local world: plot / facts / rules survive restart.
+- LLM / Memory / prose are not Truth and cannot write durable world state directly.
+- Compose-first; MIT repo; no AGPL/GPL frontend vendoring.
 
 ## Read First — GitHub
 
 1. `AGENTS.md`
-2. Issue #63
+2. `docs/GREENFIELD_RESET.md`
 3. this file
-4. `README.md`
-5. current source / tests as audit evidence
-6. historical architecture / stage docs only to understand why existing code was built — not as automatic future requirements
+4. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
+5. Notion pages listed below (intent only)
 
-Historical docs such as `docs/SCENE_TURN_CONTRACT.md`, `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/ROADMAP.md` and ADRs are evidence and prior decisions. During #63 they may be retained, superseded or revised where the owner-approved product requirements allow it.
+Do **not** treat `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/SCENE_TURN_CONTRACT.md`, `docs/ROADMAP.md`, `docs/COMPOSITION_REUSE_AUDIT.md`, or `WORLD_ENGINE.md` as live implementation requirements. They are historical evidence.
 
 ## Read First — Notion
 
-Use Notion for durable product intent and historical reasoning, not as an implementation authority.
+Use Notion for durable product intent. Do not copy GitHub timelines.
 
 Start with:
 
-- `东方狂想｜Dongfang World Engine`
-- `东方狂想｜Chat-first 产品纠偏、需求规格与 Grok 接管（2026-08-24）`
-- `东方狂想｜架构风险、长期约束与可伸缩因果模拟设计`
-- `东方狂想｜软件开发与工程接管手册`
+- `东方狂想｜Dongfang World Engine` (root; Greenfield banner)
+- `东方狂想｜Greenfield Reset：North Star、不变量与失败经验`
+- Historical / Superseded: Chat-first 纠偏、Owner 解冻、Build-vs-Borrow 审计、项目复盘、Vertical Slice 策略、旧 Authority 实现页
 
-Any old current-state snapshot is subordinate to live GitHub.
-
-## Recovery Output during freeze
-
-A new Agent should report:
+## Recovery Output
 
 ```text
 CURRENT ENGINEERING STATE
 
 EXACT_MAIN:
-PROJECT_STATUS: FULL_FREEZE
-ACTIVE_ISSUE: #63
-OPEN_PRS:
-OPEN_IMPLEMENTATION_ISSUES: none
-AUDIT_SCOPE:
-SOURCE_CONFLICTS:
-NEXT_AUDIT_ACTION:
+PROJECT_STATUS: OWNER_GREENFIELD_RESET
+ACTIVE_ISSUE: #68
+OPEN_PRS: do not merge #65/#67
+NEXT_ACTION: governance already switched; implement only on greenfield/owner-reset
 ```
-
-Then continue **audit work only**. Do not implement or run frozen product experiments unless the project owner explicitly unfreezes them.
