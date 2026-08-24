@@ -49,7 +49,7 @@ Only future-causal effects enter the existing Candidate → Hard Validator → T
 
 A low-causal action may succeed in the current scene without creating an Event or Materialized State change. Eating an ordinary meal, sitting, resting briefly or looking out a window do not require dedicated persistent primitives unless the world is tracking a future-causal resource, status, location or obligation.
 
-The ephemeral path must not claim completion of material effects such as death, important item transfer, tracked resource consumption, location change, permission change, relationship change or Knowledge acquisition.
+The ephemeral path must not claim completion of material effects such as death, important item transfer, tracked resource consumption, location change, permission change, relationship change or Knowledge acquisition. That prohibition is a write-path and Narrator-instruction rule. It is not a deterministic natural-language parser over ephemeral text, and Interpreter-generated scene prose is not an allowed ephemeral payload.
 
 ## ADR-010 — Targeted Interaction Uses the Target's Visibility Boundary
 
@@ -67,7 +67,7 @@ Memory, summaries and retrieval are context aids, not Truth. They must remain in
 
 Issue #57 freezes the Chat-first Scene Turn contract in `docs/SCENE_TURN_CONTRACT.md`.
 
-Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lanes: ephemeral beats, targeted stimuli, persistent candidates, unsupported material, and OOC/meta. Only persistent candidates and resolver-bound `world.time_advance` enter the existing Commit Kernel. Final Narrator input is a `ResolvedSceneEnvelope` assembled after commit; prose is never parsed back into Truth.
+Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lanes: ephemeral beats, targeted stimuli, persistent candidates, unsupported material, and OOC/meta. Ephemeral beats carry an exact Player-contribution substring plus a non-authoritative `kind`; the Interpreter does not author a second scene script. Only persistent candidates and resolver-bound `world.time_advance` enter the existing Commit Kernel. Final Narrator input is a `ResolvedSceneEnvelope` assembled after commit; prose is never parsed back into Truth. Snapshot equality proves Materialized State, not that Narrator text is semantically clean.
 
 World time and NPC continuation are functions of the resolved scene, not of raw input-line count. Target NPCs receive only an authorized stimulus plus their own Context.
 

@@ -166,9 +166,10 @@ SceneTurnPlan
 
 ```text
 EphemeralBeat
-  summary: string                     # Narrator color for this turn only
-  # no locationId, no claimId, no relationship deltas, no item ids
-  # summary is not structured Truth and is not Interpreter entailment evidence
+  surface: string                     # exact contiguous substring of playerContribution
+  kind: mundane_action | observation | remain_in_place | refusal | other_low_causal
+  # FORBIDDEN: summary, rewritten scene prose, locationId, claimId, relationship deltas, item ids
+  # Interpreter routes the Player's own words. It does not author a second scene script.
 
 TargetedStimulus
   speakerCharacterId: string          # must equal the Player actor
@@ -184,6 +185,8 @@ UnsupportedMaterial
 ```
 
 Authority class of every `SceneTurnPlan` field: **non-authoritative**. The plan is interpretation. It cannot be replayed as Truth. Snapshot changes require Kernel Events.
+
+The Scene Interpreter is a **lane router**, not a second Narrator. It must not generate free scene prose (`EphemeralBeat.summary` and any rewritten “what happened” text are illegal fields). Persistent consequences exist only as Kernel Events. Ephemeral success means: this span of the Player’s own contribution is classified as low-causal, so Narrator may colorize **that span** without a new Event.
 
 `persistentCandidates` reuse the current seven actor Proposal types and actor-ownership rules. No Action enum expansion. No generic Effect DSL. `fact.assert` remains unavailable to this model. M1 Resolver **ignores** `persistence: durable_if_future_causal` (treat as ephemeral). Do not persist speech in M1.
 
@@ -211,17 +214,19 @@ ResolvedSceneEnvelope
 
 `committedEffects` and `npcWorldOutcomes` that enter the Player envelope must pass the Player Visibility Gate. Do not attach other-character Knowledge bundles, other-character `currentGoal` / identity, or relationship rows where `sourceCharacterId !== player`. A continuation Event the Player did not participate in and cannot Know is omitted, or reduced to a public fact the Player can already see (co-location, alive).
 
-Narrator may describe only this envelope. It must not claim:
+Narrator may describe only this envelope. Persistent / material facts come **only** from visibility-legal `committedEffects` / `npcWorldOutcomes`. It must not claim:
 
-- a persistent effect that is absent from visibility-legal `committedEffects` / `npcWorldOutcomes`;
+- a persistent effect that is absent from those outcomes (location change, death, item, relationship, Knowledge, permission, tracked resource);
 - elapsed World time unless `timeCommitted === true`;
 - a conversation whose stimulus is in `withheldStimuli` or missing from `deliveredStimuli`;
 - an NPC reply that has no corresponding NPC outcome / response field;
 - completion of `unsupportedMaterial`.
 
-If an ephemeral `summary` would describe a denylisted persistent that is not in those visibility-legal outcomes, drop the beat (do not parse the string for meaning: drop when persistents were stripped/rejected or the snapshot gate fails). Mixed legal persistents are described from `committedEffects`, not from the beat.
+Ephemeral beats in the envelope are `{surface, kind}` only. Narrator may colorize `surface` as a low-causal beat (`kind` is a routing hint, not a completed Event). Mixed legal persistents are described from `committedEffects`, not from ephemeral `kind`.
 
-Narrator output is never parsed back into Candidates, Events, Facts, Claims, Knowledge, or Memory-as-Truth. Envelope beat summaries are also not entailment evidence for later persistents.
+Narrator output is never parsed back into Candidates, Events, Facts, Claims, Knowledge, or Memory-as-Truth. Envelope `kind` / `surface` are not entailment evidence for later persistents.
+
+**Evidence boundary:** the snapshot gate and beat-drop rules prove Materialized State and envelope shape. They do **not** prove that Narrator prose is semantically clean. Pure-ephemeral misclassification (routing `我去地窖` to ephemeral instead of `character.move`) and Narrator then describing arrival are **Behavioral residuals**, not deterministic Authority closures. Do not write tests or red-team rows that treat snapshot equality as proof that text did not smuggle a location change.
 
 ### 4.3 Deterministic resolver rules
 
@@ -230,8 +235,12 @@ These are code rules, not prompt hopes. Order: channel gate → lane strips → 
 1. **Single write path.** Scene Resolver may call existing `CommitKernel.commit` / Turn Orchestrator execution only. No Store insert, no snapshot mutation, no new commit function. No World table for Plan or Envelope. M2 durable stimulus, if any, is a Kernel Candidate/Event or it does not exist.
 2. **OOC channel.** If the raw contribution has a leading `/ooc` (optional surrounding whitespace), Resolver sets `channel=ooc_meta` even when the Interpreter said `in_world`. If `channel === "ooc_meta"`: drop persistents, stimuli, ephemeral beats, and timePolicy; do not run continuation; `timeCommitted = false`. Unprefixed meta complaints remain Interpreter classification; that residual is not this hard gate. Do not put Chinese OOC detection in Hard Validator.
 3. **Entailment default.** If the Interpreter is uncertain, `persistentCandidates` must be `[]`. Unrelated legal actions are forbidden. This is an Interpreter contract; Hard Validator stays legality-only. Recent-window text is not entailment evidence.
-4. **Ephemeral snapshot gate.** After commits, any Materialized field that has no matching committed Event of that kind must equal the pre-scene snapshot (location without `character.move`, alive without `character.die`, Knowledge/Claims without `learn_claim` / `claim.record` / `claim.transmit`, relationships without `relationship.change`). Time may change only via the resolver-minted `world.time_advance`. If this gate fails: do not approve beats; fail toward `rejected` / `unsupportedMaterial`; do not narrate success.
-5. **Material denylist for ephemeral beats.** An ephemeral beat cannot complete: death; permanent injury; location change; important item transfer / possession; relationship change; Fact / Claim / Knowledge change; permission / lock / access; tracked resource consumption; World time. Enforcement is the snapshot gate plus dropping beats when persistents were stripped/rejected — not NL parsing of `summary`. Resolver never mints a Candidate from `EphemeralBeat.summary` or Narrator text.
+4. **Ephemeral snapshot gate (DB only).** After commits, any Materialized field that has no matching committed Event of that kind must equal the pre-scene snapshot (location without `character.move`, alive without `character.die`, Knowledge/Claims without `learn_claim` / `claim.record` / `claim.transmit`, relationships without `relationship.change`). Time may change only via the resolver-minted `world.time_advance`. If this gate fails: do not approve beats; fail toward `rejected` / `unsupportedMaterial`; do not narrate success. This gate does not evaluate beat text.
+5. **Ephemeral beat is Player surface + classification, not a second prose.** Resolver:
+   - drops illegal fields (`summary`, rewritten scene prose, ids, deltas);
+   - keeps a beat only when `surface` is an exact contiguous substring of `playerContribution` (if `surface` is omitted, default to the full contribution);
+   - never mints a Candidate from `surface`, `kind`, or Narrator text.
+   Material denylist (death, location change, important items, relationship, Fact/Claim/Knowledge, permission, tracked resource, World time) is enforced on **writes** by the snapshot gate and persistent strips. It is not a NL parser over Player surface. A generated string such as `你走进了地窖` cannot appear as an approved beat unless that exact string was already in `playerContribution`.
 6. **Time is not a raw-line side effect.** `world.time_advance` is committed **if and only if** `timePolicy.kind === "consume_scene_time"` and `channel !== "ooc_meta"`. Resolver mints that single Candidate (`toTime = currentTime + minutes`) and **drops every `world.time_advance` present in `persistentCandidates`**, including continuation output. Continuation must not emit time. If `timePolicy.kind === "none"`: `timeCommitted = false`. `minutes` is a positive integer with M1 cap `1..60`; default meal tick is 10. `occurredAt` for non-time persistents remains authoritative `World.currentTime`. Scene Resolver must not stamp `timePolicy.minutes` onto other Candidate types.
 7. **Stimulus visibility.** A stimulus is delivered only if the target is in the speaker's co-located public characters. Delivery copies `surfaceText`, speaker id, speechAct and persistence flag — never Player Knowledge bundles, `currentGoal`, identity internals, or unmentioned Claims. `surfaceText` is prompt stimulus, not CharacterKnowledge: delivery does not insert Claims, Knowledge rows, or `displayText`. Do not redact the Player's uttered words (that would be a Dialogue platform). Constrain the **write**, not the chat surface.
 8. **Ask is not a Knowledge write.** If `targetedStimuli` contains `speechAct=ask` and contains no `speechAct=tell`: drop `claim.transmit`, `character.learn_claim`, and `claim.record` from Player `persistentCandidates` before Kernel; do not rewrite the stimulus into those types. M1 stops after delivery bookkeeping and must not invent an NPC reply. If `speechAct=tell` is present, `claim.transmit` may remain only when it already appears in `persistentCandidates`; Resolver does not infer transmit from `surfaceText`. Hearing an ask does not grant Knowledge. M2 NPC persistents after a delivered `ask` use the same drop unless that NPC's own turn explicitly tells from NPC Context.
@@ -243,7 +252,7 @@ These are code rules, not prompt hopes. Order: channel gate → lane strips → 
 
 | Lane | Scene success? | Kernel write? | Survives process resume? | Typical examples |
 |---|---|---|---|---|
-| Ephemeral beat | yes | no | no; beats die with the process and are not stored in the M1 window | eat a normal meal, sit, look around, wipe rain, refuse a plan in place |
+| Ephemeral beat | yes, as classification of the Player’s own span | no | no; `{surface, kind}` is not stored in the M1 window | eat a normal meal, sit, look around, wipe rain, refuse a plan in place |
 | Targeted stimulus (ephemeral) | yes, as current-scene speech | no | no | greeting, a question answered this turn |
 | Targeted stimulus (`durable_if_future_causal`) | yes | M1 ignores (treat as ephemeral). M2 may add one Kernel Event | yes, only if M2 commits that Event | a question the NPC must still answer after restart |
 | Persistent candidate | only if Kernel accepts | yes, existing chain | yes, via Event Log | move, transmit a known Claim, relationship change, time advance |
@@ -296,12 +305,12 @@ sequenceDiagram
 
   Player->>CLI: 我想吃饭
   CLI->>SI: raw contribution + Player Context
-  SI-->>SR: channel=in_world<br/>ephemeralBeats=[eat ordinary meal]<br/>persistentCandidates=[]<br/>timePolicy=consume_scene_time
+  SI-->>SR: channel=in_world<br/>ephemeralBeats=[{surface:我想吃饭, kind:mundane_action}]<br/>persistentCandidates=[]<br/>timePolicy=consume_scene_time
   SR->>K: world.time_advance only
   K-->>SR: committed time Event
   Note over SR,K: snapshot location/knowledge/relationships unchanged
-  SR->>N: ResolvedSceneEnvelope<br/>approvedEphemeralBeats + timeCommitted
-  N-->>Player: meal portrayed; no Food/Inventory
+  SR->>N: playerContribution + {surface, kind} + timeCommitted<br/>no Interpreter-authored scene prose
+  N-->>Player: colorize Player surface as a meal; no Food/Inventory
 ```
 
 Failure mode this kills: empty Turn → “no action” / dagger exposition, or unrelated `character.move`.
@@ -364,13 +373,32 @@ sequenceDiagram
 
 One message may occupy several lanes. That is why the contract is a plan of lanes, not a single API pick.
 
+### 7.4 Counterexample — generated ephemeral prose must not become scene fact
+
+Player: `我去地窖`. Interpreter wrongly returns `ephemeralBeats=[{summary:"你走进了地窖"}]` and `persistentCandidates=[]`.
+
+```text
+Resolver
+  drop illegal field summary
+  remaining surface "你走进了地窖" is not a substring of "我去地窖" → drop beat
+  snapshot location unchanged (no character.move)
+  envelope.playerContribution = "我去地窖"
+  envelope.approvedEphemeralBeats = []
+  envelope.committedEffects = []
+```
+
+Narrator does not receive the invented arrival sentence. If instead the Interpreter sends `{surface:"我去地窖", kind:mundane_action}` with no move, that is **misclassification residual**: envelope still has no generated “你走进了地窖”, DB location is unchanged, and describing arrival as done is a Narrator Behavioral residual, not a passed snapshot-gate proof.
+
+Correct routing for a legal cellar move remains `persistentCandidates=[character.move]`.
+
 ## 8. Evidence matrix
 
 | Player contribution | Contract result |
 |---|---|
-| `我不想去找匕首` | `channel=in_world`; negation preserved as ephemeral remain-in-place / refusal; `persistentCandidates=[]`; no `character.move`; `timePolicy=none` |
-| `我只是看看周围` | ephemeral observation beat; no movement; `timePolicy=none` |
-| `我想吃饭` | ephemeral meal success; no Food/Inventory/Item; optional `consume_scene_time` via Kernel; location/knowledge unchanged |
+| `我不想去找匕首` | `channel=in_world`; `{surface: 我不想去找匕首, kind: refusal or remain_in_place}`; `persistentCandidates=[]`; no `character.move`; `timePolicy=none`; no generated “you moved” prose |
+| `我只是看看周围` | `{surface: 我只是看看周围, kind: observation}`; no movement; `timePolicy=none` |
+| `我想吃饭` | `{surface: 我想吃饭, kind: mundane_action}`; no Food/Inventory/Item; optional `consume_scene_time` via Kernel; location/knowledge unchanged; Narrator colorizes that span |
+| `我去地窖` with injected `summary: 你走进了地窖` and no move | illegal `summary` dropped; non-substring surface dropped; no `character.move`; envelope has no invented arrival sentence |
 | unsupported material action | `unsupportedMaterial` set; no false ephemeral completion; no unrelated legal Proposal |
 | `我问赵先生关于匕首` | `targetedStimuli.speechAct=ask`; Resolver drops `claim.transmit` / `learn_claim` / `claim.record` when there is no `tell`; Zhao does not receive Player-private Context |
 | action + speech in one message | both lanes represented; only entailed persistents commit; no Action enum explosion |
@@ -444,7 +472,7 @@ M1 window may store, after Visibility:
 - `unsupportedMaterial.attempted` / `reason`
 - `timeCommitted`, `turnStatus`
 
-M1 window must **not** store `approvedEphemeralBeats.summary` as Interpreter input or as justification for later persistents. Beats remain Narrator-only color for the current turn, then die with the process.
+M1 window must **not** store ephemeral `kind` / `surface` as Interpreter input or as justification for later persistents. Player contribution may already be stored; do not re-store a rewritten beat script. Ephemeral classification dies with the process.
 
 | Stage | Window | Storage | Selection |
 |---|---|---|---|
@@ -471,14 +499,16 @@ Dongfang-specific piece: independent authoritative state + per-character Visibil
 
 ## 13. Targeted Authority red-team
 
-Attack surface is the Scene layer, not a Kernel rewrite. Round 1 failed because several “code rules” were still Interpreter hopes (`timePolicy` OR-clause, ask-only Knowledge primitives, beat summaries re-fed as entailment, a non-Kernel M2 store). Round 2 patches those into resolver exclusions (§4.3). Residual risk that remains accepted is listed last.
+Attack surface is the Scene layer, not a Kernel rewrite. Round 1 failed because several “code rules” were still Interpreter hopes (`timePolicy` OR-clause, ask-only Knowledge primitives, beat summaries re-fed as entailment, a non-Kernel M2 store). Round 2 patches those into resolver exclusions (§4.3). Round 4 (PR #58 gate): generated `EphemeralBeat.summary` could smuggle “你走进了地窖” past the snapshot gate; summary is removed and surface must be a Player substring.
 
 | Attack | Result | Mitigation |
 |---|---|---|
-| Ephemeral beat claims a location change | Blocked at write | snapshot gate: location unchanged without committed `character.move`; beat dropped on mismatch; `summary` is not parsed |
-| Ephemeral beat claims death / item / relationship / Knowledge | Blocked at write | same per-field snapshot gate |
+| Interpreter generates `summary: 你走进了地窖` with no `character.move` | Deterministic drop | no `summary` field; non-substring surface dropped; envelope cannot carry invented arrival prose |
+| Ephemeral misclassification of a material intent (`我去地窖` routed as mundane) | Behavioral residual | snapshot still proves DB location unchanged; Narrator must not treat `kind` as a move Event; **not** a hard text-semantics closure |
+| Snapshot gate used as proof that text did not smuggle location/death/items | Withdrawn | gate proves Materialized State only |
+| Ephemeral beat claims death / item / relationship / Knowledge **as a Kernel write** | Blocked at write | per-field snapshot gate |
 | Narrator writes a move that Kernel rejected | Forbidden | visibility-legal outcomes only; `timeCommitted` required to claim elapsed time |
-| Parse final prose back into Candidates | Forbidden | no prose→Candidate path; beat summaries are not next-turn entailment evidence |
+| Parse final prose back into Candidates | Forbidden | no prose→Candidate path; ephemeral `kind` / `surface` are not next-turn entailment evidence |
 | NPC turn receives Player Context object | Forbidden | NPC Context rebuilt for NPC observer only |
 | `surfaceText` names a secret the Player uttered | Allowed as speech | constrain the **write**: ask-only strips `claim.transmit` / `learn_claim` / `claim.record`; delivery inserts no Knowledge |
 | `ask` auto-grants Zhao the cellar Claim | Forbidden | resolver strip on ask-only; Kernel never sees those persistents |
@@ -498,10 +528,11 @@ Accepted residual:
 - Unprefixed OOC Chinese (`系统你搞错了`) may be labeled `in_world` by the Interpreter. `/ooc` is the deterministic override; do not call unprefixed detection a hard gate.
 - If the Player's uttered `surfaceText` itself tells a secret, that is Player speech, not a Context copy. Writes remain stripped on ask-only.
 - A dummy `speechAct=tell` with a matching `claim.transmit` is the same class of Interpreter residual as unrelated movement. M1 does not add NL to detect dummy tell. Fake-model tests cover ask-only (no tell). Real-model smoke records remaining substitutions.
+- Pure-ephemeral misclassification and Narrator semantic escalation (describing a cellar arrival when no `character.move` committed) are Behavioral residuals. They are **not** closed by the snapshot gate. M1 tests the envelope shape (no generated summary; surface ⊆ contribution; no move Event). Do not claim a deterministic NL denylist over Player surface.
 
 `ask` → `claim.transmit` is **not** the same residual as unrelated movement. It is closed by the ask-only Knowledge strip, not by prompt wording.
 
-Red-team conclusion after the §4.3 patches: no Authority bypass is required, and no prose→Truth inference is required. Stop Rule is not triggered. M1 must implement the resolver strips, not only the Interpreter schema.
+Red-team conclusion after the §4.3 / ephemeral-surface patches: no Authority bypass is required, and no Interpreter-authored scene prose is an approved fact. Stop Rule is not triggered. M1 must implement the resolver strips **and** the `{surface, kind}` ephemeral schema, not a generated `summary`.
 
 ## 14. Frozen M1 Issue
 
@@ -517,7 +548,7 @@ Create this Issue as the only implementation entry after M0 merges. Do not imple
 
 - Implement `SceneTurnPlan` / `ResolvedSceneEnvelope` types and Scene Interpreter JSON boundary.
 - Route `npm run play` Player input through Scene Resolver.
-- Approve ephemeral success without Event/Materialized State (except optional `world.time_advance` when `timePolicy` consumes time).
+- Approve ephemeral success without Event/Materialized State (except optional `world.time_advance` when `timePolicy` consumes time). Ephemeral beats are `{surface ⊆ playerContribution, kind}` only — no Interpreter-generated scene prose.
 - Fail toward no persistent effect on negation, observation, unsupported material, and questions.
 - Stop treating `{ proposals: [] }` as the only representation of a successful mundane action.
 - Gate World time and Closed Inn continuation on the resolved scene; remove unconditional `+10 minutes` per raw line.
@@ -543,8 +574,8 @@ Create this Issue as the only implementation entry after M0 merges. Do not imple
 Deterministic fake-model / injected-provider tests:
 
 1. `我不想去找匕首` commits no `character.move`; location unchanged.
-2. `我只是看看周围` commits no movement; envelope contains an observation ephemeral beat.
-3. `我想吃饭` commits no Food/Inventory/Item; envelope contains a meal ephemeral beat; snapshot location/knowledge/relationships unchanged; time may advance only via `world.time_advance` if `timePolicy` consumes time.
+2. `我只是看看周围` commits no movement; envelope contains an observation beat whose `surface` is a substring of that contribution and whose `kind` is `observation` (or `other_low_causal`); envelope contains no Interpreter-generated scene prose.
+3. `我想吃饭` commits no Food/Inventory/Item; envelope contains `{surface: 我想吃饭, kind: mundane_action}` (or equivalent allowed kind); snapshot location/knowledge/relationships unchanged; time may advance only via `world.time_advance` if `timePolicy` consumes time; envelope contains no generated meal/arrival script.
 4. A question to 赵先生 (`speechAct=ask`, no `tell`) does not commit `claim.transmit`, `character.learn_claim`, or `claim.record`, even if the Interpreter emitted them. Fake-model tests must inject those persistents and prove the Resolver strips them.
 5. Unsupported material produces `unsupportedMaterial` and no false success in envelope or Narrator input.
 6. Leading `/ooc` and Interpreter `ooc_meta` commit nothing and do not advance World time, including when persistents contain `world.time_advance`.
@@ -553,14 +584,17 @@ Deterministic fake-model / injected-provider tests:
 9. Existing authority / repair / schema / replay tests remain green except those that encoded “empty = inaction” or “every line = +10 minutes”, which are updated rather than compatibility-wrapped.
 10. Narrator envelope for a Player turn that only eats does not include a move outcome.
 11. Injected `world.time_advance` with `timePolicy=none` is dropped; World clock unchanged.
-12. M1 recent window does not include `approvedEphemeralBeats.summary`.
+12. M1 recent window does not include ephemeral `kind` / rewritten beat scripts. `playerContribution` may already be stored.
 13. Injected Player `claim.record` on eat / look / ask / OOC is dropped; no new Claim row.
+14. Injected `EphemeralBeat.summary = "你走进了地窖"` (or any rewritten prose field) on contribution `我去地窖` is dropped; envelope `approvedEphemeralBeats` does not contain that invented sentence; no `character.move` unless separately committed.
+15. Injected `{surface:"你走进了地窖", kind:mundane_action}` is dropped because `surface` is not a substring of `playerContribution`.
+16. Snapshot-gate tests assert Materialized State only. They must not be written as proof that Narrator text cannot mention a location.
 
 Opt-in real-model smoke (not CI, no reroll for prettier prose): the same five natural inputs must not produce unrelated movement or Food state.
 
 ### Tests to add or rewrite
 
-- `tests/engine/scene-turn-*.test.ts` for schema, `/ooc` override, snapshot gate, ask-only Knowledge strip, `timePolicy=none` dropping `world.time_advance`.
+- `tests/engine/scene-turn-*.test.ts` for schema, `/ooc` override, snapshot gate (DB only), ask-only Knowledge strip, `timePolicy=none` dropping `world.time_advance`, illegal `summary` / non-substring `surface` drop.
 - Update `tests/engine/narrative.test.ts` empty-Turn case: observation may be `ephemeral_success`, not only `empty`.
 - Update `tests/playable-local-loop.test.ts` so delayed consequence depends on resolved time-consuming scenes, not raw line count.
 - Keep Closed Inn harness / Canon tests green.
@@ -588,3 +622,4 @@ Stop and escalate if the only viable M1 design requires: prose as Truth; Player-
 6. **`src/play.ts` is split by milestone, not as a rewrite prelude.** M1 extracts Scene types/resolver and deletes unconditional continuation time.
 7. **Playable Local Loop tests lose the line-count time coupling.** That is product-correct, not a compatibility break to preserve.
 8. **One later Kernel addition is allowed in M2** (durable stimulus as a Kernel Event, or it does not exist). Still not a rewrite. Not `claim.record`.
+9. **Ephemeral lane is Player surface + non-authoritative kind, never a second scene script.** Snapshot gate proves DB. Generated prose such as `你走进了地窖` is dropped. Misclassification / Narrator escalation is Behavioral residual.
