@@ -24,7 +24,7 @@ Before significant work:
 
 Owner decision: **[#68 Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)**. It outranks previous Issues, PRs, ADRs, and Notion “current route” pages.
 
-Read `docs/PRODUCT.md` for product intent. Read `docs/COMPOSE_FIRST_SURVEY.md` before picking libraries. Read `docs/GREENFIELD_RESET.md` for archive / do-not-restore.
+Read `docs/PRODUCT.md` for product intent. Read `docs/COMPOSE_FIRST_SURVEY.md` before picking libraries. Read `docs/MINIMAL_COMPOSITION.md` for the v1 slice. Read `docs/GREENFIELD_RESET.md` for archive / do-not-restore.
 
 Hard rules:
 
