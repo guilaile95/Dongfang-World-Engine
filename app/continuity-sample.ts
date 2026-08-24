@@ -1,7 +1,7 @@
 import { createNpcVoice } from "./chat/npc.js";
-import { createSceneClient } from "./chat/scene.js";
 import { configForLog, loadConfig } from "./config.js";
 import { createModelClient, formatCallLine } from "./model/client.js";
+import { createNarrator } from "./narrator/client.js";
 import { createModelInterpreter } from "./scene/interpreter.js";
 import { openWorld } from "./session.js";
 import { SYNTHETIC } from "./world/seed.js";
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const model = createModelClient(config);
   const session = openWorld(
     ":memory:",
-    createSceneClient(model, config.apiKey),
+    createNarrator(model, config.apiKey),
     SYNTHETIC,
     createModelInterpreter(model),
     createNpcVoice(model, config.apiKey),

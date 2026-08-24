@@ -72,7 +72,8 @@ app/
   visibility/            先可见性，再打包给模型
   context/               非权威召回（世界资料 / scene / summary）；OpenViking 不接入
   scene/                 Chat-first 场景解释与 NPC 寻址
-  chat/                  前景叙事 + NPC 开口；不写世界
+  narrator/              纯投影；正文不能写回权威状态
+  chat/                  NPC 开口；不写世界
 test/                    针对本 slice 的证明
 ```
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { submitCandidates } from "../app/authority/commit.js";
-import { stubSceneClient } from "../app/chat/scene.js";
+import { stubNarrator } from "../app/narrator/client.js";
 import {
   applyInterpretation,
   normalizeInterpretation,
@@ -124,7 +124,7 @@ describe("scene interpretation", () => {
   it("session eating stays ephemeral and does not invent a food system", async () => {
     const session = openWorld(
       ":memory:",
-      stubSceneClient(),
+      stubNarrator(),
       undefined,
       fixedInterpreter({
         contributions: ["low_causal"],

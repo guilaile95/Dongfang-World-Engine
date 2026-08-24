@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { submitCandidates } from "../app/authority/commit.js";
 import { stubNpcVoice } from "../app/chat/npc.js";
-import { stubSceneClient } from "../app/chat/scene.js";
+import { stubNarrator } from "../app/narrator/client.js";
 import { resolveAddressee } from "../app/scene/address.js";
 import { observerNamespace } from "../app/visibility/pool.js";
 import { openWorld } from "../app/session.js";
@@ -29,7 +29,7 @@ describe("player to npc dialogue", () => {
   });
 
   it("builds the NPC pack from the NPC observer, not the player's private context", async () => {
-    const session = openWorld(":memory:", stubSceneClient(), undefined, undefined, stubNpcVoice());
+    const session = openWorld(":memory:", stubNarrator(), undefined, undefined, stubNpcVoice());
     submitCandidates(session.store, {
       producer: "system",
       candidates: [
@@ -69,7 +69,7 @@ describe("player to npc dialogue", () => {
   });
 
   it("does not persist a casual NPC answer as authority truth", async () => {
-    const session = openWorld(":memory:", stubSceneClient(), undefined, undefined, {
+    const session = openWorld(":memory:", stubNarrator(), undefined, undefined, {
       async reply() {
         return "汤还没好。地窖的事别问。";
       },

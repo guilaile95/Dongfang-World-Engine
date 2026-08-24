@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { stubNpcVoice } from "../app/chat/npc.js";
-import { stubSceneClient } from "../app/chat/scene.js";
+import { stubNarrator } from "../app/narrator/client.js";
 import { RECENT_WINDOW, recentSceneBodies } from "../app/context/recent.js";
 import { observerNamespace } from "../app/visibility/pool.js";
 import { openWorld } from "../app/session.js";
@@ -8,7 +8,7 @@ import { CHAR_COOK, CHAR_KEEPER, CHAR_PLAYER, WORLD_ID } from "../app/world/seed
 
 describe("recent scene window", () => {
   it("keeps the last 1–3 resolved scenes so a follow-up is not amnesia", async () => {
-    const session = openWorld(":memory:", stubSceneClient(), undefined, undefined, stubNpcVoice());
+    const session = openWorld(":memory:", stubNarrator(), undefined, undefined, stubNpcVoice());
     const facts0 = session.store.snapshot(WORLD_ID).facts;
     const t1 = await session.playTurn("掌柜，汤好了吗？");
     expect(t1.dialogue?.addresseeId).toBe(CHAR_KEEPER);

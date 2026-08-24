@@ -20,3 +20,5 @@ export { applyInterpretation, normalizeInterpretation } from "./scene/interpreta
 export { createModelInterpreter } from "./scene/interpreter.js";
 export { resolveAddressee } from "./scene/address.js";
 export { createNpcVoice } from "./chat/npc.js";
+export { createNarrator, stubNarrator } from "./narrator/client.js";
+export { ignoreNarratorForAuthority } from "./narrator/envelope.js";

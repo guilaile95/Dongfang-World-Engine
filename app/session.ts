@@ -1,8 +1,10 @@
 import type { NpcVoice } from "./chat/npc.js";
 import { stubNpcVoice } from "./chat/npc.js";
-import type { SceneClient } from "./chat/scene.js";
 import { lastAddresseeId, recentSceneBodies, recordResolvedScene } from "./context/recent.js";
 import { recall } from "./context/recall.js";
+import type { Narrator } from "./narrator/client.js";
+import { stubNarrator } from "./narrator/client.js";
+import { committedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
 import { continueAddressee } from "./scene/address.js";
 import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
@@ -28,6 +30,7 @@ export interface TurnView {
   prompt: string;
   interpretation: BoundInterpretation;
   dialogue: DialogueTurn | null;
+  envelope: NarratorEnvelope;
 }
 
 export class Session {
@@ -37,7 +40,7 @@ export class Session {
 
   public constructor(
     public readonly store: WorldStore,
-    private readonly scene: SceneClient,
+    private readonly narrator: Narrator,
     public readonly compiled: CompiledWorld,
     interpreter: SceneInterpreter = fixedInterpreter(ephemeralInterpretation()),
     npcVoice: NpcVoice = stubNpcVoice(),
@@ -138,14 +141,17 @@ export class Session {
         npcPrompt: npcPack.prompt,
       };
     }
-    const text = await this.scene.writeScene(
-      {
-        prompt: assembled.prompt,
-        playerLine: trimmed,
-        ...(dialogue ? { heardNpc: { name: dialogue.addresseeName, line: dialogue.npcReply } } : {}),
+    const envelope: NarratorEnvelope = {
+      playerContribution: trimmed,
+      observerContext: assembled.prompt,
+      committed: committedProjection(interpretation, this.compiled.playerId),
+      npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null,
+      ephemeral: {
+        recentScenes: recentForPlayer,
+        ambient: this.ambient,
       },
-      onChunk,
-    );
+    };
+    const text = await this.narrator.project(envelope, onChunk);
     if (trimmed.length > 0) {
       const resolved = {
         playerLine: trimmed,
@@ -158,7 +164,14 @@ export class Session {
         recordResolvedScene(this.store, worldId, dialogue.addresseeId, resolved, "npc");
       }
     }
-    return { text, observer: assembled.observer, prompt: assembled.prompt, interpretation, dialogue };
+    return {
+      text,
+      observer: assembled.observer,
+      prompt: assembled.prompt,
+      interpretation,
+      dialogue,
+      envelope,
+    };
   }
 
   public close(): void {
@@ -168,12 +181,12 @@ export class Session {
 
 export function openWorld(
   path: string,
-  scene: SceneClient,
+  narrator: Narrator,
   compiled: CompiledWorld = SYNTHETIC,
   interpreter?: SceneInterpreter,
   npcVoice?: NpcVoice,
 ): Session {
   const store = new WorldStore(path);
   seedCompiled(store, compiled);
-  return new Session(store, scene, compiled, interpreter, npcVoice);
+  return new Session(store, narrator, compiled, interpreter, npcVoice);
 }
