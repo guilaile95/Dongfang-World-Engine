@@ -4,6 +4,7 @@ import { assertNoSecret } from "../secrets.js";
 export interface SceneRequest {
   prompt: string;
   playerLine: string;
+  heardNpc?: { name: string; line: string };
 }
 
 export interface SceneClient {
@@ -25,11 +26,14 @@ export function createSceneClient(client: ModelClient, apiKey: string): SceneCli
     async writeScene(request, onChunk) {
       assertNoSecret(request.prompt, apiKey, "observer prompt");
       assertNoSecret(request.playerLine, apiKey, "player line");
+      const heard = request.heardNpc
+        ? `\n\n你听见${request.heardNpc.name}说：${request.heardNpc.line}\n写场景时把这句话当作他们已经出口的话，不要替他们补充他们没说的秘密。`
+        : "";
       const result = await client.stream({
         role: "narrator",
         purpose: "foreground-scene",
         system: SYSTEM,
-        prompt: `${request.prompt}\n\n玩家说：${request.playerLine || "（沉默）"}`,
+        prompt: `${request.prompt}\n\n玩家说：${request.playerLine || "（沉默）"}${heard}`,
         ...(onChunk ? { onChunk } : {}),
       });
       return result.text;
@@ -40,7 +44,8 @@ export function createSceneClient(client: ModelClient, apiKey: string): SceneCli
 export function stubSceneClient(): SceneClient {
   return {
     async writeScene(request, onChunk) {
-      const text = `${request.prompt}\n\n> ${request.playerLine || "……"}`;
+      const heard = request.heardNpc ? `\n${request.heardNpc.name}：「${request.heardNpc.line}」` : "";
+      const text = `${request.prompt}\n\n> ${request.playerLine || "……"}${heard}`;
       onChunk?.(text);
       return text;
     },

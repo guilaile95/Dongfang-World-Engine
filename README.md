@@ -69,8 +69,8 @@ app/
   world/fixtures/        仅供单测的最小 synthetic fixture
   visibility/            先可见性，再打包给模型
   context/               非权威召回（世界资料 / scene / summary）；OpenViking 不接入
-  scene/                 Chat-first 场景解释；只有未来因果才进提交门
-  chat/                  前景叙事；不写世界
+  scene/                 Chat-first 场景解释与 NPC 寻址
+  chat/                  前景叙事 + NPC 开口；不写世界
 test/                    针对本 slice 的证明
 ```
 

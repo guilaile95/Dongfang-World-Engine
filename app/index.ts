@@ -17,3 +17,5 @@ export { recall } from "./context/recall.js";
 export { rebuildObserverArtifacts, wipeContextArtifacts } from "./context/artifacts.js";
 export { applyInterpretation, normalizeInterpretation } from "./scene/interpretation.js";
 export { createModelInterpreter } from "./scene/interpreter.js";
+export { resolveAddressee } from "./scene/address.js";
+export { createNpcVoice } from "./chat/npc.js";

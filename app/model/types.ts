@@ -1,4 +1,4 @@
-export type CallRole = "narrator" | "proposal";
+export type CallRole = "narrator" | "proposal" | "npc";
 
 export type ErrorCategory =
   | "none"

@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { createNpcVoice } from "./chat/npc.js";
 import { createSceneClient } from "./chat/scene.js";
 import { configForLog, loadConfig } from "./config.js";
 import { createModelClient, formatCallLine } from "./model/client.js";
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
     createSceneClient(model, config.apiKey),
     compiled,
     createModelInterpreter(model),
+    createNpcVoice(model, config.apiKey),
   );
   const rl = createInterface({ input, output });
   process.stdout.write("输入自然语言。:quit 退出。引擎藏在后面。\n");

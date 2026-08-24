@@ -1,34 +1,49 @@
+import type { NpcVoice } from "./chat/npc.js";
+import { stubNpcVoice } from "./chat/npc.js";
 import type { SceneClient } from "./chat/scene.js";
-import { WorldStore } from "./persist/store.js";
 import { recordScene } from "./context/artifacts.js";
 import { recall } from "./context/recall.js";
+import { WorldStore } from "./persist/store.js";
+import { resolveAddressee } from "./scene/address.js";
+import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
+import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import type { ObserverContext } from "./visibility/context.js";
 import type { CompiledWorld } from "./world/compile.js";
 import { seedCompiled } from "./world/load.js";
 import { SYNTHETIC } from "./world/seed.js";
 import { worldTick } from "./world/tick.js";
-import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
-import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
+
+export interface DialogueTurn {
+  addresseeId: string;
+  addresseeName: string;
+  stimulus: string;
+  npcReply: string;
+  npcPrompt: string;
+}
 
 export interface TurnView {
   text: string;
   observer: ObserverContext;
   prompt: string;
   interpretation: BoundInterpretation;
+  dialogue: DialogueTurn | null;
 }
 
 export class Session {
   private ambient: string[] = [];
   private readonly interpreter: SceneInterpreter;
+  private readonly npcVoice: NpcVoice;
 
   public constructor(
     public readonly store: WorldStore,
     private readonly scene: SceneClient,
     public readonly compiled: CompiledWorld,
     interpreter: SceneInterpreter = fixedInterpreter(ephemeralInterpretation()),
+    npcVoice: NpcVoice = stubNpcVoice(),
   ) {
     this.interpreter = interpreter;
+    this.npcVoice = npcVoice;
   }
 
   public contextFor(observerId: string = this.compiled.playerId): ObserverContext {
@@ -82,14 +97,51 @@ export class Session {
       ambient: this.ambient,
       loreHits,
     });
+    const snapshot = this.store.snapshot(worldId);
+    const addressee = trimmed.length > 0
+      ? resolveAddressee(snapshot, this.compiled.playerId, trimmed)
+      : null;
+    let dialogue: DialogueTurn | null = null;
+    if (addressee) {
+      const npcLore = recall(this.store, worldId, addressee.id, trimmed).map((hit) => ({
+        title: hit.title,
+        body: hit.body,
+        score: hit.score,
+        namespace: hit.namespace,
+        kind: hit.kind,
+      }));
+      const npcPack = assemblePrompt({
+        snapshot,
+        observerId: addressee.id,
+        query: trimmed,
+        loreHits: npcLore,
+      });
+      const npcReply = await this.npcVoice.reply({
+        name: addressee.name,
+        pack: npcPack.prompt,
+        stimulus: trimmed,
+      });
+      dialogue = {
+        addresseeId: addressee.id,
+        addresseeName: addressee.name,
+        stimulus: trimmed,
+        npcReply,
+        npcPrompt: npcPack.prompt,
+      };
+      recordScene(this.store, worldId, addressee.id, trimmed);
+    }
     const text = await this.scene.writeScene(
-      { prompt: assembled.prompt, playerLine: trimmed },
+      {
+        prompt: assembled.prompt,
+        playerLine: trimmed,
+        ...(dialogue ? { heardNpc: { name: dialogue.addresseeName, line: dialogue.npcReply } } : {}),
+      },
       onChunk,
     );
     if (trimmed.length > 0) {
       recordScene(this.store, worldId, this.compiled.playerId, text);
     }
-    return { text, observer: assembled.observer, prompt: assembled.prompt, interpretation };
+    return { text, observer: assembled.observer, prompt: assembled.prompt, interpretation, dialogue };
   }
 
   public close(): void {
@@ -102,8 +154,9 @@ export function openWorld(
   scene: SceneClient,
   compiled: CompiledWorld = SYNTHETIC,
   interpreter?: SceneInterpreter,
+  npcVoice?: NpcVoice,
 ): Session {
   const store = new WorldStore(path);
   seedCompiled(store, compiled);
-  return new Session(store, scene, compiled, interpreter);
+  return new Session(store, scene, compiled, interpreter, npcVoice);
 }
