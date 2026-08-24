@@ -5,311 +5,173 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { rebuildState } from "../src/engine/projector.js";
-import {
-  PLAYABLE_DELAYED_CLAIM_ID,
-  PLAYABLE_DELAYED_DISPLAY_TEXT,
-} from "../src/play.js";
+import { PlaySession } from "../src/engine/play-session.js";
+import { PLOT_ONGOING_CLAIM_ID, PLOT_PROGRESS_PREDICATE } from "../src/engine/world-tick.js";
 import { SqliteWorldStore } from "../src/persistence/sqlite-store.js";
-import { canonicalSnapshot } from "../src/smoke/closed-inn-harness.js";
-import { CLOSED_INN_WORLD_ID, seedClosedInnWorld } from "../src/testkit/world-builder.js";
+import {
+  CLOSED_INN_WORLD_ID,
+  CLOSED_INN_WORLD_RULES,
+} from "../src/testkit/world-builder.js";
 
-interface ProviderRequest {
-  kind: "simulation" | "narrative";
-  body: string;
-  userPayload: Record<string, unknown>;
-}
+const OFF_PLOT_LINE = "我去厨房随便找点吃的，今天不查匕首，也不跟任何人说话。";
+const SCENE_REPLY = "你在客栈灶房找了点剩饭。大厅那边的调查并没有因为你走开而停下来。";
 
 interface ProcessResult {
   stdout: string;
   stderr: string;
 }
 
-const playerId = "character-player";
-const npcAId = "character-npc-a";
-const npcBId = "character-npc-b";
-const trueClaimId = "claim-dagger-in-cellar";
-
-describe("Playable Local Loop entrypoint", () => {
-  it("plays 25 natural-language interactions across exit/resume with an explainable delayed consequence", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "dwe-playable-"));
+describe("Chat-first playable loop", () => {
+  it("accepts off-plot chat, persists independent plot, and resumes context from the same file", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dwe-chat-first-"));
     const worldFile = join(directory, "world.sqlite");
     const apiKey = "playable-test-key-must-not-leak";
-    const requests: ProviderRequest[] = [];
-    let delayedNarrated = false;
-    const server = createServer(async (request, response) => {
-      try {
-        const body = await readBody(request);
-        const parsed = JSON.parse(body) as {
-          messages: Array<{ role: string; content: string }>;
-        };
-        const system = parsed.messages[0]?.content ?? "";
-        const userPayload = JSON.parse(parsed.messages[1]?.content ?? "{}") as Record<string, unknown>;
-        const kind = system.includes("lane router") || system.includes("top-level shape")
-          ? "simulation"
-          : "narrative";
-        requests.push({ kind, body, userPayload });
-        const content = kind === "simulation"
-          ? JSON.stringify(buildPlayerScenePlan(userPayload))
-          : buildNarrative(userPayload, () => delayedNarrated, () => {
-            delayedNarrated = true;
-          });
-        response.writeHead(200, { "Content-Type": "application/json" });
-        response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content } }] }));
-      } catch (error) {
-        response.writeHead(500, { "Content-Type": "text/plain" });
-        response.end(error instanceof Error ? error.message : "fake provider failed");
-      }
+    const requests: string[] = [];
+    const server = createFakeProvider((body) => {
+      requests.push(body);
+      return SCENE_REPLY;
     });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
+    await listen(server);
 
     try {
       const address = server.address() as AddressInfo;
-      const environment = {
-        DWE_WORLD_FILE: worldFile,
+      const config = {
+        worldFile,
         DWE_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
         DWE_LLM_API_KEY: apiKey,
         DWE_LLM_MODEL: "playable-fake-model",
       };
-      const firstInputs = [
-        "我先观察大堂里的人，听听有没有人愿意说出匕首线索。",
-        "我把已经知道的匕首在地窖的线索告诉赵先生。",
-        "我观察赵先生听到线索后的反应。",
-        "我继续留在大堂观察阿宝和赵先生。",
-        "我再看看赵先生对阿宝的态度有没有变化。",
-        "我前往客栈地窖查看现场。",
-        "我在地窖仔细观察周围。",
-        "我回到客栈大堂。",
-        "我把目前的线索重新梳理一遍。",
-        "我再次前往客栈地窖，准备稍后继续调查。",
-      ];
-      const firstRun = await runPlayProcess(environment, firstInputs);
-      expect(firstRun.stderr).toBe("");
-      expect(firstRun.stdout).toContain("已创建世界");
-      expect(firstRun.stdout).toContain(PLAYABLE_DELAYED_DISPLAY_TEXT);
-      expect(firstRun.stdout).not.toContain(apiKey);
-      expect(firstRun.stdout).not.toContain("\u001b");
-      expect(firstRun.stdout).not.toContain("]52;");
-      expect((await stat(worldFile)).size).toBeGreaterThan(0);
+      const session = PlaySession.open({
+        worldFile,
+        baseUrl: config.DWE_LLM_BASE_URL,
+        apiKey,
+        model: config.DWE_LLM_MODEL,
+      });
+      expect(session.resumed).toBe(false);
 
-      const firstStore = new SqliteWorldStore(worldFile);
-      const firstSnapshot = firstStore.getSnapshot(CLOSED_INN_WORLD_ID);
-      const firstEvents = firstStore.listEvents(CLOSED_INN_WORLD_ID);
-      const firstRevision = firstSnapshot.world.revision;
-      expect(firstRevision).toBe(firstEvents.length);
-      expect(firstRevision).toBeGreaterThan(10);
-      expect(firstSnapshot.characters.find((character) => character.id === playerId)?.locationId)
-        .toBe("location-cellar");
-      expect(firstSnapshot.knowledge.some(
-        (knowledge) => knowledge.characterId === playerId && knowledge.claimId === PLAYABLE_DELAYED_CLAIM_ID,
+      const turn = await session.playTurn(OFF_PLOT_LINE);
+      expect(turn.unknownActionRejection).toBe(false);
+      expect(turn.sceneReply.trim().length).toBeGreaterThan(0);
+      expect(turn.sceneReply).not.toMatch(/unknown action|未知行动|proposal/i);
+      expect(turn.sceneReply).not.toContain(apiKey);
+      expect(turn.playerLine).toBe(OFF_PLOT_LINE);
+      expect(turn.plotContinuation.independentOfPlayerLine).toBe(true);
+      expect(turn.plotContinuation.claimId).toBe("claim-plot-tick-1");
+      expect(turn.plotContinuation.stage).toBe("1");
+      expect(turn.modelFacingContext.rules).toEqual([...CLOSED_INN_WORLD_RULES]);
+      expect(turn.modelFacingContext.plotStage).toBe("1");
+      expect(turn.modelFacingContext.plotThreads.some((thread) => thread.id === PLOT_ONGOING_CLAIM_ID)).toBe(true);
+      expect(turn.modelFacingContext.plotThreads.some((thread) => thread.id === "claim-plot-tick-1")).toBe(true);
+      expect(JSON.stringify(turn.modelFacingContext)).not.toContain("fact-hidden-dagger-cellar");
+      expect(JSON.stringify(requests.join("\n"))).not.toContain(apiKey);
+
+      const liveStore = session.getStore();
+      const snapshot = liveStore.getSnapshot(CLOSED_INN_WORLD_ID);
+      const events = liveStore.listEvents(CLOSED_INN_WORLD_ID);
+      const plotClaim = snapshot.claims.find((claim) => claim.id === "claim-plot-tick-1");
+      const plotClaimEvent = events.find((event) => event.type === "claim.record" && event.payload.claimId === "claim-plot-tick-1");
+      expect(plotClaim).toEqual(expect.objectContaining({
+        predicate: PLOT_PROGRESS_PREDICATE,
+        object: "sun-searches-guestroom",
+      }));
+      expect(plotClaimEvent?.payload.actorId).toBe("character-npc-c");
+      expect(plotClaimEvent?.payload.actorId).not.toBe("character-player");
+      expect(JSON.stringify(plotClaimEvent?.payload)).not.toContain("厨房");
+      expect(JSON.stringify(plotClaimEvent?.payload)).not.toContain(OFF_PLOT_LINE);
+      expect(snapshot.facts.some((fact) => fact.id === "fact-hidden-dagger-cellar")).toBe(true);
+      expect(snapshot.facts.some((fact) =>
+        fact.predicate === "plot_stage" && fact.object === "1" && fact.validTo === null,
       )).toBe(true);
-      firstStore.close();
+      session.close();
 
-      const secondInputs = [
-        "我回到客栈大堂继续调查。",
-        "我观察大堂里的气氛。",
-        "我前往二楼客房看看传闻从何而来。",
-        "我在二楼客房观察有没有新的痕迹。",
-        "我回到客栈大堂。",
-        "我问自己还有哪些线索需要核对。",
-        "我继续观察赵先生的神情。",
-        "我留意阿宝是否显得放松。",
-        "我把地窖和客房的说法作比较。",
-        "我暂时不行动，只观察周围。",
-        "我确认自己仍记得之前得到的线索。",
-        "我看看客栈里是否还有人移动。",
-        "我继续等待世界变化。",
-        "我重新审视赵先生与阿宝的关系。",
-        "我在大堂结束这一轮调查。",
-      ];
-      const secondRun = await runPlayProcess(environment, secondInputs);
-      expect(secondRun.stderr).toBe("");
-      expect(secondRun.stdout).toContain("已恢复世界");
-      expect(secondRun.stdout).toContain(`revision=${firstRevision}`);
-      expect(secondRun.stdout).toContain("位置=客栈地窖");
-      expect(secondRun.stdout).not.toContain(apiKey);
-
-      const finalStore = new SqliteWorldStore(worldFile);
-      const finalSnapshot = finalStore.getSnapshot(CLOSED_INN_WORLD_ID);
-      const events = finalStore.listEvents(CLOSED_INN_WORLD_ID);
-      expect(finalSnapshot.world.id).toBe(firstSnapshot.world.id);
-      expect(finalSnapshot.seed.id).toBe(firstSnapshot.seed.id);
-      expect(finalSnapshot.world.revision).toBe(events.length);
-      expect(finalSnapshot.world.revision).toBeGreaterThan(firstRevision);
-      expect(events[firstRevision]?.worldRevision).toBe(firstRevision + 1);
-      expect(events.map((event) => event.worldRevision)).toEqual(events.map((_, index) => index + 1));
-      expect(events.filter((event) => event.type === "world.time_advance")).toHaveLength(25);
-
-      const playerTransmission = events.find((event) =>
-        event.type === "claim.transmit" &&
-        event.payload.sourceCharacterId === playerId &&
-        event.payload.targetCharacterId === npcBId &&
-        event.payload.claimId === trueClaimId
+      const resumed = PlaySession.open({
+        worldFile,
+        baseUrl: config.DWE_LLM_BASE_URL,
+        apiKey,
+        model: config.DWE_LLM_MODEL,
+      });
+      expect(resumed.resumed).toBe(true);
+      const restored = resumed.buildModelFacingContext();
+      expect(restored.rules).toEqual([...CLOSED_INN_WORLD_RULES]);
+      expect(restored.plotStage).toBe("1");
+      expect(restored.plotThreads.map((thread) => thread.id)).toEqual(
+        expect.arrayContaining([PLOT_ONGOING_CLAIM_ID, "claim-plot-tick-1"]),
       );
-      const reaction = events.find((event) =>
-        event.type === "relationship.change" &&
-        event.payload.sourceCharacterId === npcBId &&
-        event.payload.targetCharacterId === npcAId &&
-        event.payload.hostilityDelta === -10
-      );
-      const consequenceClaim = finalSnapshot.claims.find((claim) => claim.id === PLAYABLE_DELAYED_CLAIM_ID);
-      const consequenceKnowledge = finalSnapshot.knowledge.find(
-        (knowledge) => knowledge.characterId === playerId && knowledge.claimId === PLAYABLE_DELAYED_CLAIM_ID,
-      );
-      expect(playerTransmission).toBeDefined();
-      expect(reaction).toBeDefined();
-      expect(reaction?.causeEventIds).toEqual([playerTransmission!.id]);
-      expect(Date.parse(reaction!.eventTime) - Date.parse(playerTransmission!.eventTime)).toBeGreaterThanOrEqual(
-        20 * 60_000,
-      );
-      expect(finalSnapshot.knowledge).toContainEqual(expect.objectContaining({
-        characterId: npcBId,
-        claimId: trueClaimId,
-        sourceCharacterId: playerId,
-        sourceEventId: playerTransmission!.id,
-      }));
-      expect(finalSnapshot.relationships).toContainEqual(expect.objectContaining({
-        sourceCharacterId: npcBId,
-        targetCharacterId: npcAId,
-        trust: -5,
-        hostility: 10,
-        updatedByEventId: reaction!.id,
-      }));
-      expect(consequenceClaim).toEqual(expect.objectContaining({
-        subject: npcBId,
-        predicate: "attitude_changed_toward",
-        object: npcAId,
-      }));
-      const claimEvent = finalStore.getEvent(consequenceClaim!.sourceEventId!);
-      expect(claimEvent?.causeEventIds).toEqual([playerTransmission!.id, reaction!.id]);
-      expect(consequenceKnowledge).toEqual(expect.objectContaining({
-        knowledgeState: "confirmed",
-        sourceType: "event",
-        sourceEventId: claimEvent!.id,
-      }));
-      const learnEvent = events.find((event) =>
-        event.type === "character.learn_claim" && event.payload.claimId === PLAYABLE_DELAYED_CLAIM_ID
-      );
-      expect(learnEvent?.causeEventIds).toEqual([claimEvent!.id]);
-
-      const simulationRequests = requests.filter((request) => request.kind === "simulation");
-      const narrativeRequests = requests.filter((request) => request.kind === "narrative");
-      expect(simulationRequests).toHaveLength(25);
-      expect(narrativeRequests).toHaveLength(25);
-      expect(simulationRequests.map((request) => request.userPayload.intent)).toEqual([
-        ...firstInputs,
-        ...secondInputs,
-      ]);
-      expect(requests.map((request) => request.body).join("\n")).not.toContain(apiKey);
-      for (const request of narrativeRequests) {
-        expect(request.body).not.toContain("fact-hidden-dagger-cellar");
-        expect(request.body).not.toContain("\"facts\":");
-        expect(request.body).not.toContain("factAssertionRequirements");
-        expect(request.body).not.toContain("WorldSnapshot");
-      }
-
-      const pristineStore = new SqliteWorldStore();
-      seedClosedInnWorld(pristineStore);
-      const rebuilt = rebuildState(pristineStore.getSnapshot(CLOSED_INN_WORLD_ID), events);
-      expect(canonicalSnapshot(rebuilt)).toEqual(canonicalSnapshot(finalSnapshot));
-      pristineStore.close();
-      finalStore.close();
+      expect(JSON.stringify(restored)).not.toContain("fact-hidden-dagger-cellar");
+      const second = await resumed.playTurn("我再去灶上喝口水。");
+      expect(second.unknownActionRejection).toBe(false);
+      expect(second.sceneReply.trim().length).toBeGreaterThan(0);
+      expect(second.plotContinuation.stage).toBe("2");
+      expect(second.modelFacingContext.plotThreads.some((thread) => thread.id === "claim-plot-tick-2")).toBe(true);
+      resumed.close();
+      expect((await stat(worldFile)).size).toBeGreaterThan(0);
     } finally {
-      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      await closeServer(server);
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("spawns the shipped play entry and returns a scene reply for a freeform line", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "dwe-play-cli-"));
+    const worldFile = join(directory, "world.sqlite");
+    const apiKey = "cli-test-key-must-not-leak";
+    const server = createFakeProvider(() => SCENE_REPLY);
+    await listen(server);
+    try {
+      const address = server.address() as AddressInfo;
+      const run = await runPlayProcess({
+        DWE_WORLD_FILE: worldFile,
+        DWE_LLM_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+        DWE_LLM_API_KEY: apiKey,
+        DWE_LLM_MODEL: "playable-fake-model",
+      }, [OFF_PLOT_LINE]);
+      expect(run.stderr).toBe("");
+      expect(run.stdout).toContain("已创建世界");
+      expect(run.stdout).toContain(SCENE_REPLY);
+      expect(run.stdout).not.toMatch(/unknown action|未知行动/i);
+      expect(run.stdout).not.toContain(apiKey);
+      const store = new SqliteWorldStore(worldFile);
+      expect(store.listEvents(CLOSED_INN_WORLD_ID).some((event) =>
+        event.type === "claim.record" && event.payload.claimId === "claim-plot-tick-1",
+      )).toBe(true);
+      store.close();
+    } finally {
+      await closeServer(server);
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);
 });
 
-function buildPlayerScenePlan(payload: Record<string, unknown>): Record<string, unknown> {
-  const context = payload.context as {
-    observer: { id: string };
-    movementOptions: Array<{ locationId: string; name: string }>;
-    coLocatedCharacters: Array<{ id: string; name: string }>;
-    knowledge: Array<{ claim: { id: string } }>;
-  };
-  const intent = String(payload.intent ?? "");
-  if (intent.trim().toLowerCase().startsWith("/ooc")) {
-    return {
-      channel: "ooc_meta",
-      ephemeralBeats: [],
-      targetedStimuli: [],
-      persistentCandidates: [],
-      unsupportedMaterial: [],
-      timePolicy: { kind: "none" },
-    };
-  }
-  const persistentCandidates: Array<Record<string, unknown>> = [];
-  const targetedStimuli: Array<Record<string, unknown>> = [];
-  if (intent.includes("告诉赵先生")) {
-    const target = context.coLocatedCharacters.find((character) => character.id === npcBId);
-    const claim = context.knowledge.find((bundle) => bundle.claim.id === trueClaimId);
-    if (target && claim) {
-      targetedStimuli.push({
-        speakerCharacterId: context.observer.id,
-        targetCharacterId: target.id,
-        surfaceText: intent,
-        speechAct: "tell",
-        persistence: "ephemeral",
-      });
-      persistentCandidates.push({
-        type: "claim.transmit",
-        sourceCharacterId: context.observer.id,
-        targetCharacterId: target.id,
-        claimId: claim.claim.id,
-      });
+function createFakeProvider(replyFor: (body: string) => string) {
+  return createServer(async (request, response) => {
+    try {
+      const body = await readBody(request);
+      const content = replyFor(body);
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({
+        id: "chatcmpl-playable",
+        object: "chat.completion",
+        choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 8, completion_tokens: 8, total_tokens: 16 },
+      }));
+    } catch (error) {
+      response.writeHead(500, { "Content-Type": "text/plain" });
+      response.end(error instanceof Error ? error.message : "fake provider failed");
     }
-  } else {
-  const destinationName = intent.includes("地窖")
-    ? "客栈地窖"
-    : intent.includes("二楼客房") ? "二楼客房" : intent.includes("大堂") && intent.includes("回") ? "客栈大堂" : null;
-  const destination = context.movementOptions.find((option) => option.name === destinationName);
-  if (destination) {
-    persistentCandidates.push({
-      type: "character.move",
-      actorId: context.observer.id,
-      toLocationId: destination.locationId,
-    });
-  }
-  }
-  return {
-    channel: "in_world",
-    ephemeralBeats: persistentCandidates.length > 0
-      ? []
-      : [{ surface: intent, kind: "observation" }],
-    targetedStimuli,
-    persistentCandidates,
-    unsupportedMaterial: [],
-    timePolicy: { kind: "consume_scene_time", minutes: 10 },
-  };
+  });
 }
 
-function buildNarrative(
-  payload: Record<string, unknown>,
-  wasDelayedNarrated: () => boolean,
-  markDelayedNarrated: () => void,
-): string {
-  const envelope = payload as {
-    observerContext: { knowledge: Array<{ claim: { id: string; displayText?: string } }> };
-    outcomes: Array<{ type: string }>;
-  };
-  const delayed = envelope.observerContext.knowledge.find(
-    (bundle) => bundle.claim.id === PLAYABLE_DELAYED_CLAIM_ID,
-  );
-  if (delayed?.claim.displayText && !wasDelayedNarrated()) {
-    markDelayedNarrated();
-    return `迟来的后果终于显现：${delayed.claim.displayText}`;
-  }
-  if (envelope.outcomes.some((outcome) => outcome.type === "character.move")) {
-    return "你按自己的决定移动，新的位置已经被世界记录。";
-  }
-  if (envelope.outcomes.some((outcome) => outcome.type === "claim.transmit")) {
-    return "你把自己已知的线索告诉了面前的人。";
-  }
-  return "\u001b]52;c;dGVzdA==\u0007你继续观察；即使你没有提交新行动，客栈里的时间与人物仍在向前。";
+function listen(server: ReturnType<typeof createServer>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+}
+
+function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -337,7 +199,7 @@ function runPlayProcess(environment: Record<string, string>, inputs: string[]): 
     const timeout = setTimeout(() => {
       child.kill();
       reject(new Error("npm run play timed out"));
-    }, 60_000);
+    }, 90_000);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {

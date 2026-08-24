@@ -84,11 +84,11 @@ Player
 
 ## 当前阶段
 
-**FULL PROJECT FREEZE**（#63）。在项目 owner 明确解冻之前，不得新增 Production Runtime / 功能实现。
+**Owner 已解冻**（#66 取代 #63）。玩家路径是自由聊天（Vercel AI SDK `generateText`），不再把输入压成七类 Proposal。每次在世界中的输入后，Closed Inn 已著者剧情线独立推进——**世界不围绕玩家存在**。权威世界仍是本地 SQLite；重启同一文件后剧情 / 事实 / 规则仍进入下一轮模型上下文。
 
-能力与复用审计见 [docs/COMPOSITION_REUSE_AUDIT.md](docs/COMPOSITION_REUSE_AUDIT.md)。已 merge 的模块没有沉没成本保护；推荐的解冻提案是用 Vercel AI SDK 替换手写 transport，并继续自有 Authority 核心，而不是继续 M2 或 real-model 验收。
+详见 [docs/CHAT_FIRST_RESET.md](docs/CHAT_FIRST_RESET.md) 与 [docs/CURRENT_STAGE.md](docs/CURRENT_STAGE.md)。
 
-North Star 仍是：保留自由 Chat 角色扮演；Engine 只在后台约束长期后果。**Engine constrains consequences, not imagination.** 这是产品不变量，不是当前文件布局的许可证。
+North Star：**Engine constrains consequences, not imagination.** **The world must not orbit the player.**
 
 ## 本地游玩
 

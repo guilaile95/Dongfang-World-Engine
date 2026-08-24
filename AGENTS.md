@@ -24,14 +24,13 @@ For detailed governance, use `docs/PROJECT_HANDOVER_PROTOCOL.md`.
 
 ## Freeze override
 
-If `docs/CURRENT_STAGE.md` declares **FULL PROJECT FREEZE**:
+Owner unfreeze is **#66**. #63 freeze is closed. Continue the chat-first play path unless `docs/CURRENT_STAGE.md` again declares **FULL PROJECT FREEZE**.
+
+If a future freeze is declared:
 
 - the freeze overrides ordinary autonomous implementation workflow;
 - do not write Production Runtime / feature code;
 - do not resume closed historical roadmap Issues;
-- do not run frozen real-model acceptance experiments;
-- perform only the audit / research work explicitly allowed by the active freeze Issue;
-- treat already-merged code as replaceable audit evidence, not protected architecture;
 - do not unfreeze based on Agent judgment alone — explicit project-owner approval is required.
 
 ## First output

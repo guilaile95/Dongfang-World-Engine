@@ -17,6 +17,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.35",
+    "ai": "^7.0.77",
     "better-sqlite3": "^12.4.1",
     "drizzle-orm": "^0.44.5",
     "zod": "^4.1.5"

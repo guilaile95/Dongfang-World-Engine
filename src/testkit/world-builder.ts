@@ -228,13 +228,29 @@ export function seedTestWorld(store: SqliteWorldStore): TestWorldIds {
 export const CLOSED_INN_WORLD_ID = "world-closed-inn";
 export const CLOSED_INN_INITIAL_TIME = "2019-03-12T18:00:00.000Z";
 
+export const CLOSED_INN_WORLD_RULES = [
+  "世界不是围绕玩家存在的。玩家吃饭、闲逛、闲聊时，已开始的剧情与 NPC 仍按自己的目标继续。",
+  "不要把所有事件解释成对玩家的反应。",
+  "已确认的世界事实与规则优先于本轮闲聊。",
+  "失踪匕首调查是已开始的剧情主线，不会因为旅客走开而消失。",
+] as const;
+
+export function parseClosedInnWorldRules(metadata: string): string[] {
+  const parsed = JSON.parse(metadata) as { rules?: unknown };
+  if (!Array.isArray(parsed.rules)) {
+    return [];
+  }
+  return parsed.rules.filter((rule): rule is string => typeof rule === "string" && rule.trim().length > 0);
+}
+
 export interface ClosedInnFixtureIds {
   world: WorldRecord;
   seed: SeedRecord;
   locations: Record<"hall" | "cellar" | "guestRoom", LocationRecord>;
   characters: Record<"player" | "npcA" | "npcB" | "npcC", CharacterRecord>;
   hiddenTruth: FactRecord;
-  claims: Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom", ClaimRecord>;
+  claims: Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom" | "plotOngoing", ClaimRecord>;
+  plotStage: FactRecord;
 }
 
 export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds {
@@ -250,7 +266,11 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
     worldId: CLOSED_INN_WORLD_ID,
     sourceType: "test_fixture",
     sourceRef: "src/testkit/world-builder.ts",
-    metadata: JSON.stringify({ fixture: "closed-inn-10turn", version: 1 }),
+    metadata: JSON.stringify({
+      fixture: "closed-inn",
+      version: 2,
+      rules: [...CLOSED_INN_WORLD_RULES],
+    }),
   };
   const locations = {
     hall: {
@@ -332,6 +352,19 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
     sourceType: "initial_lore",
   };
 
+  const plotStage: FactRecord = {
+    id: "fact-plot-stage-0",
+    worldId: CLOSED_INN_WORLD_ID,
+    subject: CLOSED_INN_WORLD_ID,
+    predicate: "plot_stage",
+    object: "0",
+    validFrom: CLOSED_INN_INITIAL_TIME,
+    validTo: null,
+    sourceEventId: null,
+    sourceSeedId: seed.id,
+    sourceType: "initial_lore",
+  };
+
   const claims = {
     trueCellar: {
       id: "claim-dagger-in-cellar",
@@ -363,7 +396,17 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
       sourceSeedId: seed.id,
       recordedAt: CLOSED_INN_INITIAL_TIME,
     },
-  } satisfies Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom", ClaimRecord>;
+    plotOngoing: {
+      id: "claim-plot-ongoing",
+      worldId: CLOSED_INN_WORLD_ID,
+      subject: CLOSED_INN_WORLD_ID,
+      predicate: "plot_thread",
+      object: "dagger_investigation",
+      sourceEventId: null,
+      sourceSeedId: seed.id,
+      recordedAt: CLOSED_INN_INITIAL_TIME,
+    },
+  } satisfies Record<"trueCellar" | "falseTheftNpcB" | "falseGuestRoom" | "plotOngoing", ClaimRecord>;
 
   const knowledge: KnowledgeRecord[] = [
     {
@@ -447,11 +490,11 @@ export function seedClosedInnWorld(store: SqliteWorldStore): ClosedInnFixtureIds
     locations: Object.values(locations),
     locationConnections,
     characters: Object.values(characters),
-    facts: [hiddenTruth],
+    facts: [hiddenTruth, plotStage],
     claims: Object.values(claims),
     knowledge,
     relationships,
   });
 
-  return { world, seed, locations, characters, hiddenTruth, claims };
+  return { world, seed, locations, characters, hiddenTruth, claims, plotStage };
 }
