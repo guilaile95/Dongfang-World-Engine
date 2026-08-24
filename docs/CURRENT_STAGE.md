@@ -2,145 +2,169 @@
 
 Last reviewed: 2026-08-24
 
-This file is a **recovery pointer**, not a second task database.
+This file is a **recovery pointer**, not a second task database. Always verify live GitHub before acting.
 
-Always verify live GitHub before acting. The SHA / Issue / PR values below are hints and may already be stale.
+## PROJECT STATUS
 
-## Product North Star
+# FULL PROJECT FREEZE
 
-Preserve the freedom and intelligence of chat-first roleplay while using an independent persistent World Engine to prevent long-session forgetting, attention drift, OOC, rule loss, information leakage and causal contradiction.
+Active owner Issue: **#63 — PROJECT FREEZE: Full Composition / Reuse Audit before any further implementation**
+
+Freeze baseline at decision time:
+
+`main = 2bda6c38a032a0297a3b4b755399d95c77454e55`
+
+There were no Open PRs when the freeze began.
+
+The previous implementation roadmap is no longer active:
+
+- #52 closed `not_planned` — evidence preserved;
+- #53 closed `not_planned` — M2 implementation frozen;
+- #54 closed `not_planned` — evidence preserved;
+- #55 closed `not_planned` — Chat-first Scene Loop sequencing no longer presumed correct;
+- #59 closed `not_planned` — M1 acceptance frozen; merged M1 code is not certified as the future architecture.
+
+Do **not** reopen or continue these Issues mechanically.
+
+## Product problem
+
+The product still aims to preserve the freedom and intelligence of chat-first roleplay while preventing long-session forgetting, OOC, information leakage, rule loss and causal contradiction.
 
 > **Engine constrains consequences, not imagination.**
 
-## Current Stage
+This product goal does **not** imply that the current engine implementation must survive.
 
-**Chat-first Scene Loop**
+## Freeze meaning
 
-Stage owner: **Issue #55 — Chat-first Scene Loop**
+No Production Runtime / feature implementation may proceed until #63 is complete and the project owner explicitly unfreezes development.
 
-M0 is complete:
+During the freeze:
 
-- Issue #57 closed;
-- PR #58 merged;
-- frozen contract: `docs/SCENE_TURN_CONTRACT.md`.
+- no M1 real-model acceptance run;
+- no M2 / targeted NPC implementation;
+- no Memory / RAG implementation;
+- no UI / desktop implementation;
+- no provider refactor;
+- no new Dialogue / Scheduler / Item / World-Pack system;
+- no speculative refactor preparing future architecture.
 
-M1 implementation is merged:
+Allowed work is audit-only:
 
-- PR #61 merged;
-- implementation main hint: `365a1625e8dbfbd4068edf7861a509de6948822c`;
-- deterministic / injected-provider coverage and CI passed;
-- Kernel / Validator / Event types remained unchanged.
+- read current code;
+- inspect mature external projects / libraries;
+- license analysis;
+- compatibility and integration analysis;
+- architecture comparison;
+- narrowly scoped non-production compatibility spikes only when evidence cannot be obtained otherwise;
+- documentation of findings.
 
-## Immediate Work
+## No sacred implementation
 
-**Issue #59 — M1 real-model acceptance gate**
+**Sunk cost provides zero architectural authority.**
 
-The implementation is on `main`, but #59 has been reopened because its frozen acceptance criteria explicitly require one opt-in real-model smoke and no recorded M1 real-model sample was found in PR #61 / Issue #59 evidence.
+Every already-merged subsystem is eligible for:
 
-Do not start M2 until this acceptance sample is recorded and classified.
+- ADOPT external solution;
+- ADAPT external solution behind a narrow boundary;
+- BORROW protocol / format / pattern;
+- KEEP current implementation;
+- REPLACE current implementation;
+- DELETE unnecessary implementation;
+- DEFER capability entirely.
 
-Required real-model M1 cases include the natural inputs that originally exposed the product failure:
+This includes, without exception:
 
-- `我不想去找匕首`;
-- `我只是看看周围`;
-- `我想吃饭`;
-- ask-only question to 赵先生;
-- one unsupported-material / OOC-style case from the frozen M1 protocol.
+- provider client / model transport;
+- Simulation Adapter;
+- Scene Interpreter / Scene Resolver;
+- Context Builder;
+- Narrative layer;
+- `play.ts` loop;
+- persistence / SQLite wiring;
+- Candidate / Kernel / Validator / Event implementation;
+- replay / test harnesses;
+- schema and API shapes.
 
-Verify observable behavior only:
+A product requirement may remain while its current implementation is replaced.
 
-- no unrelated `character.move`;
-- no Food / Inventory state;
-- ask-only does not become Claim / Knowledge write;
-- time advances only when `consume_scene_time`;
-- no Truth/private-Knowledge leak;
-- no replay / authority regression.
+Examples:
 
-Formal sample discipline applies: no reroll for prettier prose; safe trace only.
+- `Database is Truth` does not make the current Store sacred;
+- `Fact != Claim != CharacterKnowledge` does not make current tables sacred;
+- no direct LLM write authority does not make the current Kernel class sacred;
+- deterministic visibility before relevance does not make the current ContextBuilder sacred.
 
-## Next After M1 Acceptance
+## Audit principle
 
-**M2 / Issue #53 — targeted Player → NPC utterance / response**
+> **Compose-first. Own only the irreducible product core.**
 
-#53 remains the observed M2 blocker. Do not expand it into a full Dialogue Framework.
+For every subsystem, mature alternatives must be named and evaluated before KEEP / OWN is allowed.
 
-Issues #52 / #54 remain real-play evidence / regression references for M1 and should not become separate action-specific architectures.
+At minimum inspect relevant capabilities from:
+
+- SillyTavern;
+- RisuAI;
+- Vercel AI SDK / provider ecosystem;
+- Mem0;
+- Letta;
+- additional current mature alternatives discovered during the audit.
+
+These are candidates, not predetermined winners.
+
+## Required output of #63
+
+The audit must produce:
+
+1. Current Capability Map;
+2. Ecosystem Map;
+3. Reuse Matrix: ADOPT / ADAPT / BORROW / KEEP / REPLACE / DELETE / DEFER;
+4. License / Distribution Matrix;
+5. Target Composition Architecture;
+6. Deletion / Migration Plan for already-written code;
+7. Owned Core Justification for every remaining custom subsystem;
+8. explicit Unfreeze Proposal.
+
+No subsystem may be marked KEEP / OWN merely because it already exists.
 
 ## Read First — GitHub
 
-1. `README.md`
-2. `docs/SCENE_TURN_CONTRACT.md`
-3. `docs/CHAT_FIRST_PRODUCT_RESET.md`
-4. `docs/ARCHITECTURE_DECISIONS.md` — especially ADR-007 through ADR-012
-5. Issue #55
-6. Issue #59 and its latest comments
-7. PR #61 when reviewing the merged M1 implementation
-8. Issue #53 only after the M1 real-model gate passes
-9. actual source + tests relevant to the active blocker
+1. `AGENTS.md`
+2. Issue #63
+3. this file
+4. `README.md`
+5. current source / tests as audit evidence
+6. historical architecture / stage docs only to understand why existing code was built — not as automatic future requirements
 
-Before implementing, inspect live Open PRs. If another PR already addresses the active work, review / continue it instead of opening a duplicate path.
+Historical docs such as `docs/SCENE_TURN_CONTRACT.md`, `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/ROADMAP.md` and ADRs are evidence and prior decisions. During #63 they may be retained, superseded or revised where the owner-approved product requirements allow it.
 
 ## Read First — Notion
 
-Use the connected Notion workspace only after live GitHub recovery. Search these exact page titles:
+Use Notion for durable product intent and historical reasoning, not as an implementation authority.
 
-1. `东方狂想｜Dongfang World Engine`
-2. `东方狂想｜Chat-first 产品纠偏、需求规格与 Grok 接管（2026-08-24）`
+Start with:
 
-Read only if needed for deeper context:
-
-- `东方狂想｜软件开发与工程接管手册`
+- `东方狂想｜Dongfang World Engine`
+- `东方狂想｜Chat-first 产品纠偏、需求规格与 Grok 接管（2026-08-24）`
 - `东方狂想｜架构风险、长期约束与可伸缩因果模拟设计`
-- `东方狂想｜玩法机制设计备忘：机制链、机制环、机制网`
+- `东方狂想｜软件开发与工程接管手册`
 
-If Notion current-state prose conflicts with live GitHub, GitHub wins for Engineering Reality. Preserve Notion as long-term intent and report the conflict.
+Any old current-state snapshot is subordinate to live GitHub.
 
-## Frozen Invariants
+## Recovery Output during freeze
 
-- Database is Truth.
-- Events Explain State.
-- Fact != Claim != CharacterKnowledge != Memory.
-- LLM has no direct persistent write authority.
-- Visibility Gate precedes probabilistic relevance.
-- Only future-causal effects enter the persistent authority chain.
-- Persistent writes use Candidate → Hard Validator → Transaction → Event → Projection.
-- Narrative / Memory / Summary are not Truth.
-- Final prose is never parsed back into authoritative state.
-- Player-private Context is never copied into an NPC Context.
-
-## Deferred Scope
-
-Unless real evidence proves a blocker, do not build before the M1 acceptance gate completes:
-
-- full NPC reply / durable dialogue path — M2;
-- Memory / RAG / vector DB / rolling summary — M3;
-- generic Action / Effect DSL;
-- Food / Hunger / Inventory merely to support eating;
-- generic Scheduler / Always-on NPC agents;
-- World Pack Compiler;
-- Tauri UI;
-- Branch / Multiverse;
-- provider router / microservices;
-- Kernel / Validator rewrite.
-
-## Recovery Output
-
-After reading `AGENTS.md` and live GitHub, return:
+A new Agent should report:
 
 ```text
 CURRENT ENGINEERING STATE
 
 EXACT_MAIN:
-CURRENT_STAGE:
-ACTIVE_ISSUE:
-ACTIVE_PR / HEAD:
-CI:
-CURRENT_BLOCKER:
-CONFIRMED_P0_P1:
-BEHAVIORAL_PRODUCT_BLOCKERS:
-DEFERRED_SCOPE:
+PROJECT_STATUS: FULL_FREEZE
+ACTIVE_ISSUE: #63
+OPEN_PRS:
+OPEN_IMPLEMENTATION_ISSUES: none
+AUDIT_SCOPE:
 SOURCE_CONFLICTS:
-NEXT_ACTION:
+NEXT_AUDIT_ACTION:
 ```
 
-Then continue the smallest unblocked high-value action.
+Then continue **audit work only**. Do not implement or run frozen product experiments unless the project owner explicitly unfreezes them.

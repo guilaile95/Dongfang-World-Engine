@@ -22,9 +22,21 @@ Before significant work:
 
 For detailed governance, use `docs/PROJECT_HANDOVER_PROTOCOL.md`.
 
+## Freeze override
+
+If `docs/CURRENT_STAGE.md` declares **FULL PROJECT FREEZE**:
+
+- the freeze overrides ordinary autonomous implementation workflow;
+- do not write Production Runtime / feature code;
+- do not resume closed historical roadmap Issues;
+- do not run frozen real-model acceptance experiments;
+- perform only the audit / research work explicitly allowed by the active freeze Issue;
+- treat already-merged code as replaceable audit evidence, not protected architecture;
+- do not unfreeze based on Agent judgment alone — explicit project-owner approval is required.
+
 ## First output
 
-Before implementation, report:
+Before implementation or freeze-audit work, report:
 
 ```text
 CURRENT ENGINEERING STATE
@@ -42,39 +54,44 @@ SOURCE_CONFLICTS:
 NEXT_ACTION:
 ```
 
-If the next action is clear and does not hit a Stop / Escalation condition, continue autonomously.
+If the project is not frozen and the next action is clear and does not hit a Stop / Escalation condition, continue autonomously.
+
+If the project is frozen, `NEXT_ACTION` must be an allowed audit action only.
 
 ## Product North Star
 
-Preserve the freedom and intelligence of chat-first roleplay while using the World Engine in the background to prevent long-session forgetting, OOC, information leakage, rule loss and causal drift.
+Preserve the freedom and intelligence of chat-first roleplay while using a persistent world layer to prevent long-session forgetting, OOC, information leakage, rule loss and causal drift.
 
 > **Engine constrains consequences, not imagination.**
 
-## Frozen authority boundaries
+The North Star defines the product problem. It does not grant architectural authority to any current implementation.
 
-- Database is Truth.
-- Events Explain State.
-- Fact != Claim != CharacterKnowledge != Memory.
-- LLM has no direct persistent write authority.
-- Deterministic Visibility Gate precedes probabilistic relevance.
-- Persistent change uses Candidate → Hard Validator → Transaction → Event → Projection.
-- Narrative is non-authoritative and is never parsed back into Truth.
-- Rejected writes must not leave partial state.
-- Replay / provenance must remain explainable.
+## Product requirements vs implementation
 
-A current instruction may change priorities. If it would change one of these frozen boundaries, treat that as an explicit architecture decision instead of silently changing the rule.
+Current product invariants / requirements may constrain outcomes, but the code used to satisfy them is not sacred.
+
+Examples:
+
+- `Database is Truth` does not require the current Store implementation;
+- Fact / Claim / CharacterKnowledge separation does not require the current exact schema;
+- no direct LLM persistent write authority does not require the current exact Kernel class;
+- deterministic visibility before probabilistic relevance does not require the current exact ContextBuilder implementation.
+
+If the active project stage is a Composition / Reuse Audit, current modules must be evaluated on equal footing with mature external alternatives.
 
 ## Recovery discipline
 
 - Do not duplicate work already present in an Open PR.
 - Do not treat green CI or implementer self-report as proof; inspect the actual diff and acceptance criteria.
 - Do not reopen settled architecture unless current code, tests, real usage or explicit new product direction contradict it.
-- Read only the code needed for the current Stage first; recovery is not permission for a repository-wide redesign.
-- Reuse existing capability before adding infrastructure.
+- Read only the code needed for the current Stage first; recovery is not permission for an unrelated repository-wide redesign.
+- Reuse existing mature capability before adding infrastructure.
+- For a new subsystem, prefer ADOPT / ADAPT / BORROW before KEEP / OWN; KEEP / OWN require evidence that mature alternatives are unsuitable.
+- Do not preserve code because of sunk cost.
 
 ## Source roles
 
-**GitHub** is current Engineering Reality: code, `main`, Issues, PRs, reviews, CI and frozen ADRs.
+**GitHub** is current Engineering Reality: code, `main`, Issues, PRs, reviews, CI and frozen/current engineering decisions.
 
 **Notion** is long-term product / architecture context: North Star, durable lessons, architecture direction and stage reasoning.
 
@@ -88,7 +105,7 @@ A normal cross-model handover should contain only:
 Repository: <owner/repo>
 Read AGENTS.md and recover from live GitHub + connected Notion.
 Do not rely on chat history.
-Return CURRENT ENGINEERING STATE, then continue the highest-priority unblocked work.
+Return CURRENT ENGINEERING STATE, then obey the active Stage / freeze state.
 ```
 
 Pass recovery coordinates, not rewritten project history.
