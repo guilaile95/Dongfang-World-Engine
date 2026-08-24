@@ -62,3 +62,13 @@ Interaction detail is persisted only when it has future causal value; persistenc
 Long-form roleplay requires layered continuity beyond current Materialized State. The runtime may use recent resolved scene history, stable story essentials, relevant episodic memories and rolling summaries after the deterministic Visibility Gate.
 
 Memory, summaries and retrieval are context aids, not Truth. They must remain inspectable, correctable or rebuildable and cannot overwrite Fact, Claim, CharacterKnowledge or committed Event history.
+
+## ADR-012 — Frozen Scene Turn Contract (M0)
+
+Issue #57 freezes the Chat-first Scene Turn contract in `docs/SCENE_TURN_CONTRACT.md`.
+
+Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lanes: ephemeral beats, targeted stimuli, persistent candidates, unsupported material, and OOC/meta. Only persistent candidates and resolver-bound `world.time_advance` enter the existing Commit Kernel. Final Narrator input is a `ResolvedSceneEnvelope` assembled after commit; prose is never parsed back into Truth.
+
+World time and NPC continuation are functions of the resolved scene, not of raw input-line count. Target NPCs receive only an authorized stimulus plus their own Context.
+
+This ADR does not change Production Runtime. M1 implements the ephemeral / intent-fidelity vertical slice from the frozen contract. Kernel, Validator, Event types and Visibility Gate remain the Authority core.
