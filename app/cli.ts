@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { createSceneClient } from "./chat/scene.js";
 import { configForLog, loadConfig } from "./config.js";
+import { createModelClient, formatCallLine } from "./model/client.js";
 import { openWorld } from "./session.js";
 
 async function main(): Promise<void> {
@@ -10,7 +11,8 @@ async function main(): Promise<void> {
   process.stderr.write(`world file: ${publicConfig.worldFile}\n`);
   process.stderr.write(`model: ${publicConfig.model} @ ${publicConfig.baseUrl}\n`);
 
-  const session = openWorld(config.worldFile, createSceneClient(config));
+  const model = createModelClient(config);
+  const session = openWorld(config.worldFile, createSceneClient(model, config.apiKey));
   const rl = createInterface({ input, output });
   process.stdout.write("输入自然语言。:quit 退出。引擎藏在后面。\n");
 
@@ -25,6 +27,10 @@ async function main(): Promise<void> {
       });
       if (!turn.text.endsWith("\n")) {
         process.stdout.write("\n");
+      }
+      const recorded = model.lastRecord();
+      if (recorded) {
+        process.stderr.write(`${formatCallLine(recorded)}\n`);
       }
     }
   } finally {

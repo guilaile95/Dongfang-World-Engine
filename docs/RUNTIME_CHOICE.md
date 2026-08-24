@@ -24,6 +24,8 @@ Python wins only if we *adopt* LiteLLM or OpenViking in-process. Survey: LiteLLM
 
 Maintenance: one language, one validator, one process, one file.
 
+Model access (this slice): in-process Vercel AI SDK + `@ai-sdk/openai-compatible`. LiteLLM Python SDK is not the runtime. LiteLLM Proxy is not started. Revisit a shared gateway only if multiple independent processes need one.
+
 ## Explicitly not done
 
 - No Pydantic, no second schema framework.

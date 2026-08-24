@@ -1,6 +1,4 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText } from "ai";
-import type { AppConfig } from "../config.js";
+import type { ModelClient } from "../model/client.js";
 import { assertNoSecret } from "../secrets.js";
 
 export interface SceneRequest {
@@ -18,35 +16,22 @@ const SYSTEM = [
   "不要提及引擎、数据库、事件、候选或内部字段。",
   "场景可以即兴细节，但不能把即兴细节当成已经发生的客观事实去改写世界。",
   "世界不围着玩家转：即使玩家吃饭、闲逛或拒绝，已经开始的事仍在继续。",
+  "用自然语言写场景，不要输出 JSON。",
 ].join("");
 
-export function createSceneClient(config: AppConfig): SceneClient {
-  const provider = createOpenAICompatible({
-    name: "dwe",
-    baseURL: config.baseUrl,
-    apiKey: config.apiKey,
-  });
-  const model = provider.chatModel(config.model);
-
+export function createSceneClient(client: ModelClient, apiKey: string): SceneClient {
   return {
     async writeScene(request, onChunk) {
-      assertNoSecret(request.prompt, config.apiKey, "observer prompt");
-      assertNoSecret(request.playerLine, config.apiKey, "player line");
-
-      const result = streamText({
-        model,
+      assertNoSecret(request.prompt, apiKey, "observer prompt");
+      assertNoSecret(request.playerLine, apiKey, "player line");
+      const result = await client.stream({
+        role: "narrator",
+        purpose: "foreground-scene",
         system: SYSTEM,
         prompt: `${request.prompt}\n\n玩家说：${request.playerLine || "（沉默）"}`,
-        telemetry: { isEnabled: false, recordInputs: false, recordOutputs: false },
+        ...(onChunk ? { onChunk } : {}),
       });
-
-      let text = "";
-      for await (const chunk of result.textStream) {
-        text += chunk;
-        onChunk?.(chunk);
-      }
-      assertNoSecret(text, config.apiKey, "scene text");
-      return text;
+      return result.text;
     },
   };
 }

@@ -8,4 +8,5 @@ export { contextFor } from "./visibility/context.js";
 export { visibilityGate } from "./visibility/gate.js";
 export { assemblePrompt } from "./visibility/assemble.js";
 export { searchWithinPool, rankWithinPool } from "./visibility/retrieve.js";
+export { createModelClient, formatCallLine } from "./model/client.js";
 export { WORLD_ID, CHAR_PLAYER, seedWorld } from "./world/seed.js";

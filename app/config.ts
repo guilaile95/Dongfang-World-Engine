@@ -7,6 +7,11 @@ export interface AppConfig {
   apiKey: string;
   model: string;
   worldFile: string;
+  maxRetries: number;
+  timeoutMs: number;
+  fallbackModel: string | null;
+  inputUsdPerMtok: number | null;
+  outputUsdPerMtok: number | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -18,6 +23,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     apiKey: required(env, "DWE_LLM_API_KEY"),
     model: required(env, "DWE_LLM_MODEL"),
     worldFile: resolve(env.DWE_WORLD_FILE?.trim() || "data/local/world.sqlite"),
+    maxRetries: integer(env.DWE_LLM_MAX_RETRIES, 2),
+    timeoutMs: integer(env.DWE_LLM_TIMEOUT_MS, 60_000),
+    fallbackModel: emptyToNull(env.DWE_LLM_FALLBACK_MODEL),
+    inputUsdPerMtok: floatOrNull(env.DWE_LLM_INPUT_USD_PER_MTOK),
+    outputUsdPerMtok: floatOrNull(env.DWE_LLM_OUTPUT_USD_PER_MTOK),
   };
 }
 
@@ -31,6 +41,27 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function emptyToNull(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function integer(value: string | undefined, fallback: number): number {
+  if (!value?.trim()) {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function floatOrNull(value: string | undefined): number | null {
+  if (!value?.trim()) {
+    return null;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Load .env into process.env without overriding existing values. Never log values. */
