@@ -2,10 +2,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText } from "ai";
 import type { AppConfig } from "../config.js";
 import { assertNoSecret } from "../secrets.js";
-import { packObserverContext, type ObserverContext } from "../visibility/context.js";
 
 export interface SceneRequest {
-  observerContext: ObserverContext;
+  prompt: string;
   playerLine: string;
 }
 
@@ -31,14 +30,13 @@ export function createSceneClient(config: AppConfig): SceneClient {
 
   return {
     async writeScene(request, onChunk) {
-      const packed = packObserverContext(request.observerContext);
-      assertNoSecret(packed, config.apiKey, "observer context");
+      assertNoSecret(request.prompt, config.apiKey, "observer prompt");
       assertNoSecret(request.playerLine, config.apiKey, "player line");
 
       const result = streamText({
         model,
         system: SYSTEM,
-        prompt: `${packed}\n\n玩家说：${request.playerLine || "（沉默）"}`,
+        prompt: `${request.prompt}\n\n玩家说：${request.playerLine || "（沉默）"}`,
         telemetry: { isEnabled: false, recordInputs: false, recordOutputs: false },
       });
 
@@ -56,8 +54,7 @@ export function createSceneClient(config: AppConfig): SceneClient {
 export function stubSceneClient(): SceneClient {
   return {
     async writeScene(request, onChunk) {
-      const packed = packObserverContext(request.observerContext);
-      const text = `${packed}\n\n> ${request.playerLine || "……"}`;
+      const text = `${request.prompt}\n\n> ${request.playerLine || "……"}`;
       onChunk?.(text);
       return text;
     },

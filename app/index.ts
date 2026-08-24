@@ -5,4 +5,7 @@ export { parseLlmCandidate } from "./authority/candidate.js";
 export { explain } from "./authority/explain.js";
 export { rebuildWorld } from "./authority/restore.js";
 export { contextFor } from "./visibility/context.js";
+export { visibilityGate } from "./visibility/gate.js";
+export { assemblePrompt } from "./visibility/assemble.js";
+export { searchWithinPool, rankWithinPool } from "./visibility/retrieve.js";
 export { WORLD_ID, CHAR_PLAYER, seedWorld } from "./world/seed.js";
