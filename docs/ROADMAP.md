@@ -261,7 +261,23 @@ Status: complete in Issue #49.
 - bind a Player Claim transmission to a later NPC relationship reaction, then expose the observed consequence through Claim/Knowledge provenance and #47 `displayText` without Fact/private-Knowledge access;
 - verify the actual entrypoint across two processes and 25 Player interactions (10 + exit + resume + 15), with continuous revisions, delayed causality, safe Narrator envelopes and canonical replay equality.
 
-The acceptance run uses a credential-free loopback OpenAI-compatible provider in CI. A formal real-model run remains optional and must follow no-reroll discipline; no credentials are stored in the repository. The next system remains unselected until play evidence identifies a concrete blocker. Canon harnesses remain regression assets; no further Canon runner, generic Scheduler, Save system, Dialogue framework, Memory/RAG or UI is justified speculatively.
+The acceptance run uses a credential-free loopback OpenAI-compatible provider in CI. A formal real-model run remains optional and must follow no-reroll discipline; no credentials are stored in the repository. Canon harnesses remain regression assets; no further Canon runner, generic Scheduler, Save system, Dialogue framework, Memory/RAG or UI is justified speculatively.
+
+Playable Local Loop is no longer the product endpoint. Real-play evidence in #52–#54 showed the interaction layer had drifted into a seven-Proposal adapter. The current stage is Chat-first Scene Loop (#55).
+
+## Product Stage — Chat-first Scene Loop
+
+Status: M0 frozen in Issue #57 / `docs/SCENE_TURN_CONTRACT.md`. M1 is the next implementation Slice.
+
+Correct the player-facing loop without rewriting the Authority core:
+
+- M0 — freeze Scene Turn contract, responsibility map, ephemeral / persistent / targeted boundaries, Kernel-intact migration, `src/play.ts` split plan, and one M1 Issue.
+- M1 — intent-faithful Scene Turn + ephemeral success lane (#52 / #54 as acceptance, not standalone patches).
+- M2 — targeted Player→NPC stimulus and response (#53).
+- M3 — Context Continuity v1 (non-Truth recent window + relevance after Visibility).
+- M4 — fresh real-model product playtest.
+
+Product invariant: Engine constrains consequences, not imagination. See `docs/CHAT_FIRST_PRODUCT_RESET.md`.
 
 ## Later
 

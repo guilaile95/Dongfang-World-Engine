@@ -84,7 +84,13 @@ Player
 
 ## 当前阶段
 
-Step 2、2.5、2.6、2.6.1 Foundation、Step 3 Context Builder MVP、Step 4 Simulation Adapter MVP、Step 5 Turn Orchestrator MVP、Step 6 Minimal Real-Model Transport、Step 7 Minimal Narrator、Closed Inn 系列验证、Vertical Slice 3 Authority proof 系列、Issue #47 visibility-safe Claim semantic grounding，以及 Issue #49 **Playable Local Loop** 均已完成。项目现在拥有第一个可启动、可连续输入自然语言、可退出并从同一 SQLite 恢复、会发生最小 NPC/时间继续和可解释 delayed consequence 的本地玩家入口。下一系统必须由后续真实玩法 blocker 决定，不再增加 Canon 3.x proof runner。
+Authority core 与 Playable Local Loop（#49）已经完成，并且必须保留。当前产品阶段是 **Chat-first Scene Loop**（#55）。
+
+第一阶段真实 `npm run play` 证明 Kernel 可用，但交互层把自然语言压成七类 Proposal，导致否定被替换成移动、吃饭无法发生、提问变成 `claim.transmit`、每条原始输入都推进世界时间。纠偏文档见 [docs/CHAT_FIRST_PRODUCT_RESET.md](docs/CHAT_FIRST_PRODUCT_RESET.md)。
+
+M0 已冻结 Scene Turn 合同：[docs/SCENE_TURN_CONTRACT.md](docs/SCENE_TURN_CONTRACT.md)（#57）。下一步是 M1 实现 intent-faithful Scene + Ephemeral lane，而不是独立修补 #52 / #53 / #54。
+
+North Star：保留自由 Chat 角色扮演；Engine 只在后台约束长期后果。**Engine constrains consequences, not imagination.**
 
 ## 本地游玩
 

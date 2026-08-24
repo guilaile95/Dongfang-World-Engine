@@ -49,7 +49,7 @@ Only future-causal effects enter the existing Candidate → Hard Validator → T
 
 A low-causal action may succeed in the current scene without creating an Event or Materialized State change. Eating an ordinary meal, sitting, resting briefly or looking out a window do not require dedicated persistent primitives unless the world is tracking a future-causal resource, status, location or obligation.
 
-The ephemeral path must not claim completion of material effects such as death, important item transfer, tracked resource consumption, location change, permission change, relationship change or Knowledge acquisition.
+The ephemeral path must not claim completion of material effects such as death, important item transfer, tracked resource consumption, location change, permission change, relationship change or Knowledge acquisition. That prohibition is a write-path and Narrator-instruction rule. It is not a deterministic natural-language parser over ephemeral text, and Interpreter-generated scene prose is not an allowed ephemeral payload.
 
 ## ADR-010 — Targeted Interaction Uses the Target's Visibility Boundary
 
@@ -62,3 +62,13 @@ Interaction detail is persisted only when it has future causal value; persistenc
 Long-form roleplay requires layered continuity beyond current Materialized State. The runtime may use recent resolved scene history, stable story essentials, relevant episodic memories and rolling summaries after the deterministic Visibility Gate.
 
 Memory, summaries and retrieval are context aids, not Truth. They must remain inspectable, correctable or rebuildable and cannot overwrite Fact, Claim, CharacterKnowledge or committed Event history.
+
+## ADR-012 — Frozen Scene Turn Contract (M0)
+
+Issue #57 freezes the Chat-first Scene Turn contract in `docs/SCENE_TURN_CONTRACT.md`.
+
+Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lanes: ephemeral beats, targeted stimuli, persistent candidates, unsupported material, and OOC/meta. Ephemeral beats carry an exact Player-contribution substring plus a non-authoritative `kind`; the Interpreter does not author a second scene script. Only persistent candidates and resolver-bound `world.time_advance` enter the existing Commit Kernel. Final Narrator input is a `ResolvedSceneEnvelope` assembled after commit; prose is never parsed back into Truth. Snapshot equality proves Materialized State, not that Narrator text is semantically clean.
+
+World time and NPC continuation are functions of the resolved scene, not of raw input-line count. Target NPCs receive only an authorized stimulus plus their own Context.
+
+This ADR does not change Production Runtime. M1 implements the ephemeral / intent-fidelity vertical slice from the frozen contract. Kernel, Validator, Event types and Visibility Gate remain the Authority core.

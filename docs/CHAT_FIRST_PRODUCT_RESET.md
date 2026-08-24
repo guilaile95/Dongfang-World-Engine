@@ -363,6 +363,8 @@ The default user flow remains one chat input. Optional `/say`, `/do` or `/ooc` c
 
 ### M0 — Freeze the Scene Turn contract
 
+Status: frozen in `docs/SCENE_TURN_CONTRACT.md` and ADR-012 (Issue #57).
+
 Deliverable:
 
 - exact current-flow diagram and responsibility map;
