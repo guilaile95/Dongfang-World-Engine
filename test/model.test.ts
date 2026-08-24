@@ -13,6 +13,7 @@ function config(apiKey: string): AppConfig {
     apiKey,
     model: "unit-model",
     worldFile: "data/local/world.sqlite",
+    worldSource: null,
     maxRetries: 2,
     timeoutMs: 1000,
     fallbackModel: "unit-fallback",

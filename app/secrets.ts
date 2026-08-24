@@ -18,11 +18,13 @@ export function publicFields(input: {
   model: string;
   worldFile: string;
   apiKey: string;
+  worldSource?: string | null;
 }): Record<string, string> {
   return {
     baseUrl: input.baseUrl,
     model: input.model,
     worldFile: input.worldFile,
+    worldSource: input.worldSource ?? "",
     apiKey: input.apiKey ? REDACTED : "",
   };
 }

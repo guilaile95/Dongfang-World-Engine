@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { submitCandidates } from "../authority/commit.js";
 import type { WorldStore } from "../persist/store.js";
-import { CHAR_KEEPER, CHAR_PLAYER, nextBeat, WORLD_ID } from "./seed.js";
+import type { CompiledWorld } from "./compile.js";
+import { nextBeat, SYNTHETIC } from "./seed.js";
 
 export interface TickResult {
   publicBeat: string;
@@ -10,35 +11,43 @@ export interface TickResult {
 }
 
 /** Once per in-world player turn. Not parsed from the player line. Not a scheduler. */
-export function worldTick(store: WorldStore): TickResult {
-  const snapshot = store.snapshot(WORLD_ID);
+export function worldTick(store: WorldStore, compiled: CompiledWorld = SYNTHETIC): TickResult {
+  const worldId = compiled.seed.world.id;
+  const snapshot = store.snapshot(worldId);
   const toTime = nextBeat(snapshot.world.time);
   const memoryId = `mem-tick-${randomUUID()}`;
+  const themeId = compiled.theme.characterId;
+  const candidates = [
+    {
+      type: "time_advance" as const,
+      worldId,
+      expectedRevision: snapshot.world.revision,
+      toTime,
+    },
+    ...(themeId && compiled.theme.memory
+      ? [
+        {
+          type: "memory_note" as const,
+          worldId,
+          expectedRevision: snapshot.world.revision + 1,
+          memoryId,
+          characterId: themeId,
+          text: compiled.theme.memory,
+        },
+      ]
+      : []),
+  ];
   const result = submitCandidates(store, {
     producer: "world_tick",
-    candidates: [
-      {
-        type: "time_advance",
-        worldId: WORLD_ID,
-        expectedRevision: snapshot.world.revision,
-        toTime,
-      },
-      {
-        type: "memory_note",
-        worldId: WORLD_ID,
-        expectedRevision: snapshot.world.revision + 1,
-        memoryId,
-        characterId: CHAR_KEEPER,
-        text: "还得把李公子的下落问清楚，不能因为堂里有人吃饭就把这事放下。",
-      },
-    ],
+    candidates,
   });
 
-  const after = store.snapshot(WORLD_ID);
-  const player = after.characters.find((row) => row.id === CHAR_PLAYER);
-  const keeper = after.characters.find((row) => row.id === CHAR_KEEPER);
-  const samePlace = player && keeper && player.locationId === keeper.locationId;
-  const publicBeat = samePlace ? "掌柜在柜台翻着登记簿，像还在等一个没回来的客人。" : "";
+  const after = store.snapshot(worldId);
+  const player = after.characters.find((row) => row.id === compiled.playerId);
+  const theme = after.characters.find((row) => row.id === themeId);
+  const samePlace = player && theme && player.locationId === theme.locationId;
+  const publicBeat =
+    compiled.theme.publicBeatScope === "public_world" || samePlace ? compiled.theme.publicBeat : "";
 
   return {
     publicBeat,

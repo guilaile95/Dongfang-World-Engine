@@ -3,7 +3,9 @@ import type { SceneClient } from "./chat/scene.js";
 import { WorldStore } from "./persist/store.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import type { ObserverContext } from "./visibility/context.js";
-import { CHAR_PLAYER, seedWorld, WORLD_ID } from "./world/seed.js";
+import type { CompiledWorld } from "./world/compile.js";
+import { seedCompiled } from "./world/load.js";
+import { SYNTHETIC } from "./world/seed.js";
 import { worldTick } from "./world/tick.js";
 
 export interface TurnView {
@@ -18,11 +20,12 @@ export class Session {
   public constructor(
     public readonly store: WorldStore,
     private readonly scene: SceneClient,
+    public readonly compiled: CompiledWorld,
   ) {}
 
-  public contextFor(observerId: string = CHAR_PLAYER): ObserverContext {
+  public contextFor(observerId: string = this.compiled.playerId): ObserverContext {
     return assemblePrompt({
-      snapshot: this.store.snapshot(WORLD_ID),
+      snapshot: this.store.snapshot(this.compiled.seed.world.id),
       observerId,
       ambient: this.ambient,
     }).observer;
@@ -33,14 +36,15 @@ export class Session {
     onChunk?: (text: string) => void,
   ): Promise<TurnView> {
     const trimmed = playerLine.trim();
+    const worldId = this.compiled.seed.world.id;
     if (trimmed.length > 0) {
-      const tick = worldTick(this.store);
+      const tick = worldTick(this.store, this.compiled);
       this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
     }
-    submitEmptyProposal(this.store, WORLD_ID);
+    submitEmptyProposal(this.store, worldId);
     const assembled = assemblePrompt({
-      snapshot: this.store.snapshot(WORLD_ID),
-      observerId: CHAR_PLAYER,
+      snapshot: this.store.snapshot(worldId),
+      observerId: this.compiled.playerId,
       query: trimmed,
       ambient: this.ambient,
     });
@@ -56,8 +60,12 @@ export class Session {
   }
 }
 
-export function openWorld(path: string, scene: SceneClient): Session {
+export function openWorld(
+  path: string,
+  scene: SceneClient,
+  compiled: CompiledWorld = SYNTHETIC,
+): Session {
   const store = new WorldStore(path);
-  seedWorld(store);
-  return new Session(store, scene);
+  seedCompiled(store, compiled);
+  return new Session(store, scene, compiled);
 }

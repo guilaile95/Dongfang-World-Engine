@@ -1,16 +1,17 @@
+import { readFileSync } from "node:fs";
 import type { WorldStore } from "../persist/store.js";
-import type {
-  CharacterRecord,
-  ClaimRecord,
-  FactRecord,
-  KnowledgeRecord,
-  LocationRecord,
-  WorldRecord,
-} from "../authority/types.js";
+import { compileWorld, type CompiledWorld } from "./compile.js";
+import { parseWorldSource } from "./parse.js";
 
-export const WORLD_ID = "riverside-inn";
-export const SEED_ID = "seed-riverside-inn";
-export const TIME0 = "day-1-morning";
+const FIXTURE = new URL("./fixtures/riverside-inn.md", import.meta.url);
+
+export const SYNTHETIC: CompiledWorld = compileWorld(
+  parseWorldSource(readFileSync(FIXTURE, "utf8")),
+);
+
+export const WORLD_ID = SYNTHETIC.seed.world.id;
+export const SEED_ID = `seed-${WORLD_ID}`;
+export const TIME0 = SYNTHETIC.seed.world.time;
 
 export const LOC_HALL = "loc-hall";
 export const LOC_KITCHEN = "loc-kitchen";
@@ -39,131 +40,20 @@ export const BEATS = [
 
 export function nextBeat(time: string): string {
   const index = BEATS.indexOf(time as (typeof BEATS)[number]);
-  if (index === -1 || index >= BEATS.length - 1) {
-    return `${time}+`;
+  if (index >= 0 && index < BEATS.length - 1) {
+    const next = BEATS[index + 1];
+    if (next) {
+      return next;
+    }
   }
-  const next = BEATS[index + 1];
-  if (!next) {
-    return `${time}+`;
-  }
-  return next;
+  const stamped = /^(.*?)(?:·(\d+))?$/.exec(time);
+  const base = stamped?.[1] || time;
+  const n = Number(stamped?.[2] || "0") + 1;
+  return `${base}·${n}`;
 }
 
-export function seedInput(): {
-  world: WorldRecord;
-  locations: LocationRecord[];
-  characters: CharacterRecord[];
-  facts: FactRecord[];
-  claims: ClaimRecord[];
-  knowledge: KnowledgeRecord[];
-} {
-  const world: WorldRecord = {
-    id: WORLD_ID,
-    name: "临河客栈",
-    time: TIME0,
-    revision: 0,
-    rules: [
-      "地窖里的物事只有掌柜清楚，旁人不会随口知道。",
-      "失踪的客人还没结案；有人吃饭或闲逛时，这件事也不会改写成食客日常。",
-    ],
-  };
-  return {
-    world,
-    locations: [
-      { id: LOC_HALL, worldId: WORLD_ID, name: "堂屋" },
-      { id: LOC_KITCHEN, worldId: WORLD_ID, name: "厨房" },
-      { id: LOC_CELLAR, worldId: WORLD_ID, name: "地窖" },
-    ],
-    characters: [
-      { id: CHAR_PLAYER, worldId: WORLD_ID, name: "旅人", kind: "player", locationId: LOC_HALL },
-      { id: CHAR_KEEPER, worldId: WORLD_ID, name: "掌柜老周", kind: "npc", locationId: LOC_HALL },
-      { id: CHAR_COOK, worldId: WORLD_ID, name: "厨子阿福", kind: "npc", locationId: LOC_KITCHEN },
-    ],
-    facts: [
-      {
-        id: FACT_INN_OPEN,
-        worldId: WORLD_ID,
-        subject: "inn",
-        predicate: "status",
-        object: "open",
-        validFrom: TIME0,
-        validTo: null,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        sourceKind: "seed",
-      },
-      {
-        id: FACT_GUEST_MISSING,
-        worldId: WORLD_ID,
-        subject: "guest-li",
-        predicate: "status",
-        object: "missing",
-        validFrom: TIME0,
-        validTo: null,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        sourceKind: "seed",
-      },
-      {
-        id: FACT_BAG,
-        worldId: WORLD_ID,
-        subject: "guest-li-bag",
-        predicate: "located_in",
-        object: LOC_CELLAR,
-        validFrom: TIME0,
-        validTo: null,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        sourceKind: "seed",
-      },
-    ],
-    claims: [
-      {
-        id: CLAIM_BAG,
-        worldId: WORLD_ID,
-        subject: "guest-li-bag",
-        predicate: "located_in",
-        object: LOC_CELLAR,
-        recordedAt: TIME0,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        sourceKind: "seed",
-      },
-      {
-        id: CLAIM_GUEST_FLED,
-        worldId: WORLD_ID,
-        subject: "guest-li",
-        predicate: "fled_to",
-        object: "town",
-        recordedAt: TIME0,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        sourceKind: "seed",
-      },
-    ],
-    knowledge: [
-      {
-        characterId: CHAR_KEEPER,
-        claimId: CLAIM_BAG,
-        state: "confirmed",
-        sourceKind: "seed",
-        sourceCharacterId: null,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        learnedAt: TIME0,
-      },
-      {
-        characterId: CHAR_COOK,
-        claimId: CLAIM_GUEST_FLED,
-        state: "rumor",
-        sourceKind: "seed",
-        sourceCharacterId: null,
-        sourceEventId: null,
-        sourceSeedId: SEED_ID,
-        learnedAt: TIME0,
-      },
-    ],
-  };
+export function seedInput(): CompiledWorld["seed"] {
+  return SYNTHETIC.seed;
 }
 
 export function seedWorld(store: WorldStore): void {

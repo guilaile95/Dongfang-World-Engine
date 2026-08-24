@@ -4,15 +4,23 @@ import { createSceneClient } from "./chat/scene.js";
 import { configForLog, loadConfig } from "./config.js";
 import { createModelClient, formatCallLine } from "./model/client.js";
 import { openWorld } from "./session.js";
+import { loadWorldFile } from "./world/load.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  if (!config.worldSource) {
+    throw new Error(
+      "Set DWE_WORLD_SOURCE to a .txt or .md world pack (for example 龙族V1.0.txt). Product play does not start from the synthetic inn fixture.",
+    );
+  }
+  const compiled = loadWorldFile(config.worldSource);
   const publicConfig = configForLog(config);
+  process.stderr.write(`world source: ${publicConfig.worldSource} (${compiled.packageTitle})\n`);
   process.stderr.write(`world file: ${publicConfig.worldFile}\n`);
   process.stderr.write(`model: ${publicConfig.model} @ ${publicConfig.baseUrl}\n`);
 
   const model = createModelClient(config);
-  const session = openWorld(config.worldFile, createSceneClient(model, config.apiKey));
+  const session = openWorld(config.worldFile, createSceneClient(model, config.apiKey), compiled);
   const rl = createInterface({ input, output });
   process.stdout.write("输入自然语言。:quit 退出。引擎藏在后面。\n");
 

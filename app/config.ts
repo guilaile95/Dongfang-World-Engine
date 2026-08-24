@@ -7,6 +7,7 @@ export interface AppConfig {
   apiKey: string;
   model: string;
   worldFile: string;
+  worldSource: string | null;
   maxRetries: number;
   timeoutMs: number;
   fallbackModel: string | null;
@@ -23,6 +24,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     apiKey: required(env, "DWE_LLM_API_KEY"),
     model: required(env, "DWE_LLM_MODEL"),
     worldFile: resolve(env.DWE_WORLD_FILE?.trim() || "data/local/world.sqlite"),
+    worldSource: env.DWE_WORLD_SOURCE?.trim() ? resolve(env.DWE_WORLD_SOURCE.trim()) : null,
     maxRetries: integer(env.DWE_LLM_MAX_RETRIES, 2),
     timeoutMs: integer(env.DWE_LLM_TIMEOUT_MS, 60_000),
     fallbackModel: emptyToNull(env.DWE_LLM_FALLBACK_MODEL),

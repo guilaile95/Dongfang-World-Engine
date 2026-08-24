@@ -37,10 +37,15 @@ npm run play
 $env:DWE_LLM_BASE_URL = "http://localhost:10100/v1"
 $env:DWE_LLM_API_KEY = "your-key"
 $env:DWE_LLM_MODEL = "your-model"
+$env:DWE_WORLD_SOURCE = "C:\Users\DINOL\Downloads\龙族V1.0.txt"
 npm run play
 ```
 
-提示符是 `>`。输入自然语言。`:quit` 退出。权威世界默认在 `data/local/world.sqlite`，关档再开仍是同一世界。
+产品玩法加载 TXT/Markdown 世界资料（龙族、神秘复苏、修仙世界这类），不是 Closed Inn 工程 fixture。权威世界默认在 `data/local/world.sqlite`，关档再开仍是同一世界。
+
+提示符是 `>`。输入自然语言。`:quit` 退出。
+
+确定性单元测试、权限/Replay/adversarial 仍用最小 synthetic fixture；不要把真实世界大文件塞进每一条单测。
 
 API Key **只**来自环境变量或平台凭证。不要写进代码、fixture、日志或模型 trace。
 
@@ -60,7 +65,8 @@ app/
   secrets.ts             脱敏；禁止把 key 打进日志
   authority/             提交门：candidate → 校验 → 事务 → 事件 → 投影
   persist/               一个本地 SQLite 文件
-  world/                 手写最小世界 + 每回合一次独立推进
+  world/                 World Source 解析/编译 + 每回合一次独立推进
+  world/fixtures/        仅供单测的最小 synthetic fixture
   visibility/            先可见性，再打包给模型
   chat/                  AI SDK 场景适配；前景不写世界
 test/                    针对本 slice 的证明
