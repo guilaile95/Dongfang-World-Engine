@@ -51,7 +51,7 @@ Use Notion for durable product intent. Do not copy GitHub timelines.
 Start with:
 
 - `东方狂想｜Dongfang World Engine` (root; Greenfield banner)
-- `东方狂想｜Greenfield Reset：North Star、不变量与失败经验`
+- `东方狂想｜Greenfield Reset：North Star、不变量与失败经验（2026-08-24）` — https://app.notion.com/p/3c655152dfe881bb8e06edd007391884
 - Historical / Superseded: Chat-first 纠偏、Owner 解冻、Build-vs-Borrow 审计、项目复盘、Vertical Slice 策略、旧 Authority 实现页
 
 ## Recovery Output

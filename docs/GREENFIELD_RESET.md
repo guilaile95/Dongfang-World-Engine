@@ -26,6 +26,8 @@ Do not restore the old Production Runtime, Roadmap, or Chat-first incremental pa
 
 New work starts on `greenfield/owner-reset`. Old runtime may be deleted **on that branch**.
 
+Notion long-term intent (not a GitHub timeline): https://app.notion.com/p/3c655152dfe881bb8e06edd007391884
+
 ## Previous route — do not continue or merge
 
 These were live at reset and belong to the superseded path:
