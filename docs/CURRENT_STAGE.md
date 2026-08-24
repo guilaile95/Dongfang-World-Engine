@@ -113,18 +113,11 @@ These are candidates, not predetermined winners.
 
 ## Required output of #63
 
-The audit must produce:
+The audit is written in `docs/COMPOSITION_REUSE_AUDIT.md` (eight deliverables).
 
-1. Current Capability Map;
-2. Ecosystem Map;
-3. Reuse Matrix: ADOPT / ADAPT / BORROW / KEEP / REPLACE / DELETE / DEFER;
-4. License / Distribution Matrix;
-5. Target Composition Architecture;
-6. Deletion / Migration Plan for already-written code;
-7. Owned Core Justification for every remaining custom subsystem;
-8. explicit Unfreeze Proposal.
+**FULL PROJECT FREEZE remains in force** until the project owner explicitly approves an unfreeze proposal in that document (recommended: strategy A + Slice U0).
 
-No subsystem may be marked KEEP / OWN merely because it already exists.
+Agents must not treat the audit as an unfreeze.
 
 ## Read First — GitHub
 

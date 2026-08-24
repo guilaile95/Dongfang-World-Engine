@@ -84,13 +84,11 @@ Player
 
 ## 当前阶段
 
-Authority core 与 Playable Local Loop（#49）已经完成，并且必须保留。当前产品阶段是 **Chat-first Scene Loop**（#55）。
+**FULL PROJECT FREEZE**（#63）。在项目 owner 明确解冻之前，不得新增 Production Runtime / 功能实现。
 
-第一阶段真实 `npm run play` 证明 Kernel 可用，但交互层把自然语言压成七类 Proposal，导致否定被替换成移动、吃饭无法发生、提问变成 `claim.transmit`、每条原始输入都推进世界时间。纠偏文档见 [docs/CHAT_FIRST_PRODUCT_RESET.md](docs/CHAT_FIRST_PRODUCT_RESET.md)。
+能力与复用审计见 [docs/COMPOSITION_REUSE_AUDIT.md](docs/COMPOSITION_REUSE_AUDIT.md)。已 merge 的模块没有沉没成本保护；推荐的解冻提案是用 Vercel AI SDK 替换手写 transport，并继续自有 Authority 核心，而不是继续 M2 或 real-model 验收。
 
-M0 已冻结 Scene Turn 合同：[docs/SCENE_TURN_CONTRACT.md](docs/SCENE_TURN_CONTRACT.md)（#57）。下一步是 M1 实现 intent-faithful Scene + Ephemeral lane，而不是独立修补 #52 / #53 / #54。
-
-North Star：保留自由 Chat 角色扮演；Engine 只在后台约束长期后果。**Engine constrains consequences, not imagination.**
+North Star 仍是：保留自由 Chat 角色扮演；Engine 只在后台约束长期后果。**Engine constrains consequences, not imagination.** 这是产品不变量，不是当前文件布局的许可证。
 
 ## 本地游玩
 

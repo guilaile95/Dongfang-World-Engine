@@ -72,3 +72,13 @@ Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lan
 World time and NPC continuation are functions of the resolved scene, not of raw input-line count. Target NPCs receive only an authorized stimulus plus their own Context.
 
 This ADR does not change Production Runtime. M1 implements the ephemeral / intent-fidelity vertical slice from the frozen contract. Kernel, Validator, Event types and Visibility Gate remain the Authority core.
+
+## ADR-013 — Compose-first; own only the irreducible Authority core
+
+Issue #63 records a repository-wide Composition / Reuse Audit in `docs/COMPOSITION_REUSE_AUDIT.md`.
+
+Product invariants (Truth, Visibility, no LLM write, Fact≠Claim≠Knowledge≠Memory, local-first) are requirements. Current classes, HTTP clients, `play.ts` mixing and provider transport are not.
+
+Default: ADOPT / ADAPT / BORROW mature components (Vercel AI SDK for model I/O; SQLite/Drizzle/Zod already adopted; Character Card V3 as format later; Tauri later; Mem0 only as non-Truth recall). Do not vendor AGPL/GPL frontends into this MIT repo.
+
+KEEP/OWN is limited to the epistemic model, Visibility Gate, deterministic commit/replay, and Scene Resolver rules. FULL PROJECT FREEZE continues until the owner approves an unfreeze Slice.
