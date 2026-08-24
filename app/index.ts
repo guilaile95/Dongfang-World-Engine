@@ -13,3 +13,5 @@ export { WORLD_ID, CHAR_PLAYER, seedWorld } from "./world/seed.js";
 export { parseWorldSource } from "./world/parse.js";
 export { compileWorld } from "./world/compile.js";
 export { loadWorldFile } from "./world/load.js";
+export { recall } from "./context/recall.js";
+export { rebuildObserverArtifacts, wipeContextArtifacts } from "./context/artifacts.js";

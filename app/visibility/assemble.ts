@@ -3,7 +3,7 @@ import { applyBudget, DEFAULT_BUDGET, type ContextBudget } from "./budget.js";
 import { visibilityGate } from "./gate.js";
 import { toObserverContext, type LegalPool, type ObserverContext } from "./pool.js";
 import { packPrompt } from "./prompt.js";
-import { rankWithinPool, type RankedSlice } from "./retrieve.js";
+import { rankWithinPool, type LoreHit, type RankedSlice } from "./retrieve.js";
 
 export interface AssembledPrompt {
   pool: LegalPool;
@@ -23,9 +23,11 @@ export function assemblePrompt(input: {
   query?: string;
   ambient?: string[];
   budget?: ContextBudget;
+  loreHits?: LoreHit[];
 }): AssembledPrompt {
   const pool = visibilityGate(input.snapshot, input.observerId, input.ambient ?? []);
   const ranked = rankWithinPool(pool, input.query ?? "");
+  ranked.lore = input.loreHits ?? [];
   const budgeted = applyBudget(ranked, input.budget ?? DEFAULT_BUDGET);
   return {
     pool,

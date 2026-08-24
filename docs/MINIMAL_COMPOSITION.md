@@ -138,7 +138,7 @@ If a later extractor proposes durable effects *from the player’s line*, it is 
 | Item | Why not this slice |
 |---|---|
 | UI / Tauri / ST sidecar | CLI is enough to prove the loop |
-| Mem0 / OpenViking / Vector DB | Recall after Visibility; v1 world is small enough to pack in full *after* the filter |
+| Mem0 / OpenViking / Vector DB | **OpenViking REJECT in-process (AGPLv3; Memory ≠ Truth).** Mem0 not adopted. Thin OWN recall after Visibility indexes public lore + observer namespace only. |
 | LiteLLM proxy | One OpenAI-compatible endpoint |
 | CCv3 importer, World Pack, MOD | One hand-authored slice world |
 | Letta, KAL, Funloom, Emergence runtime | REJECT or unlocated / NC |

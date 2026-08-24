@@ -16,5 +16,6 @@ export function packPrompt(slice: RankedSlice): string {
     `你所知的说法：${claims}`,
     `你的印象：${memories}`,
     `当下可见：${ambient}`,
+    `相关资料（非事实权威）：${slice.lore.map((row) => row.body).join(" / ") || "（无）"}`,
   ].join("\n");
 }

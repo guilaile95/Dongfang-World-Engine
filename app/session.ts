@@ -1,6 +1,8 @@
 import { submitEmptyProposal } from "./authority/commit.js";
 import type { SceneClient } from "./chat/scene.js";
 import { WorldStore } from "./persist/store.js";
+import { recordScene } from "./context/artifacts.js";
+import { recall } from "./context/recall.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import type { ObserverContext } from "./visibility/context.js";
 import type { CompiledWorld } from "./world/compile.js";
@@ -42,16 +44,27 @@ export class Session {
       this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
     }
     submitEmptyProposal(this.store, worldId);
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed).map((hit) => ({
+      title: hit.title,
+      body: hit.body,
+      score: hit.score,
+      namespace: hit.namespace,
+      kind: hit.kind,
+    }));
     const assembled = assemblePrompt({
       snapshot: this.store.snapshot(worldId),
       observerId: this.compiled.playerId,
       query: trimmed,
       ambient: this.ambient,
+      loreHits,
     });
     const text = await this.scene.writeScene(
       { prompt: assembled.prompt, playerLine: trimmed },
       onChunk,
     );
+    if (trimmed.length > 0) {
+      recordScene(this.store, worldId, this.compiled.playerId, text);
+    }
     return { text, observer: assembled.observer, prompt: assembled.prompt };
   }
 

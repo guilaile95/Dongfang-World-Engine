@@ -1,5 +1,13 @@
 import type { LegalPool } from "./pool.js";
 
+export interface LoreHit {
+  title: string;
+  body: string;
+  score: number;
+  namespace: string;
+  kind: "lore" | "scene" | "summary";
+}
+
 export interface RankedSlice {
   namespace: string;
   observerId: string;
@@ -11,6 +19,7 @@ export interface RankedSlice {
   ambient: string[];
   claims: Array<LegalPool["knownClaims"][number] & { score: number }>;
   memories: Array<LegalPool["memories"][number] & { score: number }>;
+  lore: LoreHit[];
 }
 
 /**
@@ -42,6 +51,7 @@ export function rankWithinPool(pool: LegalPool, query: string): RankedSlice {
     ambient: pool.ambient,
     claims,
     memories,
+    lore: [],
   };
 }
 
@@ -55,6 +65,7 @@ export function searchWithinPool(pool: LegalPool, query: string): RankedSlice {
     ...ranked,
     claims: ranked.claims.filter((row) => row.score > 0),
     memories: ranked.memories.filter((row) => row.score > 0),
+    lore: ranked.lore.filter((row) => row.score > 0),
   };
 }
 

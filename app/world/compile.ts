@@ -6,6 +6,7 @@ import type {
   LocationRecord,
   WorldRecord,
 } from "../authority/types.js";
+import type { ContextItemRecord } from "../persist/store.js";
 import type { WorldSource } from "./source.js";
 
 export interface CompiledWorld {
@@ -21,6 +22,7 @@ export interface CompiledWorld {
   packageTitle: string;
   sourceKind: WorldSource["sourceKind"];
   theme: WorldSource["theme"];
+  materials: ContextItemRecord[];
 }
 
 export function compileWorld(source: WorldSource): CompiledWorld {
@@ -89,5 +91,6 @@ export function compileWorld(source: WorldSource): CompiledWorld {
     packageTitle: source.packageTitle,
     sourceKind: source.sourceKind,
     theme: source.theme,
+    materials: [],
   };
 }

@@ -86,7 +86,24 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT NOT NULL,
   cause_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS context_items (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  namespace TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL
+);
 `;
+
+export interface ContextItemRecord {
+  id: string;
+  worldId: string;
+  namespace: string;
+  kind: "lore" | "scene" | "summary";
+  title: string;
+  body: string;
+}
 
 export class WorldStore {
   public readonly sqlite: Database.Database;
@@ -441,5 +458,52 @@ export class WorldStore {
       patch.revision,
       worldId,
     );
+  }
+
+  public insertContextItem(item: ContextItemRecord): void {
+    this.sqlite.prepare(
+      `INSERT OR IGNORE INTO context_items (id, world_id, namespace, kind, title, body)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(item.id, item.worldId, item.namespace, item.kind, item.title, item.body);
+  }
+
+  public listContextItems(worldId: string, namespaces: string[], kind?: ContextItemRecord["kind"]): ContextItemRecord[] {
+    if (namespaces.length === 0) {
+      return [];
+    }
+    const placeholders = namespaces.map(() => "?").join(", ");
+    const kindClause = kind ? "AND kind = ?" : "";
+    const params: unknown[] = [worldId, ...namespaces];
+    if (kind) {
+      params.push(kind);
+    }
+    const rows = this.sqlite.prepare(
+      `SELECT * FROM context_items WHERE world_id = ? AND namespace IN (${placeholders}) ${kindClause}`,
+    ).all(...params) as Array<{
+      id: string;
+      world_id: string;
+      namespace: string;
+      kind: ContextItemRecord["kind"];
+      title: string;
+      body: string;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      worldId: row.world_id,
+      namespace: row.namespace,
+      kind: row.kind,
+      title: row.title,
+      body: row.body,
+    }));
+  }
+
+  public deleteContextKind(worldId: string, namespace: string, kind: ContextItemRecord["kind"]): void {
+    this.sqlite.prepare(
+      "DELETE FROM context_items WHERE world_id = ? AND namespace = ? AND kind = ?",
+    ).run(worldId, namespace, kind);
+  }
+
+  public deleteAllContext(worldId: string): void {
+    this.sqlite.prepare("DELETE FROM context_items WHERE world_id = ?").run(worldId);
   }
 }

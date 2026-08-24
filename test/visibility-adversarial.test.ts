@@ -144,6 +144,7 @@ describe("visibility adversarial", () => {
     const cookedDown = applyBudget(searchWithinPool(cookPool, "bag cellar ledger"), {
       maxClaims: 0,
       maxMemories: 0,
+      maxLore: 0,
       maxChars: 40,
     });
     expect(cookedDown.claims).toEqual([]);
