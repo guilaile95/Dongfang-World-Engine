@@ -26,6 +26,26 @@ export function resolveAddressee(
   return best;
 }
 
+export function continueAddressee(
+  snapshot: WorldSnapshot,
+  speakerId: string,
+  playerLine: string,
+  lastId: string | null,
+): CharacterRecord | null {
+  const named = resolveAddressee(snapshot, speakerId, playerLine);
+  if (named) {
+    return named;
+  }
+  if (!lastId) {
+    return null;
+  }
+  const last = snapshot.characters.find((row) => row.id === lastId);
+  if (!last || last.kind !== "npc") {
+    return null;
+  }
+  return canHear(snapshot, speakerId, last.id) ? last : null;
+}
+
 export function canHear(
   snapshot: WorldSnapshot,
   speakerId: string,

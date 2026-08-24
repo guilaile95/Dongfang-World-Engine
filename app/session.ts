@@ -1,10 +1,10 @@
 import type { NpcVoice } from "./chat/npc.js";
 import { stubNpcVoice } from "./chat/npc.js";
 import type { SceneClient } from "./chat/scene.js";
-import { recordScene } from "./context/artifacts.js";
+import { lastAddresseeId, recentSceneBodies, recordResolvedScene } from "./context/recent.js";
 import { recall } from "./context/recall.js";
 import { WorldStore } from "./persist/store.js";
-import { resolveAddressee } from "./scene/address.js";
+import { continueAddressee } from "./scene/address.js";
 import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
 import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
 import { assemblePrompt } from "./visibility/assemble.js";
@@ -64,11 +64,13 @@ export class Session {
       const tick = worldTick(this.store, this.compiled);
       this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
     }
+    const recentForPlayer = recentSceneBodies(this.store, worldId, this.compiled.playerId);
     const pack = assemblePrompt({
       snapshot: this.store.snapshot(worldId),
       observerId: this.compiled.playerId,
       query: trimmed,
       ambient: this.ambient,
+      recentScenes: recentForPlayer,
     });
     const raw = trimmed.length > 0
       ? await this.interpreter.interpret({
@@ -96,10 +98,16 @@ export class Session {
       query: trimmed,
       ambient: this.ambient,
       loreHits,
+      recentScenes: recentForPlayer,
     });
     const snapshot = this.store.snapshot(worldId);
     const addressee = trimmed.length > 0
-      ? resolveAddressee(snapshot, this.compiled.playerId, trimmed)
+      ? continueAddressee(
+        snapshot,
+        this.compiled.playerId,
+        trimmed,
+        lastAddresseeId(this.store, worldId, this.compiled.playerId),
+      )
       : null;
     let dialogue: DialogueTurn | null = null;
     if (addressee) {
@@ -115,6 +123,7 @@ export class Session {
         observerId: addressee.id,
         query: trimmed,
         loreHits: npcLore,
+        recentScenes: recentSceneBodies(this.store, worldId, addressee.id),
       });
       const npcReply = await this.npcVoice.reply({
         name: addressee.name,
@@ -128,7 +137,6 @@ export class Session {
         npcReply,
         npcPrompt: npcPack.prompt,
       };
-      recordScene(this.store, worldId, addressee.id, trimmed);
     }
     const text = await this.scene.writeScene(
       {
@@ -139,7 +147,16 @@ export class Session {
       onChunk,
     );
     if (trimmed.length > 0) {
-      recordScene(this.store, worldId, this.compiled.playerId, text);
+      const resolved = {
+        playerLine: trimmed,
+        addresseeId: dialogue?.addresseeId ?? null,
+        addresseeName: dialogue?.addresseeName ?? null,
+        npcReply: dialogue?.npcReply ?? null,
+      };
+      recordResolvedScene(this.store, worldId, this.compiled.playerId, resolved, "player");
+      if (dialogue) {
+        recordResolvedScene(this.store, worldId, dialogue.addresseeId, resolved, "npc");
+      }
     }
     return { text, observer: assembled.observer, prompt: assembled.prompt, interpretation, dialogue };
   }

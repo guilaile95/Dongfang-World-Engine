@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS context_items (
   namespace TEXT NOT NULL,
   kind TEXT NOT NULL,
   title TEXT NOT NULL,
-  body TEXT NOT NULL
+  body TEXT NOT NULL,
+  seq INTEGER NOT NULL DEFAULT 0
 );
 `;
 
@@ -103,6 +104,7 @@ export interface ContextItemRecord {
   kind: "lore" | "scene" | "summary";
   title: string;
   body: string;
+  seq: number;
 }
 
 export class WorldStore {
@@ -461,10 +463,60 @@ export class WorldStore {
   }
 
   public insertContextItem(item: ContextItemRecord): void {
+    const seq = item.seq > 0 ? item.seq : this.nextContextSeq(item.worldId, item.namespace, item.kind);
     this.sqlite.prepare(
-      `INSERT OR IGNORE INTO context_items (id, world_id, namespace, kind, title, body)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(item.id, item.worldId, item.namespace, item.kind, item.title, item.body);
+      `INSERT OR IGNORE INTO context_items (id, world_id, namespace, kind, title, body, seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(item.id, item.worldId, item.namespace, item.kind, item.title, item.body, seq);
+  }
+
+  public nextContextSeq(worldId: string, namespace: string, kind: ContextItemRecord["kind"]): number {
+    const row = this.sqlite.prepare(
+      `SELECT COALESCE(MAX(seq), 0) AS n FROM context_items WHERE world_id = ? AND namespace = ? AND kind = ?`,
+    ).get(worldId, namespace, kind) as { n: number };
+    return row.n + 1;
+  }
+
+  public listRecentScenes(worldId: string, namespace: string, limit: number): ContextItemRecord[] {
+    const rows = this.sqlite.prepare(
+      `SELECT * FROM (
+         SELECT * FROM context_items
+         WHERE world_id = ? AND namespace = ? AND kind = 'scene'
+         ORDER BY seq DESC
+         LIMIT ?
+       ) ORDER BY seq ASC`,
+    ).all(worldId, namespace, limit) as Array<{
+      id: string;
+      world_id: string;
+      namespace: string;
+      kind: ContextItemRecord["kind"];
+      title: string;
+      body: string;
+      seq: number;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      worldId: row.world_id,
+      namespace: row.namespace,
+      kind: row.kind,
+      title: row.title,
+      body: row.body,
+      seq: row.seq,
+    }));
+  }
+
+  public pruneContextKind(worldId: string, namespace: string, kind: ContextItemRecord["kind"], keep: number): void {
+    const cutoff = this.sqlite.prepare(
+      `SELECT seq FROM context_items
+       WHERE world_id = ? AND namespace = ? AND kind = ?
+       ORDER BY seq DESC LIMIT 1 OFFSET ?`,
+    ).get(worldId, namespace, kind, keep - 1) as { seq: number } | undefined;
+    if (!cutoff) {
+      return;
+    }
+    this.sqlite.prepare(
+      `DELETE FROM context_items WHERE world_id = ? AND namespace = ? AND kind = ? AND seq < ?`,
+    ).run(worldId, namespace, kind, cutoff.seq);
   }
 
   public listContextItems(worldId: string, namespaces: string[], kind?: ContextItemRecord["kind"]): ContextItemRecord[] {
@@ -486,6 +538,7 @@ export class WorldStore {
       kind: ContextItemRecord["kind"];
       title: string;
       body: string;
+      seq: number;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -494,6 +547,7 @@ export class WorldStore {
       kind: row.kind,
       title: row.title,
       body: row.body,
+      seq: row.seq ?? 0,
     }));
   }
 

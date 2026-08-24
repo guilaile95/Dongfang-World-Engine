@@ -84,5 +84,5 @@ function structuredPassages(source: WorldSource): Array<{ title: string; body: s
 
 function item(worldId: string, namespace: string, title: string, body: string): ContextItemRecord {
   const id = `ctx-${createHash("sha1").update(`${worldId}|${namespace}|${title}|${body}`).digest("hex").slice(0, 16)}`;
-  return { id, worldId, namespace, kind: "lore", title, body };
+  return { id, worldId, namespace, kind: "lore", title, body, seq: 0 };
 }

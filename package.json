@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "tsc --noEmit",
     "play": "npm run build && node dist/cli.js",
+    "continuity": "npm run build && node dist/continuity-sample.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

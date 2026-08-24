@@ -53,6 +53,8 @@ API Key **只**来自环境变量或平台凭证。不要写进代码、fixture�
 npm test
 npm run typecheck
 npm run build
+# 真实模型 5–10 轮最近场景连续性（需要 .env 里的 DWE_LLM_*）
+npm run continuity
 ```
 
 ## 目录（按职责，不按来源项目名）

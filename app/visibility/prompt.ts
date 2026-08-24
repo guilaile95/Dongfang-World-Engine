@@ -1,6 +1,6 @@
 import type { RankedSlice } from "./retrieve.js";
 
-export function packPrompt(slice: RankedSlice): string {
+export function packPrompt(slice: RankedSlice, recentScenes: string[] = []): string {
   const present = slice.present.map((row) => row.name).join("、");
   const claims = slice.claims
     .map((row) => `${row.claim.subject} ${row.claim.predicate} ${row.claim.object} (${row.state})`)
@@ -17,5 +17,6 @@ export function packPrompt(slice: RankedSlice): string {
     `你的印象：${memories}`,
     `当下可见：${ambient}`,
     `相关资料（非事实权威）：${slice.lore.map((row) => row.body).join(" / ") || "（无）"}`,
+    `最近场景（非事实权威，不能覆盖已发生之事）：${recentScenes.join(" || ") || "（无）"}`,
   ].join("\n");
 }

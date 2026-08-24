@@ -23,5 +23,6 @@ export function packObserverContext(context: ObserverContext): string {
       },
       "",
     ),
+    [],
   );
 }

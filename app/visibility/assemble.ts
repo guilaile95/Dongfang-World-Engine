@@ -24,6 +24,7 @@ export function assemblePrompt(input: {
   ambient?: string[];
   budget?: ContextBudget;
   loreHits?: LoreHit[];
+  recentScenes?: string[];
 }): AssembledPrompt {
   const pool = visibilityGate(input.snapshot, input.observerId, input.ambient ?? []);
   const ranked = rankWithinPool(pool, input.query ?? "");
@@ -33,7 +34,7 @@ export function assemblePrompt(input: {
     pool,
     ranked,
     budgeted,
-    prompt: packPrompt(budgeted),
+    prompt: packPrompt(budgeted, input.recentScenes ?? []),
     observer: toObserverContext(pool),
   };
 }

@@ -19,6 +19,7 @@ export function writeSummary(
     kind: "summary",
     title,
     body,
+    seq: 0,
   });
 }
 
@@ -35,6 +36,7 @@ export function recordScene(
     kind: "scene",
     title: "scene",
     body: text.slice(0, 2000),
+    seq: 0,
   });
 }
 
@@ -49,6 +51,7 @@ export function rebuildObserverArtifacts(store: WorldStore, worldId: string, obs
     kind: "summary",
     title: "rebuilt",
     body: packObserverContext(pool),
+    seq: 0,
   });
 }
 
