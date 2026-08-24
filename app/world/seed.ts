@@ -89,6 +89,7 @@ export function seedInput(): {
         validFrom: TIME0,
         validTo: null,
         sourceEventId: null,
+        sourceSeedId: SEED_ID,
         sourceKind: "seed",
       },
       {
@@ -100,6 +101,7 @@ export function seedInput(): {
         validFrom: TIME0,
         validTo: null,
         sourceEventId: null,
+        sourceSeedId: SEED_ID,
         sourceKind: "seed",
       },
       {
@@ -111,6 +113,7 @@ export function seedInput(): {
         validFrom: TIME0,
         validTo: null,
         sourceEventId: null,
+        sourceSeedId: SEED_ID,
         sourceKind: "seed",
       },
     ],
@@ -123,6 +126,7 @@ export function seedInput(): {
         object: LOC_CELLAR,
         recordedAt: TIME0,
         sourceEventId: null,
+        sourceSeedId: SEED_ID,
         sourceKind: "seed",
       },
       {
@@ -133,6 +137,7 @@ export function seedInput(): {
         object: "town",
         recordedAt: TIME0,
         sourceEventId: null,
+        sourceSeedId: SEED_ID,
         sourceKind: "seed",
       },
     ],

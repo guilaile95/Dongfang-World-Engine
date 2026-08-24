@@ -37,6 +37,7 @@ export function applyCandidateToSnapshot(
         validFrom: candidate.validFrom,
         validTo: null,
         sourceEventId: eventId,
+        sourceSeedId: null,
         sourceKind: "event",
       };
       return { ...snapshot, world, facts: [...snapshot.facts, fact] };
@@ -50,6 +51,7 @@ export function applyCandidateToSnapshot(
         object: candidate.object,
         recordedAt: at,
         sourceEventId: eventId,
+        sourceSeedId: null,
         sourceKind: "event",
       };
       return { ...snapshot, world, claims: [...snapshot.claims, claim] };
@@ -62,7 +64,7 @@ export function applyCandidateToSnapshot(
         state: candidate.knowledgeState,
         sourceKind: origin.kind,
         sourceCharacterId: origin.kind === "character" ? origin.characterId : null,
-        sourceEventId: origin.kind === "event" ? origin.eventId : null,
+        sourceEventId: eventId,
         sourceSeedId: origin.kind === "seed" ? origin.seedId : null,
         learnedAt: at,
       };
@@ -99,6 +101,7 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
         validFrom: candidate.validFrom,
         validTo: null,
         sourceEventId: event.id,
+        sourceSeedId: null,
         sourceKind: "event",
       });
       break;
@@ -111,6 +114,7 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
         object: candidate.object,
         recordedAt: event.at,
         sourceEventId: event.id,
+        sourceSeedId: null,
         sourceKind: "event",
       });
       break;
@@ -122,7 +126,7 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
         state: candidate.knowledgeState,
         sourceKind: origin.kind,
         sourceCharacterId: origin.kind === "character" ? origin.characterId : null,
-        sourceEventId: origin.kind === "event" ? origin.eventId : null,
+        sourceEventId: event.id,
         sourceSeedId: origin.kind === "seed" ? origin.seedId : null,
         learnedAt: event.at,
       });
@@ -144,7 +148,17 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
 }
 
 export function replayEvents(store: WorldStore, events: EventRecord[]): void {
+  if (events.length === 0) {
+    return;
+  }
+  const worldId = events[0]?.worldId;
+  if (!worldId) {
+    return;
+  }
+  const start = store.snapshot(worldId);
   store.transaction(() => {
+    let time = start.world.time;
+    let revision = start.world.revision;
     for (const event of events) {
       const candidate = event.payload as Candidate;
       store.insertEvent({
@@ -156,10 +170,11 @@ export function replayEvents(store: WorldStore, events: EventRecord[]): void {
         payload: event.payload,
         causeEventIds: event.causeEventIds,
       });
-      store.updateWorld(event.worldId, {
-        time: candidate.type === "time_advance" ? candidate.toTime : event.at,
-        revision: store.snapshot(event.worldId).world.revision + 1,
-      });
+      if (candidate.type === "time_advance") {
+        time = candidate.toTime;
+      }
+      revision += 1;
+      store.updateWorld(worldId, { time, revision });
       projectToStore(store, event, candidate);
     }
   });

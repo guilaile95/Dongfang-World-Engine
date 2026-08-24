@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS facts (
   valid_from TEXT NOT NULL,
   valid_to TEXT,
   source_event_id TEXT,
+  source_seed_id TEXT,
   source_kind TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS claims (
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS claims (
   object TEXT NOT NULL,
   recorded_at TEXT NOT NULL,
   source_event_id TEXT,
+  source_seed_id TEXT,
   source_kind TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS knowledge (
@@ -152,6 +154,7 @@ export class WorldStore {
       valid_from: string;
       valid_to: string | null;
       source_event_id: string | null;
+      source_seed_id: string | null;
       source_kind: "seed" | "event";
     }>;
     const claims = this.sqlite.prepare("SELECT * FROM claims WHERE world_id = ?").all(worldId) as Array<{
@@ -162,6 +165,7 @@ export class WorldStore {
       object: string;
       recorded_at: string;
       source_event_id: string | null;
+      source_seed_id: string | null;
       source_kind: "seed" | "event";
     }>;
     const knowledge = this.sqlite.prepare(
@@ -205,6 +209,7 @@ export class WorldStore {
         validFrom: row.valid_from,
         validTo: row.valid_to,
         sourceEventId: row.source_event_id,
+        sourceSeedId: row.source_seed_id,
         sourceKind: row.source_kind,
       }) satisfies FactRecord),
       claims: claims.map((row) => ({
@@ -215,6 +220,7 @@ export class WorldStore {
         object: row.object,
         recordedAt: row.recorded_at,
         sourceEventId: row.source_event_id,
+        sourceSeedId: row.source_seed_id,
         sourceKind: row.source_kind,
       }) satisfies ClaimRecord),
       knowledge: knowledge.map((row) => ({
@@ -288,8 +294,8 @@ export class WorldStore {
         insertCharacter.run(character.id, character.worldId, character.name, character.kind, character.locationId);
       }
       const insertFact = this.sqlite.prepare(
-        `INSERT INTO facts (id, world_id, subject, predicate, object, valid_from, valid_to, source_event_id, source_kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO facts (id, world_id, subject, predicate, object, valid_from, valid_to, source_event_id, source_seed_id, source_kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const fact of input.facts) {
         insertFact.run(
@@ -301,12 +307,13 @@ export class WorldStore {
           fact.validFrom,
           fact.validTo,
           fact.sourceEventId,
+          fact.sourceSeedId,
           fact.sourceKind,
         );
       }
       const insertClaim = this.sqlite.prepare(
-        `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const claim of input.claims) {
         insertClaim.run(
@@ -317,6 +324,7 @@ export class WorldStore {
           claim.object,
           claim.recordedAt,
           claim.sourceEventId,
+          claim.sourceSeedId,
           claim.sourceKind,
         );
       }
@@ -357,8 +365,8 @@ export class WorldStore {
 
   public insertFact(fact: FactRecord): void {
     this.sqlite.prepare(
-      `INSERT INTO facts (id, world_id, subject, predicate, object, valid_from, valid_to, source_event_id, source_kind)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO facts (id, world_id, subject, predicate, object, valid_from, valid_to, source_event_id, source_seed_id, source_kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       fact.id,
       fact.worldId,
@@ -368,14 +376,15 @@ export class WorldStore {
       fact.validFrom,
       fact.validTo,
       fact.sourceEventId,
+      fact.sourceSeedId,
       fact.sourceKind,
     );
   }
 
   public insertClaim(claim: ClaimRecord): void {
     this.sqlite.prepare(
-      `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_kind)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       claim.id,
       claim.worldId,
@@ -384,6 +393,7 @@ export class WorldStore {
       claim.object,
       claim.recordedAt,
       claim.sourceEventId,
+      claim.sourceSeedId,
       claim.sourceKind,
     );
   }

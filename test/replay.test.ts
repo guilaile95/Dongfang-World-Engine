@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { submitCandidates } from "../app/authority/commit.js";
-import { replayEvents } from "../app/authority/project.js";
-import { WorldStore } from "../app/persist/store.js";
-import { seedInput, seedWorld, TIME0, WORLD_ID } from "../app/world/seed.js";
+import { rebuildWorld } from "../app/authority/restore.js";
+import { seedInput, TIME0, WORLD_ID } from "../app/world/seed.js";
 import { memoryWorld } from "./helpers.js";
 
 describe("replay", () => {
@@ -39,20 +38,10 @@ describe("replay", () => {
 
     const events = live.listEvents(WORLD_ID);
     expect(events).toHaveLength(2);
-
-    const rebuilt = new WorldStore(":memory:");
-    rebuilt.insertSeedWorld(seedInput());
-    replayEvents(rebuilt, events);
-
-    const liveSnap = live.snapshot(WORLD_ID);
-    const rebuiltSnap = rebuilt.snapshot(WORLD_ID);
-    expect(rebuiltSnap.world).toEqual(liveSnap.world);
-    expect(rebuiltSnap.facts).toEqual(liveSnap.facts);
-    expect(rebuiltSnap.claims).toEqual(liveSnap.claims);
-    expect(rebuiltSnap.knowledge).toEqual(liveSnap.knowledge);
-    expect(rebuiltSnap.memories).toEqual(liveSnap.memories);
-    expect(rebuilt.listEvents(WORLD_ID).map((event) => event.id)).toEqual(events.map((event) => event.id));
+    const rebuilt = rebuildWorld(seedInput(), events);
+    expect(rebuilt.snapshot(WORLD_ID)).toEqual(live.snapshot(WORLD_ID));
     live.close();
     rebuilt.close();
   });
 });
+

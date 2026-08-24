@@ -27,8 +27,8 @@ export function submitCandidates(
 
   const knownEventIds = new Set(store.listEvents(worldId).map((event) => event.id));
   let working = original;
-  const planned: Array<{ candidate: Candidate; eventId: string; at: string }> = [];
-  const causeEventIds = input.causeEventIds ?? [];
+  const planned: Array<{ candidate: Candidate; eventId: string; at: string; causeEventIds: string[] }> = [];
+  const causeEventIds = [...(input.causeEventIds ?? [])];
 
   for (const candidate of input.candidates) {
     const parsed = candidateSchema.safeParse(candidate);
@@ -46,7 +46,19 @@ export function submitCandidates(
     }
     const eventId = newEventId();
     knownEventIds.add(eventId);
-    planned.push({ candidate: parsed.data, eventId, at: working.world.time });
+    const causes = [...causeEventIds];
+    if (parsed.data.type === "character_learn_claim" && parsed.data.source.kind === "event") {
+      if (!causes.includes(parsed.data.source.eventId)) {
+        causes.push(parsed.data.source.eventId);
+      }
+    }
+    planned.push({
+      candidate: parsed.data,
+      eventId,
+      at: working.world.time,
+      causeEventIds: causes,
+    });
+    causeEventIds.push(eventId);
     working = applyCandidateToSnapshot(working, parsed.data, eventId);
   }
 
@@ -62,7 +74,7 @@ export function submitCandidates(
         producer: input.producer,
         at: item.at,
         payload: item.candidate,
-        causeEventIds,
+        causeEventIds: item.causeEventIds,
       });
       if (item.candidate.type === "time_advance") {
         time = item.candidate.toTime;

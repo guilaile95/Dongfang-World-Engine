@@ -38,6 +38,7 @@ export interface FactRecord {
   validFrom: string;
   validTo: string | null;
   sourceEventId: string | null;
+  sourceSeedId: string | null;
   sourceKind: "seed" | "event";
 }
 
@@ -49,6 +50,7 @@ export interface ClaimRecord {
   object: string;
   recordedAt: string;
   sourceEventId: string | null;
+  sourceSeedId: string | null;
   sourceKind: "seed" | "event";
 }
 
