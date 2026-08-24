@@ -38,10 +38,11 @@ Product spec (intent only): [`PRODUCT.md`](PRODUCT.md). Governance: [`GREENFIELD
 
 1. `AGENTS.md`
 2. `docs/PRODUCT.md` — North Star, invariants, non-goals, v1 success
-3. `docs/GREENFIELD_RESET.md` — archive / do-not-restore
-4. this file
-5. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
-6. Notion pages listed below (intent only; same product spec)
+3. `docs/COMPOSE_FIRST_SURVEY.md` — compose-first research (no runtime)
+4. `docs/GREENFIELD_RESET.md` — archive / do-not-restore
+5. this file
+6. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
+7. Notion pages listed below (intent only; same product spec)
 
 Do **not** treat `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/SCENE_TURN_CONTRACT.md`, `docs/ROADMAP.md`, `docs/COMPOSITION_REUSE_AUDIT.md`, or `WORLD_ENGINE.md` as live implementation requirements. They are historical evidence.
 
