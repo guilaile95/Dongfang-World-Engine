@@ -15,3 +15,5 @@ export { compileWorld } from "./world/compile.js";
 export { loadWorldFile } from "./world/load.js";
 export { recall } from "./context/recall.js";
 export { rebuildObserverArtifacts, wipeContextArtifacts } from "./context/artifacts.js";
+export { applyInterpretation, normalizeInterpretation } from "./scene/interpretation.js";
+export { createModelInterpreter } from "./scene/interpreter.js";

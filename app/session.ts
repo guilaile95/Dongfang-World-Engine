@@ -1,4 +1,3 @@
-import { submitEmptyProposal } from "./authority/commit.js";
 import type { SceneClient } from "./chat/scene.js";
 import { WorldStore } from "./persist/store.js";
 import { recordScene } from "./context/artifacts.js";
@@ -9,21 +8,28 @@ import type { CompiledWorld } from "./world/compile.js";
 import { seedCompiled } from "./world/load.js";
 import { SYNTHETIC } from "./world/seed.js";
 import { worldTick } from "./world/tick.js";
+import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
+import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
 
 export interface TurnView {
   text: string;
   observer: ObserverContext;
   prompt: string;
+  interpretation: BoundInterpretation;
 }
 
 export class Session {
   private ambient: string[] = [];
+  private readonly interpreter: SceneInterpreter;
 
   public constructor(
     public readonly store: WorldStore,
     private readonly scene: SceneClient,
     public readonly compiled: CompiledWorld,
-  ) {}
+    interpreter: SceneInterpreter = fixedInterpreter(ephemeralInterpretation()),
+  ) {
+    this.interpreter = interpreter;
+  }
 
   public contextFor(observerId: string = this.compiled.playerId): ObserverContext {
     return assemblePrompt({
@@ -43,7 +49,25 @@ export class Session {
       const tick = worldTick(this.store, this.compiled);
       this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
     }
-    submitEmptyProposal(this.store, worldId);
+    const pack = assemblePrompt({
+      snapshot: this.store.snapshot(worldId),
+      observerId: this.compiled.playerId,
+      query: trimmed,
+      ambient: this.ambient,
+    });
+    const raw = trimmed.length > 0
+      ? await this.interpreter.interpret({
+        playerLine: trimmed,
+        observerPack: pack.prompt,
+        worldId,
+        playerId: this.compiled.playerId,
+      })
+      : ephemeralInterpretation();
+    const interpretation = applyInterpretation(this.store, {
+      worldId,
+      playerId: this.compiled.playerId,
+      interpretation: raw,
+    });
     const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed).map((hit) => ({
       title: hit.title,
       body: hit.body,
@@ -65,7 +89,7 @@ export class Session {
     if (trimmed.length > 0) {
       recordScene(this.store, worldId, this.compiled.playerId, text);
     }
-    return { text, observer: assembled.observer, prompt: assembled.prompt };
+    return { text, observer: assembled.observer, prompt: assembled.prompt, interpretation };
   }
 
   public close(): void {
@@ -77,8 +101,9 @@ export function openWorld(
   path: string,
   scene: SceneClient,
   compiled: CompiledWorld = SYNTHETIC,
+  interpreter?: SceneInterpreter,
 ): Session {
   const store = new WorldStore(path);
   seedCompiled(store, compiled);
-  return new Session(store, scene, compiled);
+  return new Session(store, scene, compiled, interpreter);
 }

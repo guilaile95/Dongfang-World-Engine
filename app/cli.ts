@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { createSceneClient } from "./chat/scene.js";
 import { configForLog, loadConfig } from "./config.js";
 import { createModelClient, formatCallLine } from "./model/client.js";
+import { createModelInterpreter } from "./scene/interpreter.js";
 import { openWorld } from "./session.js";
 import { loadWorldFile } from "./world/load.js";
 
@@ -20,7 +21,12 @@ async function main(): Promise<void> {
   process.stderr.write(`model: ${publicConfig.model} @ ${publicConfig.baseUrl}\n`);
 
   const model = createModelClient(config);
-  const session = openWorld(config.worldFile, createSceneClient(model, config.apiKey), compiled);
+  const session = openWorld(
+    config.worldFile,
+    createSceneClient(model, config.apiKey),
+    compiled,
+    createModelInterpreter(model),
+  );
   const rl = createInterface({ input, output });
   process.stdout.write("输入自然语言。:quit 退出。引擎藏在后面。\n");
 
