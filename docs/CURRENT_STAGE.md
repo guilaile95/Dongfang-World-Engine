@@ -22,40 +22,63 @@ M0 is complete:
 
 - Issue #57 closed;
 - PR #58 merged;
-- frozen contract: `docs/SCENE_TURN_CONTRACT.md`;
-- last reviewed main hint: `ec09353d8aa12b9dd334cde70eea5583119d6a91`.
+- frozen contract: `docs/SCENE_TURN_CONTRACT.md`.
+
+M1 implementation is merged:
+
+- PR #61 merged;
+- implementation main hint: `365a1625e8dbfbd4068edf7861a509de6948822c`;
+- deterministic / injected-provider coverage and CI passed;
+- Kernel / Validator / Event types remained unchanged.
 
 ## Immediate Work
 
-**Issue #59 — M1: Intent-faithful Scene Turn + Ephemeral lane**
+**Issue #59 — M1 real-model acceptance gate**
 
-M1 is now unblocked and must implement from the merged M0 contract.
+The implementation is on `main`, but #59 has been reopened because its frozen acceptance criteria explicitly require one opt-in real-model smoke and no recorded M1 real-model sample was found in PR #61 / Issue #59 evidence.
 
-Evidence / acceptance Issues:
+Do not start M2 until this acceptance sample is recorded and classified.
 
-- #52 — Player intent fidelity;
-- #54 — mundane low-causal ephemeral actions.
+Required real-model M1 cases include the natural inputs that originally exposed the product failure:
 
-Do not implement #52 / #54 as separate action-specific architectures.
+- `我不想去找匕首`;
+- `我只是看看周围`;
+- `我想吃饭`;
+- ask-only question to 赵先生;
+- one unsupported-material / OOC-style case from the frozen M1 protocol.
 
-M2 blocker remains:
+Verify observable behavior only:
 
-- #53 — targeted Player → NPC utterance / response.
+- no unrelated `character.move`;
+- no Food / Inventory state;
+- ask-only does not become Claim / Knowledge write;
+- time advances only when `consume_scene_time`;
+- no Truth/private-Knowledge leak;
+- no replay / authority regression.
 
-Do not pull M2 dialogue response or durable stimulus into M1 unless #59 Stop Rule fires.
+Formal sample discipline applies: no reroll for prettier prose; safe trace only.
+
+## Next After M1 Acceptance
+
+**M2 / Issue #53 — targeted Player → NPC utterance / response**
+
+#53 remains the observed M2 blocker. Do not expand it into a full Dialogue Framework.
+
+Issues #52 / #54 remain real-play evidence / regression references for M1 and should not become separate action-specific architectures.
 
 ## Read First — GitHub
 
 1. `README.md`
-2. `docs/SCENE_TURN_CONTRACT.md` — M0 implementation source of truth
+2. `docs/SCENE_TURN_CONTRACT.md`
 3. `docs/CHAT_FIRST_PRODUCT_RESET.md`
 4. `docs/ARCHITECTURE_DECISIONS.md` — especially ADR-007 through ADR-012
 5. Issue #55
 6. Issue #59 and its latest comments
-7. Issues #52 / #54 as M1 evidence; #53 only for M2 boundary
-8. actual source + tests touched by #59
+7. PR #61 when reviewing the merged M1 implementation
+8. Issue #53 only after the M1 real-model gate passes
+9. actual source + tests relevant to the active blocker
 
-Before implementing, inspect live Open PRs. If another PR already implements #59, review / continue that work instead of opening a duplicate path.
+Before implementing, inspect live Open PRs. If another PR already addresses the active work, review / continue it instead of opening a duplicate path.
 
 ## Read First — Notion
 
@@ -85,24 +108,9 @@ If Notion current-state prose conflicts with live GitHub, GitHub wins for Engine
 - Final prose is never parsed back into authoritative state.
 - Player-private Context is never copied into an NPC Context.
 
-## M1 Boundary
-
-M1 should prove the smallest vertical path for:
-
-- negation does not cause unrelated persistent actions;
-- observation can remain non-persistent;
-- mundane low-causal actions can succeed ephemerally;
-- `/ooc` does not consume World time;
-- World time is no longer coupled to raw input-line count;
-- ask-only turns do not become `claim.transmit` / `learn_claim` / Player `claim.record`;
-- persistent effects still use the existing Kernel and remain replayable;
-- ephemeral beats use exact Player surface + non-authoritative classification, not Interpreter-authored replacement scene prose.
-
-Do not reopen the M0 architecture unless #59 Stop Rule fires or new code / real-play evidence contradicts the frozen contract.
-
 ## Deferred Scope
 
-Unless real evidence proves a blocker, do not build during M1:
+Unless real evidence proves a blocker, do not build before the M1 acceptance gate completes:
 
 - full NPC reply / durable dialogue path — M2;
 - Memory / RAG / vector DB / rolling summary — M3;
