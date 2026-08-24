@@ -371,7 +371,7 @@ describe("Narrative projection MVP", () => {
       "major abilities",
       "hidden Truth",
       "private thoughts or knowledge",
-      "Ephemeral sensory",
+      "Ephemeral beats",
       "empty",
       "rejected",
       "stale",

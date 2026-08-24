@@ -45,10 +45,12 @@ describe("Playable Local Loop entrypoint", () => {
         };
         const system = parsed.messages[0]?.content ?? "";
         const userPayload = JSON.parse(parsed.messages[1]?.content ?? "{}") as Record<string, unknown>;
-        const kind = system.includes("top-level shape") ? "simulation" : "narrative";
+        const kind = system.includes("lane router") || system.includes("top-level shape")
+          ? "simulation"
+          : "narrative";
         requests.push({ kind, body, userPayload });
         const content = kind === "simulation"
-          ? JSON.stringify(buildPlayerPlan(userPayload))
+          ? JSON.stringify(buildPlayerScenePlan(userPayload))
           : buildNarrative(userPayload, () => delayedNarrated, () => {
             delayedNarrated = true;
           });
@@ -222,7 +224,7 @@ describe("Playable Local Loop entrypoint", () => {
   }, 120_000);
 });
 
-function buildPlayerPlan(payload: Record<string, unknown>): { proposals: Array<Record<string, unknown>> } {
+function buildPlayerScenePlan(payload: Record<string, unknown>): Record<string, unknown> {
   const context = payload.context as {
     observer: { id: string };
     movementOptions: Array<{ locationId: string; name: string }>;
@@ -230,25 +232,59 @@ function buildPlayerPlan(payload: Record<string, unknown>): { proposals: Array<R
     knowledge: Array<{ claim: { id: string } }>;
   };
   const intent = String(payload.intent ?? "");
+  if (intent.trim().toLowerCase().startsWith("/ooc")) {
+    return {
+      channel: "ooc_meta",
+      ephemeralBeats: [],
+      targetedStimuli: [],
+      persistentCandidates: [],
+      unsupportedMaterial: [],
+      timePolicy: { kind: "none" },
+    };
+  }
+  const persistentCandidates: Array<Record<string, unknown>> = [];
+  const targetedStimuli: Array<Record<string, unknown>> = [];
   if (intent.includes("告诉赵先生")) {
     const target = context.coLocatedCharacters.find((character) => character.id === npcBId);
     const claim = context.knowledge.find((bundle) => bundle.claim.id === trueClaimId);
-    return target && claim
-      ? { proposals: [{
+    if (target && claim) {
+      targetedStimuli.push({
+        speakerCharacterId: context.observer.id,
+        targetCharacterId: target.id,
+        surfaceText: intent,
+        speechAct: "tell",
+        persistence: "ephemeral",
+      });
+      persistentCandidates.push({
         type: "claim.transmit",
         sourceCharacterId: context.observer.id,
         targetCharacterId: target.id,
         claimId: claim.claim.id,
-      }] }
-      : { proposals: [] };
-  }
+      });
+    }
+  } else {
   const destinationName = intent.includes("地窖")
     ? "客栈地窖"
     : intent.includes("二楼客房") ? "二楼客房" : intent.includes("大堂") && intent.includes("回") ? "客栈大堂" : null;
   const destination = context.movementOptions.find((option) => option.name === destinationName);
-  return destination
-    ? { proposals: [{ type: "character.move", actorId: context.observer.id, toLocationId: destination.locationId }] }
-    : { proposals: [] };
+  if (destination) {
+    persistentCandidates.push({
+      type: "character.move",
+      actorId: context.observer.id,
+      toLocationId: destination.locationId,
+    });
+  }
+  }
+  return {
+    channel: "in_world",
+    ephemeralBeats: persistentCandidates.length > 0
+      ? []
+      : [{ surface: intent, kind: "observation" }],
+    targetedStimuli,
+    persistentCandidates,
+    unsupportedMaterial: [],
+    timePolicy: { kind: "consume_scene_time", minutes: 10 },
+  };
 }
 
 function buildNarrative(
