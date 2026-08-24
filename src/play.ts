@@ -7,14 +7,15 @@ import { CommitKernel, type CommitResult } from "./engine/commit-kernel.js";
 import { ContextBuilder, type ContextClaimGroundings } from "./engine/context-builder.js";
 import { KernelError } from "./engine/errors.js";
 import {
-  NarrativeEnvelopeBuilder,
   NarrativeError,
   Narrator,
   OpenAICompatibleNarrativeModelClient,
 } from "./engine/narrative.js";
 import { OpenAICompatibleSimulationModelClient } from "./engine/openai-compatible-simulation-client.js";
+import { SceneInterpreter } from "./engine/scene-interpreter.js";
+import { SceneResolver, toNarrativeEnvelope } from "./engine/scene-resolver.js";
 import { SimulationAdapter, type SimulationModelClient } from "./engine/simulation-adapter.js";
-import { TurnOrchestrator, type TurnResult } from "./engine/turn-orchestrator.js";
+import { TurnOrchestrator } from "./engine/turn-orchestrator.js";
 import { SqliteWorldStore } from "./persistence/sqlite-store.js";
 import { CLOSED_INN_WORLD_ID, seedClosedInnWorld } from "./testkit/world-builder.js";
 
@@ -23,7 +24,6 @@ export const PLAYABLE_DELAYED_DISPLAY_TEXT =
   "在你把匕首位于地窖的线索告诉赵先生后，他对阿宝的敌意明显缓和了。";
 
 const DEFAULT_WORLD_FILE = "data/local/closed-inn.sqlite";
-const CONTINUATION_MINUTES = 10;
 // ponytail: one authored world with stable IDs; add a world-pack loader only when authoring blocks play.
 const ids = {
   worldId: CLOSED_INN_WORLD_ID,
@@ -56,19 +56,6 @@ export async function runPlayableLocalLoop(config: PlayConfig): Promise<void> {
   try {
     const contextBuilder = new ContextBuilder(store, closedInnClaimGroundings());
     const commitKernel = new CommitKernel(store);
-    const playerOrchestrator = new TurnOrchestrator({
-      stateReader: store,
-      contextBuilder,
-      simulationAdapter: new SimulationAdapter(
-        new OpenAICompatibleSimulationModelClient({
-          baseUrl: config.baseUrl,
-          apiKey: config.apiKey,
-          model: config.simulationModel,
-        }),
-        { modelId: config.simulationModel },
-      ),
-      commitKernel,
-    });
     const continuationOrchestrator = new TurnOrchestrator({
       stateReader: store,
       contextBuilder,
@@ -77,7 +64,32 @@ export async function runPlayableLocalLoop(config: PlayConfig): Promise<void> {
       }),
       commitKernel,
     });
-    const envelopeBuilder = new NarrativeEnvelopeBuilder(contextBuilder);
+    const sceneResolver = new SceneResolver(
+      contextBuilder,
+      new SceneInterpreter(
+        new OpenAICompatibleSimulationModelClient({
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+          model: config.simulationModel,
+        }),
+        { modelId: config.simulationModel },
+      ),
+      commitKernel,
+      store,
+      {
+        chooseActor: (worldId) => chooseContinuationActor(store, worldId),
+        run: async ({ worldId, actorCharacterId }) => {
+          if (actorCharacterId === ids.npcBId) {
+            commitAuthoredNpcReaction(store, contextBuilder, commitKernel);
+          }
+          return continuationOrchestrator.runActorTurn({
+            worldId,
+            actorCharacterId,
+            intent: "根据当前合法可见信息采取至多一个本地行动。不要推进世界时间。",
+          });
+        },
+      },
+    );
     const narrator = new Narrator(new OpenAICompatibleNarrativeModelClient({
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
@@ -98,21 +110,16 @@ export async function runPlayableLocalLoop(config: PlayConfig): Promise<void> {
         continue;
       }
 
-      const playerTurn = await playerOrchestrator.runActorTurn({
+      const resolved = await sceneResolver.resolve({
         worldId: ids.worldId,
         actorCharacterId: ids.playerId,
-        intent,
+        contribution: intent,
       });
-      const continuation = await runWorldContinuation(
-        store,
-        contextBuilder,
-        commitKernel,
-        continuationOrchestrator,
-      );
-      requireSuccessfulContinuation(continuation);
-      ensureDelayedConsequence(store, commitKernel);
+      if (resolved.channel !== "ooc_meta") {
+        ensureDelayedConsequence(store, commitKernel);
+      }
 
-      const envelope = envelopeBuilder.build({ intent, turnResult: playerTurn });
+      const envelope = toNarrativeEnvelope(resolved);
       try {
         const narrative = await narrator.generate(envelope);
         const safeNarrative = sanitizeTerminalText(narrative);
@@ -125,8 +132,8 @@ export async function runPlayableLocalLoop(config: PlayConfig): Promise<void> {
         const code = error instanceof NarrativeError ? error.code : "NARRATIVE_TRANSPORT_ERROR";
         console.log(`[叙事暂不可用：${code}]`);
       }
-      if (playerTurn.rejection) {
-        console.log(`[玩家回合 ${playerTurn.status}：${playerTurn.rejection.code}]`);
+      if (resolved.rejection) {
+        console.log(`[玩家回合 ${resolved.turnStatus}：${resolved.rejection.code}]`);
       }
       printWorldStatus(store, "世界继续", config.worldFile, false);
       process.stdout.write("\n> ");
@@ -211,31 +218,15 @@ function createClosedInnContinuationModel(store: SqliteWorldStore): SimulationMo
         }
       }
 
-      proposals.push({
-        type: "world.time_advance",
-        toTime: new Date(Date.parse(context.world.currentTime) + CONTINUATION_MINUTES * 60_000).toISOString(),
-      });
       return { proposals };
     },
   };
 }
 
-async function runWorldContinuation(
-  store: SqliteWorldStore,
-  contextBuilder: ContextBuilder,
-  kernel: CommitKernel,
-  orchestrator: TurnOrchestrator,
-): Promise<TurnResult> {
-  const tickCount = store.listEvents(ids.worldId).filter((event) => event.type === "world.time_advance").length;
-  const actorId = [ids.npcAId, ids.npcBId, ids.npcCId][tickCount % 3]!;
-  if (actorId === ids.npcBId) {
-    commitAuthoredNpcReaction(store, contextBuilder, kernel);
-  }
-  return orchestrator.runActorTurn({
-    worldId: ids.worldId,
-    actorCharacterId: actorId,
-    intent: "根据当前合法可见信息采取至多一个本地行动，然后让世界时间前进十分钟。",
-  });
+function chooseContinuationActor(store: SqliteWorldStore, worldId: string): string {
+  const timeAdvances = store.listEvents(worldId).filter((event) => event.type === "world.time_advance").length;
+  const tickCount = Math.max(0, timeAdvances - 1);
+  return [ids.npcAId, ids.npcBId, ids.npcCId][tickCount % 3]!;
 }
 
 function commitAuthoredNpcReaction(
@@ -277,12 +268,6 @@ function commitAuthoredNpcReaction(
     occurredAt: context.world.currentTime,
     causeEventIds: [sourceEvent.id],
   }), "commit authored NPC reaction");
-}
-
-function requireSuccessfulContinuation(result: TurnResult): void {
-  if (result.status !== "success" || result.rejection) {
-    throw new Error(`Closed Inn continuation failed: ${result.rejection?.code ?? result.status}`);
-  }
 }
 
 function ensureDelayedConsequence(store: SqliteWorldStore, kernel: CommitKernel): void {

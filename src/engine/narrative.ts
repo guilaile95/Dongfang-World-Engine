@@ -11,13 +11,17 @@ import type { TurnResult } from "./turn-orchestrator.js";
 
 export interface NarrativeEnvelope {
   intent: string;
-  turnStatus: TurnResult["status"];
+  turnStatus: string;
   observerContext: CharacterContext;
   outcomes: NarrativeOutcomeProjection[];
   rejection: {
     kind: string;
     code: string;
   } | null;
+  ephemeralBeats?: Array<{ surface: string; kind: string }>;
+  deliveredStimuli?: Array<{ targetCharacterId: string; surfaceText: string; speechAct: string }>;
+  npcWorldOutcomes?: NarrativeOutcomeProjection[];
+  timeCommitted?: boolean;
 }
 
 export type NarrativeOutcomeProjection =
@@ -95,7 +99,7 @@ export class NarrativeEnvelopeBuilder {
       intent: input.intent,
       turnStatus: input.turnResult.status,
       observerContext,
-      outcomes: input.turnResult.committedEvents.flatMap(toNarrativeOutcome),
+      outcomes: toNarrativeOutcomes(input.turnResult.committedEvents),
       rejection: input.turnResult.rejection
         ? {
           kind: input.turnResult.rejection.kind,
@@ -121,8 +125,11 @@ export const DEFAULT_NARRATIVE_INSTRUCTIONS = [
   "For a known Claim with displayText, use that text as its player-facing meaning while preserving its supplied knowledgeState; displayText is not objective Truth or new Knowledge.",
   "Do not invent new named characters, secret histories, ownership, deaths, permanent injuries, item locations, locks, factions, resources, major abilities, or any other persistent facts.",
   "Do not reveal hidden Truth or other characters' private thoughts or knowledge.",
-  "Ephemeral sensory or color details are allowed only when they do not change future causal state.",
-  "If the Turn is empty, narrate observation or inaction from the observer-visible context without inventing a persistent event.",
+  "Ephemeral beats are {surface, kind} copied from the player contribution. Colorize that surface as a low-causal beat. kind is a routing hint, not a committed Event.",
+  "Do not claim a location change, death, item transfer, relationship change, knowledge gain, or elapsed world time unless it appears in outcomes and, for time, timeCommitted is true.",
+  "Do not treat Interpreter-generated scene prose as fact. If an invented sentence is absent from playerContribution and outcomes, ignore it.",
+  "If ephemeralBeats are present and outcomes have no persistent action, portray the player's surface without inventing a persistent event.",
+  "If the Turn is empty and there are no ephemeralBeats, narrate observation or inaction from the observer-visible context without inventing a persistent event.",
   "If the Turn is rejected, stale, or partial, reflect only what actually committed and the safe supplied failure status.",
 ].join(" ");
 
@@ -210,6 +217,10 @@ export class OpenAICompatibleNarrativeModelClient implements NarrativeModelClien
       userPayload: request.envelope,
     });
   }
+}
+
+export function toNarrativeOutcomes(events: CommittedEvent[]): NarrativeOutcomeProjection[] {
+  return events.flatMap(toNarrativeOutcome);
 }
 
 function toNarrativeOutcome(event: CommittedEvent): NarrativeOutcomeProjection[] {
