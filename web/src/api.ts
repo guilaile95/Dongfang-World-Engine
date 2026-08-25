@@ -92,6 +92,58 @@ export async function saveProfile(profile: PlayerProfile): Promise<void> {
   }
 }
 
+export async function startLife(
+  profile: PlayerProfile,
+  onChunk: (chunk: string) => void,
+): Promise<{ text: string; parsed: boolean; state: PlayerState }> {
+  const res = await fetch("/api/opening", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error("第一幕开启失败，请再试一次。");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalText = "";
+  let parsed = true;
+  let state: PlayerState | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      const event = JSON.parse(line) as {
+        type: string;
+        text?: string;
+        parsed?: boolean;
+        state?: PlayerState;
+      };
+      if (event.type === "chunk" && event.text) {
+        onChunk(event.text);
+      }
+      if (event.type === "done") {
+        finalText = event.text ?? finalText;
+        parsed = event.parsed !== false;
+        state = event.state ?? state;
+      }
+    }
+  }
+  if (!state) {
+    throw new Error("第一幕开启失败，请再试一次。");
+  }
+  return { text: finalText, parsed, state };
+}
+
 export async function playTurn(
   text: string,
   turnId: string,

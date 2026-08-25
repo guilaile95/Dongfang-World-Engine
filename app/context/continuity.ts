@@ -51,6 +51,7 @@ export interface ContinuityPack {
   essentials: {
     observerName: string;
     publicRules: string;
+    persona?: string | null;
   };
   episodic: LoreHit[];
   rollingSummary: string | null;
@@ -60,7 +61,7 @@ export function rollingSummaryEnabled(evidence: ContinuityEvidence | null | unde
   if (!evidence) {
     return false;
   }
-  return evidence.recentWindowInsufficient === true && evidence.provenBy.trim().length > 0;
+  return evidence.recentWindowInsufficient;
 }
 
 /** Hypothetical long play is not evidence. */
@@ -84,6 +85,7 @@ export function packFromSlice(
   options: {
     rollingSummary?: string | null;
     evidence?: ContinuityEvidence | null;
+    playerProfile?: import("../persist/store.js").PlayerProfile | null;
   } = {},
 ): ContinuityPack {
   const observerName = slice.present.find((row) => row.id === slice.observerId)?.name ?? "";
@@ -95,6 +97,22 @@ export function packFromSlice(
     (row) => row.kind === "lore" && isLegalRecallNamespace(slice.namespace, row.namespace),
   );
   const summaryOn = rollingSummaryEnabled(options.evidence);
+
+  let persona: string | null = null;
+  if (options.playerProfile) {
+    const p = options.playerProfile;
+    const parts = [
+      p.name ? `名字=${p.name}` : "",
+      p.age ? `年龄=${p.age}岁` : "",
+      p.gender ? `性别=${p.gender}` : "",
+      p.background ? `背景=${p.background}` : "",
+      p.personality ? `性格=${p.personality}` : "",
+    ].filter(Boolean);
+    if (parts.length > 0) {
+      persona = parts.join("；");
+    }
+  }
+
   return {
     observerId: slice.observerId,
     namespace: slice.namespace,
@@ -114,6 +132,7 @@ export function packFromSlice(
     essentials: {
       observerName,
       publicRules: slice.publicRules.join("；") || "（无）",
+      persona,
     },
     episodic,
     rollingSummary: summaryOn ? options.rollingSummary?.trim() || null : null,
@@ -124,12 +143,13 @@ export function renderContinuity(pack: ContinuityPack): string {
   const recent = pack.recentScenes.join("\n---\n") || "（无）";
   const recall = pack.episodic.map((row) => row.body).join("\n") || "（无）";
   const who = pack.essentials.observerName ? `你是${pack.essentials.observerName}` : "你在场";
+  const personaLine = pack.essentials.persona ? `；你的自身设定=${pack.essentials.persona}` : "";
   const lines = [
     `【世界】${pack.state.worldName}　【时间】${pack.state.time}　【地点】${pack.state.locationName}`,
     `【在场】${pack.state.present}　【物品】${pack.state.visibleItems}`,
     `【说法】${pack.state.knownClaims}　【氛围】${pack.state.ambient}　【印象】${pack.state.impressions}`,
     `【近况】\n${recent}`,
-    `【设定】${who}；${pack.essentials.publicRules}`,
+    `【设定】${who}${personaLine}；${pack.essentials.publicRules}`,
     `【回忆】${recall}`,
   ];
   if (pack.rollingSummary) {

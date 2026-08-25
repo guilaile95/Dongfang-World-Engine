@@ -109,7 +109,46 @@ export class PlayHost {
     if (!this.session || this.currentId !== profile.worldId) {
       throw new Error("NO_SESSION");
     }
-    this.session.store.setPlayerProfile(profile);
+    this.session.store.initializePlayerProfile(profile);
+  }
+
+  public async startLife(
+    profile: import("../persist/store.js").PlayerProfile,
+    onChunk?: (text: string) => void,
+  ): Promise<{ state: PlayerState; message: ChatMessage }> {
+    if (!this.session || this.currentId !== profile.worldId) {
+      this.open(profile.worldId, "new");
+    }
+    if (!this.session) {
+      throw new Error("NO_SESSION");
+    }
+
+    const worldId = profile.worldId;
+    const existingMessages = this.session.store.listUiMessages(worldId);
+
+    if (existingMessages.length > 0) {
+      const firstWorld = existingMessages.find((m) => m.role === "world") ?? existingMessages[0]!;
+      return {
+        state: playerState(this.session),
+        message: { role: "world", text: firstWorld.text, parsed: true },
+      };
+    }
+
+    this.session.store.initializePlayerProfile(profile);
+
+    const text = await this.session.projectOpening(profile, onChunk);
+
+    this.session.store.insertUiMessage({
+      worldId,
+      role: "world",
+      text,
+      parsed: true,
+    });
+
+    return {
+      state: playerState(this.session),
+      message: { role: "world", text, parsed: true },
+    };
   }
 
   public currentWorldId(): string | null {

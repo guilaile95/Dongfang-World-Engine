@@ -685,6 +685,41 @@ export class WorldStore {
       profile.personality,
     );
   }
+
+  public initializePlayerProfile(profile: PlayerProfile): void {
+    this.transaction(() => {
+      this.setPlayerProfile(profile);
+
+      const player = this.sqlite.prepare(
+        "SELECT id, name, location_id FROM characters WHERE world_id = ? AND kind = 'player'",
+      ).get(profile.worldId) as { id: string; name: string; location_id: string } | undefined;
+
+      if (!player) {
+        throw new Error(`PLAYER_CHARACTER_NOT_FOUND:${profile.worldId}`);
+      }
+
+      if (profile.name.trim()) {
+        this.sqlite.prepare(
+          "UPDATE characters SET name = ? WHERE id = ? AND world_id = ?",
+        ).run(profile.name.trim(), player.id, profile.worldId);
+      }
+
+      if (profile.startingLocation.trim()) {
+        const targetLoc = profile.startingLocation.trim();
+        const loc = this.sqlite.prepare(
+          "SELECT id FROM locations WHERE world_id = ? AND (id = ? OR name = ?)",
+        ).get(profile.worldId, targetLoc, targetLoc) as { id: string } | undefined;
+
+        if (!loc) {
+          throw new Error(`INVALID_STARTING_LOCATION:${targetLoc}`);
+        }
+
+        this.sqlite.prepare(
+          "UPDATE characters SET location_id = ? WHERE id = ? AND world_id = ?",
+        ).run(loc.id, player.id, profile.worldId);
+      }
+    });
+  }
 }
 
 export interface PlayerProfile {

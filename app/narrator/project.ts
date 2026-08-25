@@ -14,7 +14,12 @@ export const NARRATOR_LEAK_PATTERNS: RegExp[] = [
   /A→B→C/,
   /\bsourceSeedId\b/,
   /\bsourceEventId\b/,
+  /\bITEM_NOT_IN_REACH\b/,
+  /\bLOCATION_NOT_REACHABLE\b/,
+  /\bWORLD_NOT_FOUND\b/,
+  /\bWORLD_SOURCE_\w+\b/,
   /"type"\s*:\s*"(character_move|item_carry|item_place|memory_note|claim_record)"/,
+  /"(candidate|proposals|contributions|outcome)"\s*:/,
 ];
 
 /** Returns true if text contains an internal Engine leak pattern. */

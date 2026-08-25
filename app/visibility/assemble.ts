@@ -34,6 +34,7 @@ export function assemblePrompt(input: {
   recentScenes?: string[];
   rollingSummary?: string | null;
   evidence?: ContinuityEvidence | null;
+  playerProfile?: import("../persist/store.js").PlayerProfile | null;
 }): AssembledPrompt {
   const pool = visibilityGate(input.snapshot, input.observerId, input.ambient ?? []);
   const ranked = rankWithinPool(pool, input.query ?? "");
@@ -44,6 +45,7 @@ export function assemblePrompt(input: {
   const continuity = packFromSlice(budgeted, input.recentScenes ?? [], {
     ...(input.rollingSummary !== undefined ? { rollingSummary: input.rollingSummary } : {}),
     ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
+    ...(input.playerProfile !== undefined ? { playerProfile: input.playerProfile } : {}),
   });
   return {
     pool,

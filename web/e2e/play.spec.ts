@@ -1,4 +1,23 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+
+function scanLocalDigests(): Map<string, string> {
+  const localDir = join(process.cwd(), "data", "local");
+  const map = new Map<string, string>();
+  if (existsSync(localDir)) {
+    for (const name of readdirSync(localDir)) {
+      if (name.endsWith(".sqlite") || name.endsWith(".json")) {
+        const buf = readFileSync(join(localDir, name));
+        map.set(name, createHash("sha256").update(buf).digest("hex"));
+      }
+    }
+  }
+  return map;
+}
+
+const initialDigests = scanLocalDigests();
 
 /** Wait for stub narrator to deliver a world message. */
 async function send(page: Page, text: string): Promise<void> {
@@ -42,18 +61,27 @@ async function startFreshSession(page: Page): Promise<void> {
   await expect(page.locator(".charcard")).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: /进入第一幕/ }).click();
 
-  // Chat screen ready
+  // Chat screen ready: first message is opening world message
   await expect(page.locator("textarea")).toBeEnabled({ timeout: 60_000 });
+  await expect(page.locator(".msg.world")).toHaveCount(1, { timeout: 10_000 });
 }
 
 test.describe("chat-first shell", () => {
-  test("data isolation: E2E run does not use data/local", () => {
-    // Playwright server uses DWE_PLAY_DIR from playwright.config.ts which is an OS tmp dir.
-    // This test is a documentation stub — the actual guard is in playwright.config.ts.
-    expect(process.env.DWE_PLAY_DIR ?? "").not.toContain("data/local");
+  test.afterAll(() => {
+    const after = scanLocalDigests();
+    expect(after.size).toBe(initialDigests.size);
+    for (const [name, hash] of initialDigests.entries()) {
+      expect(after.get(name)).toBe(hash);
+    }
   });
 
-  test("desktop: onboarding → chat → streaming → fail-closed stays human", async ({ page }) => {
+  test("data isolation: E2E run does not modify data/local files or SHA-256 digests", () => {
+    expect(process.env.DWE_PLAY_DIR ?? "").not.toContain("data/local");
+    const current = scanLocalDigests();
+    expect(current).toEqual(initialDigests);
+  });
+
+  test("desktop: onboarding → chat → opening → conversation → fail-closed stays human", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await startFreshSession(page);
 
@@ -62,6 +90,10 @@ test.describe("chat-first shell", () => {
     await expect(page.locator("body")).not.toContainText("当前状态（权威）");
     await expect(page.locator("body")).not.toContainText("最近场景（非权威");
     await expect(page.locator("body")).not.toContainText("Candidate");
+
+    // First message in chat is opening world message
+    const firstMsg = page.locator(".msg").first();
+    await expect(firstMsg).toHaveClass(/world/);
 
     // Mobile viewport
     await page.setViewportSize({ width: 390, height: 844 });
@@ -84,9 +116,8 @@ test.describe("chat-first shell", () => {
     // Reload / resume — messages should persist
     await page.reload();
     await expect(page.locator(".top")).toBeVisible({ timeout: 10_000 });
-    // After reload from a save, we should be back in chat with history
     const msgCount = await page.locator(".msg").count();
-    expect(msgCount).toBeGreaterThan(0);
+    expect(msgCount).toBeGreaterThanOrEqual(3); // opening + 2 turns (player+world each)
 
     // Fail-closed: garbled input
     await send(page, "%%%NOT_A_SCENE%%% [[[");

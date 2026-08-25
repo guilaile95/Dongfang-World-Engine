@@ -5,6 +5,7 @@ import {
   loadBootstrap,
   playTurn,
   saveProfile,
+  startLife,
   switchWorld,
   type ChatMessage,
   type PlayerProfile,
@@ -17,7 +18,7 @@ import {
 type Screen =
   | { kind: "world-select" }
   | { kind: "new-life-onboard"; world: WorldChoice }
-  | { kind: "char-card"; world: WorldChoice; profile: PlayerProfile; firstScene: string }
+  | { kind: "char-card"; world: WorldChoice; profile: PlayerProfile }
   | { kind: "chat" };
 
 /* ─── App ─────────────────────────────────────────────────────────────────── */
@@ -196,9 +197,7 @@ export function App() {
     try {
       await saveProfile(profile);
       setPlayerProfile(profile);
-      // Generate first scene as a "system" message: send a hidden bootstrap turn
-      const firstScene = buildFirstSceneSeed(profile, world);
-      setScreen({ kind: "char-card", world, profile, firstScene });
+      setScreen({ kind: "char-card", world, profile });
     } catch {
       setError("保存人物信息失败，请重试。");
     } finally {
@@ -206,25 +205,13 @@ export function App() {
     }
   }
 
-  function buildFirstSceneSeed(profile: PlayerProfile, _world: WorldChoice): string {
-    const lines: string[] = [];
-    const loc = profile.startingLocation || "普通城市";
-    lines.push(`${profile.name || "你"}，${profile.age || ""}岁。${profile.gender || ""}。`);
-    if (profile.background) lines.push(profile.background);
-    if (profile.personality) lines.push(profile.personality);
-    lines.push(`现在在：${loc}。`);
-    return lines.join("\n");
-  }
-
-  async function onEnterWorld(firstScene: string): Promise<void> {
+  async function onEnterWorld(profile: PlayerProfile): Promise<void> {
     setBusy(true);
     setScreen({ kind: "chat" });
-    const turnId = crypto.randomUUID();
-    // We use the first-scene description as seed text for the narrator.
     setMessages([{ role: "world", text: "", parsed: true }]);
     pin.current = true;
     try {
-      const result = await playTurn(firstScene, turnId, (chunk) => {
+      const result = await startLife(profile, (chunk) => {
         setMessages((rows) => {
           const next = [...rows];
           const last = next[next.length - 1];
@@ -289,9 +276,8 @@ export function App() {
       <CharCardScreen
         profile={screen.profile}
         world={screen.world}
-        firstScene={screen.firstScene}
         busy={busy}
-        onEnter={(fs) => void onEnterWorld(fs)}
+        onEnter={(p) => void onEnterWorld(p)}
         onBack={() => setScreen({ kind: "new-life-onboard", world: screen.world })}
       />
     );
@@ -553,7 +539,11 @@ function WorldSelectScreen({
 /* ─── Onboard Screen ────────────────────────────────────────────────────── */
 
 const LONGZU_LOCATIONS = [
-  "普通城市", "普通大学校园", "家", "宿舍", "食堂", "教学楼", "便利店",
+  "普通城市", "教学楼", "宿舍", "家", "食堂", "便利店", "普通大学校园",
+];
+
+const RIVERSIDE_LOCATIONS = [
+  "堂屋", "厨房",
 ];
 
 function randomChoice<T>(arr: T[]): T {
@@ -582,7 +572,7 @@ function generateRandomProfile(worldId: string): PlayerProfile {
     "务实，不喜欢无谓的麻烦，但关键时候不会退缩。",
     "平时话不多，记性好，心里比较敏感。",
   ];
-  const locations = worldId === "longzu" ? LONGZU_LOCATIONS : ["城镇", "旅馆"];
+  const locations = worldId === "longzu" ? LONGZU_LOCATIONS : RIVERSIDE_LOCATIONS;
   return {
     worldId,
     name,
@@ -642,7 +632,7 @@ function OnboardScreen({
     );
   }
 
-  const locations = world.id === "longzu" ? LONGZU_LOCATIONS : ["城镇", "旅馆"];
+  const locations = world.id === "longzu" ? LONGZU_LOCATIONS : RIVERSIDE_LOCATIONS;
 
   return (
     <div className="onboard-shell">
@@ -725,16 +715,14 @@ function OnboardScreen({
 function CharCardScreen({
   profile,
   world,
-  firstScene,
   busy,
   onEnter,
   onBack,
 }: {
   profile: PlayerProfile;
   world: WorldChoice;
-  firstScene: string;
   busy: boolean;
-  onEnter: (firstScene: string) => void;
+  onEnter: (profile: PlayerProfile) => void;
   onBack: () => void;
 }) {
   return (
@@ -753,7 +741,7 @@ function CharCardScreen({
         <p className="charcard-hint">你没有发现自己有什么超自然能力。<br />今天仍然只是普通的一天。</p>
         <div className="charcard-actions">
           <button type="button" className="text-btn" onClick={onBack} disabled={busy}>← 修改</button>
-          <button type="button" className="btn-enter" onClick={() => onEnter(firstScene)} disabled={busy}>
+          <button type="button" className="btn-enter" onClick={() => onEnter(profile)} disabled={busy}>
             {busy ? "进入中…" : "进入第一幕 →"}
           </button>
         </div>

@@ -102,6 +102,39 @@ async function handle(
       }
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/opening") {
+      const body = JSON.parse(await readBody(req)) as { profile?: Partial<import("../persist/store.js").PlayerProfile> };
+      if (!body.profile || !body.profile.worldId) {
+        json(res, 400, { error: "profile with worldId required" });
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+      });
+      const profile: import("../persist/store.js").PlayerProfile = {
+        worldId: body.profile.worldId,
+        name: body.profile.name ?? "",
+        age: body.profile.age ?? "",
+        gender: body.profile.gender ?? "",
+        background: body.profile.background ?? "",
+        startingLocation: body.profile.startingLocation ?? "",
+        personality: body.profile.personality ?? "",
+      };
+      try {
+        const result = await host.startLife(profile, (chunk) => {
+          res.write(`${JSON.stringify({ type: "chunk", text: chunk })}\n`);
+        });
+        res.write(`${JSON.stringify({ type: "done", text: result.message.text, parsed: true, state: result.state })}\n`);
+        res.end();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "无法开启第一幕";
+        res.write(`${JSON.stringify({ type: "done", text: message, parsed: false, state: null })}\n`);
+        res.end();
+      }
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/turn") {
       const body = JSON.parse(await readBody(req)) as { text?: string; turnId?: string };
       const text = body.text?.trim() ?? "";

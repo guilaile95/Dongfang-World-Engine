@@ -80,6 +80,7 @@ export class Session {
   ): Promise<TurnView> {
     const trimmed = playerLine.trim();
     const worldId = this.compiled.seed.world.id;
+    const profile = this.store.getPlayerProfile(worldId);
     const recentForPlayer = recentSceneBodies(this.store, worldId, this.compiled.playerId);
     const pack = assemblePrompt({
       snapshot: this.store.snapshot(worldId),
@@ -87,6 +88,7 @@ export class Session {
       query: trimmed,
       ambient: this.ambient,
       recentScenes: recentForPlayer,
+      playerProfile: profile,
     });
     const interpreted = trimmed.length > 0
       ? await this.interpreter.interpret({
@@ -214,6 +216,7 @@ export class Session {
       ambient: this.ambient,
       loreHits,
       recentScenes: recentForPlayer,
+      playerProfile: profile,
     });
     const addressee = reachableAddressee(snapshot, this.compiled.playerId, intended);
     let dialogue: DialogueTurn | null = null;
@@ -279,6 +282,34 @@ export class Session {
       envelope,
       parsed: interpreted.parsed,
     };
+  }
+
+  public async projectOpening(
+    profile: import("./persist/store.js").PlayerProfile,
+    onChunk?: (text: string) => void,
+  ): Promise<string> {
+    const worldId = this.compiled.seed.world.id;
+    const snapshot = this.store.snapshot(worldId);
+    const assembled = assemblePrompt({
+      snapshot,
+      observerId: this.compiled.playerId,
+      ambient: this.ambient,
+      playerProfile: profile,
+    });
+
+    const envelope: NarratorEnvelope = {
+      playerContribution: "",
+      observerContext: assembled.prompt,
+      committed: [],
+      uncommitted: [],
+      npcReply: null,
+      ephemeral: {
+        recentScenes: [],
+        ambient: this.ambient,
+      },
+    };
+
+    return this.narrator.project(envelope, onChunk);
   }
 
   public close(): void {

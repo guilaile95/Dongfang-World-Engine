@@ -18,16 +18,16 @@ export function createNarrator(client: ModelClient, apiKey: string): Narrator {
       const prompt = renderNarratorPrompt(envelope);
       assertNoSecret(prompt, apiKey, "narrator envelope");
 
+      // 1. Initial generation: buffered on server, NEVER pass raw onChunk before validation.
       const result = await client.stream({
         role: "narrator",
         purpose: "narrator-projection",
         system: NARRATOR_SYSTEM,
         prompt,
-        ...(onChunk ? { onChunk } : {}),
       });
       let text = result.text;
 
-      // Narration Leak Gate: one repair attempt if internal markers detected.
+      // 2. Narration Leak Gate: one presentation-only repair attempt if internal markers detected.
       if (hasNarrationLeak(text)) {
         const repairResult = await client.stream({
           role: "narrator",
@@ -36,17 +36,27 @@ export function createNarrator(client: ModelClient, apiKey: string): Narrator {
           prompt: text,
         });
         const repaired = repairResult.text;
-        // If repair still leaks, fall through to safe fallback.
+        // If repair still leaks, fall through to safe natural fallback.
         text = hasNarrationLeak(repaired)
           ? "世界在继续运行。"
           : repaired;
-        // Send repaired text as a single chunk so streaming callers get it.
-        onChunk?.(text);
+      }
+
+      // 3. Emit only validated, safe prose to onChunk.
+      if (onChunk && text) {
+        emitChunked(text, onChunk);
       }
 
       return text;
     },
   };
+}
+
+function emitChunked(text: string, onChunk: (chunk: string) => void): void {
+  const chunkSize = 24;
+  for (let i = 0; i < text.length; i += chunkSize) {
+    onChunk(text.slice(i, i + chunkSize));
+  }
 }
 
 export function stubNarrator(): Narrator {
@@ -55,7 +65,9 @@ export function stubNarrator(): Narrator {
       const npc = envelope.npcReply ? `\n${envelope.npcReply.name}：「${envelope.npcReply.line}」` : "";
       // Stub: output in player-safe format without any Engine internals
       const text = `${envelope.playerContribution || "……"}${npc}`;
-      onChunk?.(text);
+      if (onChunk && text) {
+        emitChunked(text, onChunk);
+      }
       return text;
     },
   };
