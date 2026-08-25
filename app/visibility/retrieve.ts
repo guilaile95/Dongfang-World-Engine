@@ -16,6 +16,7 @@ export interface RankedSlice {
   publicRules: string[];
   location: LegalPool["location"];
   present: LegalPool["present"];
+  visibleItems: LegalPool["visibleItems"];
   ambient: string[];
   claims: Array<LegalPool["knownClaims"][number] & { score: number }>;
   memories: Array<LegalPool["memories"][number] & { score: number }>;
@@ -48,6 +49,7 @@ export function rankWithinPool(pool: LegalPool, query: string): RankedSlice {
     publicRules: pool.publicRules,
     location: pool.location,
     present: pool.present,
+    visibleItems: pool.visibleItems,
     ambient: pool.ambient,
     claims,
     memories,

@@ -38,6 +38,15 @@ name: 厨子阿福
 kind: npc
 location: loc-kitchen
 
+## Items
+### item-bag
+name: 书包
+carrier: char-player
+
+### item-key
+name: 钥匙
+location: loc-hall
+
 ## Facts
 ### fact-inn-open
 subject: inn

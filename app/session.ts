@@ -182,7 +182,7 @@ export class Session {
     const envelope: NarratorEnvelope = {
       playerContribution: trimmed,
       observerContext: assembled.prompt,
-      committed: committedProjection(interpretation, this.compiled.playerId),
+      committed: committedProjection(interpretation, this.compiled.playerId, snapshot),
       npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null,
       ephemeral: {
         recentScenes: recentForPlayer,

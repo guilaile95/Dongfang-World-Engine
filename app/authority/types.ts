@@ -29,6 +29,15 @@ export interface CharacterRecord {
   locationId: string;
 }
 
+/** Physical thing. Either at a location or carried. Not an RPG inventory. */
+export interface ItemRecord {
+  id: string;
+  worldId: string;
+  name: string;
+  locationId: string | null;
+  carrierId: string | null;
+}
+
 export interface FactRecord {
   id: string;
   worldId: string;
@@ -90,6 +99,7 @@ export interface WorldSnapshot {
   world: WorldRecord;
   locations: LocationRecord[];
   characters: CharacterRecord[];
+  items: ItemRecord[];
   facts: FactRecord[];
   claims: ClaimRecord[];
   knowledge: KnowledgeRecord[];

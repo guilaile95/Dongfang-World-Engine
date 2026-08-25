@@ -42,6 +42,7 @@ export interface ContinuityPack {
     time: string;
     locationName: string;
     present: string;
+    visibleItems: string;
     knownClaims: string;
     ambient: string;
     impressions: string;
@@ -102,6 +103,9 @@ export function packFromSlice(
       time: slice.time,
       locationName: slice.location.name,
       present: slice.present.map((row) => row.name).join("、"),
+      visibleItems: slice.visibleItems
+        .map((row) => (row.carriedBy ? `${row.name}(携带)` : row.name))
+        .join("、") || "（无）",
       knownClaims: claims,
       ambient: slice.ambient.join(" ") || "（无）",
       impressions: slice.memories.map((row) => row.text).join("；") || "（无）",
@@ -121,7 +125,7 @@ export function renderContinuity(pack: ContinuityPack): string {
   const recall = pack.episodic.map((row) => row.body).join(" / ") || "（无）";
   const who = pack.essentials.observerName ? `你是${pack.essentials.observerName}` : "你在场";
   const lines = [
-    `当前状态（权威）：世界=${pack.state.worldName}；时间=${pack.state.time}；地点=${pack.state.locationName}；在场=${pack.state.present}；你所知的说法=${pack.state.knownClaims}；当下可见=${pack.state.ambient}；你的印象=${pack.state.impressions}`,
+    `当前状态（权威）：世界=${pack.state.worldName}；时间=${pack.state.time}；地点=${pack.state.locationName}；在场=${pack.state.present}；可见物品=${pack.state.visibleItems}；你所知的说法=${pack.state.knownClaims}；当下可见=${pack.state.ambient}；你的印象=${pack.state.impressions}`,
     `最近场景（非权威，不能覆盖已发生之事）：${recent}`,
     `稳定设定：${who}；公开规则=${pack.essentials.publicRules}`,
     `相关回忆（可见性之后，非事实权威）：${recall}`,

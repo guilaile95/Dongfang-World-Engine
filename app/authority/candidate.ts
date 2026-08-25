@@ -52,6 +52,24 @@ export const candidateSchema = z.discriminatedUnion("type", [
     characterId: z.string().min(1),
     text: z.string().min(1),
   }),
+  z.object({
+    ...envelope,
+    type: z.literal("character_move"),
+    characterId: z.string().min(1),
+    locationId: z.string().min(1),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal("item_place"),
+    itemId: z.string().min(1),
+    locationId: z.string().min(1),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal("item_carry"),
+    itemId: z.string().min(1),
+    characterId: z.string().min(1),
+  }),
 ]);
 
 export type Candidate = z.infer<typeof candidateSchema>;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { submitCandidates, submitEmptyProposal, type SubmitResult } from "../authority/commit.js";
 import type { Candidate } from "../authority/candidate.js";
 import type { WorldStore } from "../persist/store.js";
+import { resolveItemId, resolveLocationId } from "../world/resolve.js";
 
 /** What the player was doing in the scene — labels, not an action menu. */
 export const contributionKindSchema = z.enum([
@@ -31,13 +32,26 @@ const proposalSchema = z.discriminatedUnion("type", [
     text: z.string().min(1),
     characterId: z.string().min(1).optional(),
   }),
+  z.object({
+    type: z.literal("character_move"),
+    location: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("item_place"),
+    item: z.string().min(1),
+    location: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("item_carry"),
+    item: z.string().min(1),
+  }),
 ]);
 
 export const interpretationSchema = z.object({
   contributions: z.array(contributionKindSchema).min(1),
   futureCausal: z.boolean().optional().default(false),
   outcome: z.enum(["ephemeral", "clarify", "fail", "candidate"]),
-  proposals: z.array(proposalSchema).max(3),
+  proposals: z.array(proposalSchema).max(4),
 });
 
 export type SceneInterpretation = z.infer<typeof interpretationSchema>;
@@ -51,7 +65,8 @@ export interface BoundInterpretation {
   result: SubmitResult;
 }
 
-const SPEECH = new Set<ContributionKind>(["speak", "ask", "mixed", "durable_attempt"]);
+const SPEECH = new Set<ContributionKind>(["speak", "ask"]);
+const DIARY = /日记|写进日记|写下来|记在本子|写进本子/;
 
 export function normalizeInterpretation(raw: unknown): SceneInterpretation {
   const parsed = interpretationSchema.safeParse(raw);
@@ -98,29 +113,124 @@ export function applyInterpretation(
   }
   const snapshot = store.snapshot(input.worldId);
   const spoken = interpretation.contributions.some((kind) => SPEECH.has(kind));
-  const candidates: Candidate[] = interpretation.proposals.map((proposal, index) => {
+  const player = snapshot.characters.find((row) => row.id === input.playerId);
+  const built: Candidate[] = [];
+  let unresolved = false;
+  let playerLoc = player?.locationId ?? "";
+  for (const proposal of interpretation.proposals) {
+    const expectedRevision = snapshot.world.revision + built.length;
     if (proposal.type === "claim_record") {
-      return {
+      built.push({
         type: "claim_record",
         worldId: input.worldId,
-        expectedRevision: snapshot.world.revision + index,
+        expectedRevision,
         claimId: `claim-${randomUUID()}`,
         subject: proposal.subject,
         predicate: proposal.predicate,
         object: proposal.object,
-      };
+      });
+      continue;
     }
-    const bindToAddressee = Boolean(spoken && input.addresseeId && !proposal.characterId);
-    return {
-      type: "memory_note",
+    if (proposal.type === "memory_note") {
+      const diarySelf = DIARY.test(proposal.text);
+      const bindToAddressee = Boolean(!diarySelf && spoken && input.addresseeId && !proposal.characterId);
+      built.push({
+        type: "memory_note",
+        worldId: input.worldId,
+        expectedRevision,
+        memoryId: `mem-${randomUUID()}`,
+        characterId: proposal.characterId ?? (bindToAddressee ? input.addresseeId as string : input.playerId),
+        text: proposal.text,
+      });
+      continue;
+    }
+    if (proposal.type === "character_move") {
+      const locationId = resolveLocationId(snapshot, proposal.location);
+      if (!locationId || !player) {
+        unresolved = true;
+        break;
+      }
+      if (playerLoc === locationId) {
+        continue;
+      }
+      built.push({
+        type: "character_move",
+        worldId: input.worldId,
+        expectedRevision,
+        characterId: input.playerId,
+        locationId,
+      });
+      playerLoc = locationId;
+      continue;
+    }
+    const itemId = resolveItemId(snapshot, proposal.item);
+    if (!itemId || !player) {
+      unresolved = true;
+      break;
+    }
+    if (proposal.type === "item_place") {
+      const here = proposal.location && /桌|这里|身旁/.test(proposal.location);
+      const locationId = here
+        ? playerLoc
+        : proposal.location
+          ? resolveLocationId(snapshot, proposal.location)
+          : playerLoc;
+      if (!locationId) {
+        unresolved = true;
+        break;
+      }
+      const item = snapshot.items.find((row) => row.id === itemId);
+      if (item?.locationId === locationId && item.carrierId === null) {
+        continue;
+      }
+      built.push({
+        type: "item_place",
+        worldId: input.worldId,
+        expectedRevision,
+        itemId,
+        locationId,
+      });
+      snapshot.items = snapshot.items.map((row) =>
+        row.id === itemId ? { ...row, locationId, carrierId: null } : row,
+      );
+      continue;
+    }
+    const item = snapshot.items.find((row) => row.id === itemId);
+    if (item?.carrierId === input.playerId) {
+      continue;
+    }
+    built.push({
+      type: "item_carry",
       worldId: input.worldId,
-      expectedRevision: snapshot.world.revision + index,
-      memoryId: `mem-${randomUUID()}`,
-      characterId: proposal.characterId ?? (bindToAddressee ? input.addresseeId as string : input.playerId),
-      text: proposal.text,
+      expectedRevision,
+      itemId,
+      characterId: input.playerId,
+    });
+    snapshot.items = snapshot.items.map((row) =>
+      row.id === itemId ? { ...row, locationId: null, carrierId: input.playerId } : row,
+    );
+  }
+  if (unresolved) {
+    return {
+      contributions: interpretation.contributions,
+      futureCausal: false,
+      outcome: "clarify",
+      submitted: false,
+      parsed,
+      result: submitEmptyProposal(store, input.worldId),
     };
-  });
-  const result = submitCandidates(store, { producer: "llm", candidates });
+  }
+  if (built.length === 0) {
+    return {
+      contributions: interpretation.contributions,
+      futureCausal: false,
+      outcome: "ephemeral",
+      submitted: false,
+      parsed,
+      result: submitEmptyProposal(store, input.worldId),
+    };
+  }
+  const result = submitCandidates(store, { producer: "llm", candidates: built });
   return {
     contributions: interpretation.contributions,
     futureCausal: interpretation.futureCausal,

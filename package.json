@@ -23,6 +23,8 @@
     "experiment:6": "npm run build && node dist/experiment-6-narrator.js",
     "experiment:7": "npm run build && node dist/experiment-7-cost.js",
     "experiment:8": "npm run build && node dist/experiment-8-longrun.js",
+    "experiment:17-preflight": "npm run build && node dist/experiment-step17-preflight.js",
+    "experiment:17-longrun": "npm run build && node dist/experiment-step17-longrun.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

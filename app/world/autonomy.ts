@@ -127,25 +127,32 @@ export function planTurnAutonomy(
   }
 
   let mediumSlots = 0;
-  const macroLocations: string[] = [];
-  for (const npc of npcs) {
+  const offScreen = npcs.filter((row) => !byCharacter[row.id]);
+  for (const npc of offScreen) {
+    if (npc.id === themeId && mediumSlots < budget.maxMediumCharacters) {
+      byCharacter[npc.id] = "medium";
+      mediumSlots += 1;
+    }
+  }
+  const themeLoc = snapshot.characters.find((row) => row.id === themeId)?.locationId;
+  const macroLocations = [...new Set(
+    offScreen
+      .filter((row) => !byCharacter[row.id] && player && row.locationId !== player.locationId)
+      .map((row) => row.locationId),
+  )].sort((a, b) => {
+    if (a === themeLoc) {
+      return -1;
+    }
+    if (b === themeLoc) {
+      return 1;
+    }
+    return a.localeCompare(b);
+  }).slice(0, Math.max(0, budget.maxMacroAggregates));
+  for (const npc of offScreen) {
     if (byCharacter[npc.id]) {
       continue;
     }
     const offScreenTheme = npc.id === themeId;
-    if (offScreenTheme && mediumSlots < budget.maxMediumCharacters) {
-      byCharacter[npc.id] = "medium";
-      mediumSlots += 1;
-      continue;
-    }
-    if (
-      player &&
-      npc.locationId !== player.locationId &&
-      !macroLocations.includes(npc.locationId) &&
-      macroLocations.length < budget.maxMacroAggregates
-    ) {
-      macroLocations.push(npc.locationId);
-    }
     byCharacter[npc.id] = "dormant";
     deferred.push({
       characterId: npc.id,

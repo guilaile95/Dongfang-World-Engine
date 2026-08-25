@@ -6,7 +6,13 @@ export interface AuthDecision {
   reasons: string[];
 }
 
-const LLM_WRITABLE = new Set<Candidate["type"]>(["claim_record", "memory_note"]);
+const LLM_WRITABLE = new Set<Candidate["type"]>([
+  "claim_record",
+  "memory_note",
+  "character_move",
+  "item_place",
+  "item_carry",
+]);
 
 export function authorize(
   snapshot: WorldSnapshot,
@@ -89,6 +95,54 @@ export function authorize(
       }
       if (snapshot.memories.some((row) => row.id === candidate.memoryId)) {
         reasons.push("MEMORY_EXISTS");
+      }
+      break;
+    }
+    case "character_move": {
+      const character = snapshot.characters.find((row) => row.id === candidate.characterId);
+      if (!character) {
+        reasons.push("CHARACTER_NOT_FOUND");
+      } else if (producer === "llm" && character.kind !== "player") {
+        reasons.push("LLM_CANNOT_MOVE_NPC");
+      }
+      if (!snapshot.locations.some((row) => row.id === candidate.locationId)) {
+        reasons.push("LOCATION_NOT_FOUND");
+      }
+      break;
+    }
+    case "item_place": {
+      const item = snapshot.items.find((row) => row.id === candidate.itemId);
+      if (!item) {
+        reasons.push("ITEM_NOT_FOUND");
+      }
+      if (!snapshot.locations.some((row) => row.id === candidate.locationId)) {
+        reasons.push("LOCATION_NOT_FOUND");
+      }
+      if (producer === "llm") {
+        const player = snapshot.characters.find((row) => row.kind === "player");
+        if (!player || (item && item.carrierId !== player.id && item.locationId !== player.locationId)) {
+          reasons.push("ITEM_NOT_IN_REACH");
+        }
+      }
+      break;
+    }
+    case "item_carry": {
+      const item = snapshot.items.find((row) => row.id === candidate.itemId);
+      const carrier = snapshot.characters.find((row) => row.id === candidate.characterId);
+      if (!item) {
+        reasons.push("ITEM_NOT_FOUND");
+      }
+      if (!carrier) {
+        reasons.push("CHARACTER_NOT_FOUND");
+      } else if (producer === "llm" && carrier.kind !== "player") {
+        reasons.push("LLM_CANNOT_GIVE_ITEM_TO_NPC");
+      }
+      if (producer === "llm" && item && carrier) {
+        const samePlace = item.locationId === carrier.locationId;
+        const alreadyHeld = item.carrierId === carrier.id;
+        if (!samePlace && !alreadyHeld) {
+          reasons.push("ITEM_NOT_IN_REACH");
+        }
       }
       break;
     }

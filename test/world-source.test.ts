@@ -36,6 +36,15 @@ describe("world source", () => {
     expect(source.publicName).toBe("当代世界");
     expect(source.rules.some((row) => row.text.includes("世界不围绕玩家"))).toBe(true);
     expect(source.locations.some((row) => row.id === "loc-cassel" && row.visibility === "hidden")).toBe(true);
+    expect(source.locations.map((row) => row.id)).toEqual(expect.arrayContaining([
+      "loc-home",
+      "loc-dorm",
+      "loc-cafeteria",
+      "loc-teaching",
+      "loc-store",
+    ]));
+    expect(source.items.some((row) => row.id === "item-bag" && row.carrierId === "char-player")).toBe(true);
+    expect(source.items.some((row) => row.id === "item-key" && row.locationId === "loc-dorm")).toBe(true);
     expect(source.characters.some((row) => row.kind === "player")).toBe(true);
     expect(source.characters.some((row) => row.name === "路明非")).toBe(true);
     expect(source.facts.some((row) => row.id === "fact-dragons-exist" && row.visibility === "hidden")).toBe(true);

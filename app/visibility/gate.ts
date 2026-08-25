@@ -50,6 +50,19 @@ export function visibilityGate(
     present: snapshot.characters
       .filter((row) => row.locationId === observer.locationId)
       .map((row) => ({ id: row.id, name: row.name, kind: row.kind })),
+    visibleItems: snapshot.items
+      .filter((item) => {
+        if (item.locationId === observer.locationId) {
+          return true;
+        }
+        if (item.carrierId) {
+          return snapshot.characters.some(
+            (row) => row.id === item.carrierId && row.locationId === observer.locationId,
+          );
+        }
+        return false;
+      })
+      .map((item) => ({ id: item.id, name: item.name, carriedBy: item.carrierId })),
     knownClaims,
     memories,
     ambient: sanitizeAmbient(snapshot, observerId, knownClaimIds, ambient),

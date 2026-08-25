@@ -23,6 +23,9 @@ export const CHAR_PLAYER = "char-player";
 export const CHAR_KEEPER = "char-keeper";
 export const CHAR_COOK = "char-cook";
 
+export const ITEM_BAG = "item-bag";
+export const ITEM_KEY = "item-key";
+
 export const FACT_BAG = "fact-bag-in-cellar";
 export const FACT_INN_OPEN = "fact-inn-open";
 export const FACT_GUEST_MISSING = "fact-guest-missing";

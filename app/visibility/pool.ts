@@ -20,6 +20,7 @@ export interface LegalPool {
   publicRules: string[];
   location: { id: string; name: string };
   present: Array<{ id: string; name: string; kind: "player" | "npc" }>;
+  visibleItems: Array<{ id: string; name: string; carriedBy: string | null }>;
   knownClaims: LegalClaim[];
   memories: MemoryRecord[];
   ambient: string[];
@@ -39,6 +40,7 @@ export function toObserverContext(pool: LegalPool): ObserverContext {
     publicRules: pool.publicRules,
     location: pool.location,
     present: pool.present,
+    visibleItems: pool.visibleItems,
     knownClaims: pool.knownClaims,
     memories: pool.memories,
     ambient: pool.ambient,

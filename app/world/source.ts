@@ -37,4 +37,10 @@ export interface WorldSource {
     publicBeat: string;
     publicBeatScope: "same_location" | "public_world";
   };
+  items: Array<{
+    id: string;
+    name: string;
+    locationId: string | null;
+    carrierId: string | null;
+  }>;
 }

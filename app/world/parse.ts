@@ -67,6 +67,7 @@ function parseStructured(text: string): WorldSource {
     facts,
     claims,
     theme,
+    items: parseItems(sections.get("Items") ?? ""),
   };
 }
 
@@ -83,6 +84,11 @@ function parseProtocol(text: string): WorldSource {
   const locations: WorldSource["locations"] = [
     { id: "loc-city", name: "普通城市", visibility: "public" },
     { id: "loc-campus", name: "普通大学校园", visibility: "public" },
+    { id: "loc-home", name: "家", visibility: "public" },
+    { id: "loc-dorm", name: "宿舍", visibility: "public" },
+    { id: "loc-cafeteria", name: "食堂", visibility: "public" },
+    { id: "loc-teaching", name: "教学楼", visibility: "public" },
+    { id: "loc-store", name: "便利店", visibility: "public" },
   ];
   if (text.includes("卡塞尔")) {
     locations.push({ id: "loc-cassel", name: "卡塞尔学院", visibility: "hidden" });
@@ -93,6 +99,7 @@ function parseProtocol(text: string): WorldSource {
   const characters: WorldSource["characters"] = [
     { id: "char-player", name: "普通人", kind: "player", locationId: "loc-city" },
     { id: "char-roommate", name: "同学", kind: "npc", locationId: "loc-city" },
+    { id: "char-cafeteria", name: "食堂师傅", kind: "npc", locationId: "loc-cafeteria" },
     {
       id: hybridId,
       name: "隐秘行动者",
@@ -170,6 +177,10 @@ function parseProtocol(text: string): WorldSource {
       publicBeat: "街头新闻仍在报一桩没有结案的失踪。",
       publicBeatScope: "public_world",
     },
+    items: [
+      { id: "item-bag", name: "书包", locationId: null, carrierId: "char-player" },
+      { id: "item-key", name: "钥匙", locationId: "loc-dorm", carrierId: null },
+    ],
   };
 }
 
@@ -234,6 +245,18 @@ function parseClaims(body: string): WorldSource["claims"] {
     predicate: field(block.fields, "predicate"),
     object: field(block.fields, "object"),
     knownBy: parseKnown(field(block.fields, "known")),
+  }));
+}
+
+function parseItems(body: string): WorldSource["items"] {
+  if (!body.trim()) {
+    return [];
+  }
+  return splitSub(body).map((block) => ({
+    id: block.id,
+    name: field(block.fields, "name") || block.id,
+    locationId: field(block.fields, "location") || null,
+    carrierId: field(block.fields, "carrier") || null,
   }));
 }
 

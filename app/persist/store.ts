@@ -7,6 +7,7 @@ import type {
   EventRecord,
   FactRecord,
   KnowledgeRecord,
+  ItemRecord,
   LocationRecord,
   MemoryRecord,
   WorldRecord,
@@ -75,6 +76,13 @@ CREATE TABLE IF NOT EXISTS memories (
   text TEXT NOT NULL,
   recorded_at TEXT NOT NULL,
   source_event_id TEXT
+);
+CREATE TABLE IF NOT EXISTS items (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  name TEXT NOT NULL,
+  location_id TEXT REFERENCES locations(id),
+  carrier_id TEXT REFERENCES characters(id)
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,9 +217,23 @@ export class WorldStore {
       recorded_at: string;
       source_event_id: string | null;
     }>;
+    const items = this.sqlite.prepare("SELECT * FROM items WHERE world_id = ?").all(worldId) as Array<{
+      id: string;
+      world_id: string;
+      name: string;
+      location_id: string | null;
+      carrier_id: string | null;
+    }>;
     return {
       world,
       locations: locations.map((row) => ({ id: row.id, worldId: row.world_id, name: row.name }) satisfies LocationRecord),
+      items: items.map((row) => ({
+        id: row.id,
+        worldId: row.world_id,
+        name: row.name,
+        locationId: row.location_id,
+        carrierId: row.carrier_id,
+      }) satisfies ItemRecord),
       characters: characters.map((row) => ({
         id: row.id,
         worldId: row.world_id,
@@ -295,6 +317,7 @@ export class WorldStore {
     facts: FactRecord[];
     claims: ClaimRecord[];
     knowledge: KnowledgeRecord[];
+    items?: ItemRecord[];
   }): void {
     this.transaction(() => {
       this.sqlite.prepare(
@@ -311,6 +334,12 @@ export class WorldStore {
       );
       for (const character of input.characters) {
         insertCharacter.run(character.id, character.worldId, character.name, character.kind, character.locationId);
+      }
+      const insertItem = this.sqlite.prepare(
+        "INSERT INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
+      );
+      for (const item of input.items ?? []) {
+        insertItem.run(item.id, item.worldId, item.name, item.locationId, item.carrierId);
       }
       const insertFact = this.sqlite.prepare(
         `INSERT INTO facts (id, world_id, subject, predicate, object, valid_from, valid_to, source_event_id, source_seed_id, source_kind)
@@ -451,6 +480,24 @@ export class WorldStore {
       memory.text,
       memory.recordedAt,
       memory.sourceEventId,
+    );
+  }
+
+  public updateCharacterLocation(characterId: string, locationId: string): void {
+    this.sqlite.prepare("UPDATE characters SET location_id = ? WHERE id = ?").run(locationId, characterId);
+  }
+
+  public insertItem(item: ItemRecord): void {
+    this.sqlite.prepare(
+      "INSERT INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
+    ).run(item.id, item.worldId, item.name, item.locationId, item.carrierId);
+  }
+
+  public updateItem(itemId: string, patch: { locationId: string | null; carrierId: string | null }): void {
+    this.sqlite.prepare("UPDATE items SET location_id = ?, carrier_id = ? WHERE id = ?").run(
+      patch.locationId,
+      patch.carrierId,
+      itemId,
     );
   }
 

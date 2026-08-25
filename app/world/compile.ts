@@ -2,6 +2,7 @@ import type {
   CharacterRecord,
   ClaimRecord,
   FactRecord,
+  ItemRecord,
   KnowledgeRecord,
   LocationRecord,
   WorldRecord,
@@ -14,6 +15,7 @@ export interface CompiledWorld {
     world: WorldRecord;
     locations: LocationRecord[];
     characters: CharacterRecord[];
+    items: ItemRecord[];
     facts: FactRecord[];
     claims: ClaimRecord[];
     knowledge: KnowledgeRecord[];
@@ -85,8 +87,15 @@ export function compileWorld(source: WorldSource): CompiledWorld {
       learnedAt: source.time,
     })),
   );
+  const items: ItemRecord[] = (source.items ?? []).map((row) => ({
+    id: row.id,
+    worldId: source.id,
+    name: row.name,
+    locationId: row.carrierId ? null : row.locationId,
+    carrierId: row.carrierId,
+  }));
   return {
-    seed: { world, locations, characters, facts, claims, knowledge },
+    seed: { world, locations, characters, items, facts, claims, knowledge },
     playerId: player.id,
     packageTitle: source.packageTitle,
     sourceKind: source.sourceKind,

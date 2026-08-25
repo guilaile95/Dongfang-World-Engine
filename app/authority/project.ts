@@ -86,6 +86,28 @@ export function applyCandidateToSnapshot(
       };
       return { ...snapshot, world, memories: [...snapshot.memories, memory] };
     }
+    case "character_move": {
+      const characters = snapshot.characters.map((row) =>
+        row.id === candidate.characterId ? { ...row, locationId: candidate.locationId } : row,
+      );
+      return { ...snapshot, world, characters };
+    }
+    case "item_place": {
+      const items = snapshot.items.map((row) =>
+        row.id === candidate.itemId
+          ? { ...row, locationId: candidate.locationId, carrierId: null }
+          : row,
+      );
+      return { ...snapshot, world, items };
+    }
+    case "item_carry": {
+      const items = snapshot.items.map((row) =>
+        row.id === candidate.itemId
+          ? { ...row, locationId: null, carrierId: candidate.characterId }
+          : row,
+      );
+      return { ...snapshot, world, items };
+    }
   }
 }
 
@@ -143,6 +165,15 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
         recordedAt: event.at,
         sourceEventId: event.id,
       });
+      break;
+    case "character_move":
+      store.updateCharacterLocation(candidate.characterId, candidate.locationId);
+      break;
+    case "item_place":
+      store.updateItem(candidate.itemId, { locationId: candidate.locationId, carrierId: null });
+      break;
+    case "item_carry":
+      store.updateItem(candidate.itemId, { locationId: null, carrierId: candidate.characterId });
       break;
   }
 }
