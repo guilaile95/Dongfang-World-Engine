@@ -175,11 +175,36 @@ function parseProtocol(text: string): WorldSource {
     knownBy: [{ characterId: "char-roommate", state: "rumor" }],
   });
 
-  const chronology: import("./source.js").WorldChronology = {
-    era: "仕兰中学时期",
-    timeLabel: "2009年秋 · 傍晚",
-    publicPremise: "最近这座滨海城市接连发生几起尚未解释的雨夜失踪事件，老城区的街头巷尾议论纷纷。",
-  };
+  const isLongzu = id === "longzu" || packageTitle.includes("龙族") || /仕兰|卡塞尔|路明非/.test(text);
+  const isMystery = packageTitle.includes("神秘复苏") || /神秘复苏|大昌市|杨间/.test(text);
+  const isCultivation = packageTitle.includes("修仙") || /修仙|宗门|炼气|筑基/.test(text);
+
+  let chronology: import("./source.js").WorldChronology;
+  if (isLongzu) {
+    chronology = {
+      era: "仕兰中学时期",
+      timeLabel: "2009年秋 · 傍晚",
+      publicPremise: "最近这座滨海城市接连发生几起尚未解释的雨夜失踪事件，老城区的街头巷尾议论纷纷。",
+    };
+  } else if (isMystery) {
+    chronology = {
+      era: "大昌市时期",
+      timeLabel: "当代 · 傍晚",
+      publicPremise: "城市里暗流涌动，各类神秘灵异传闻在小圈子里悄然传播。",
+    };
+  } else if (isCultivation) {
+    chronology = {
+      era: "仙元历",
+      timeLabel: "清晨",
+      publicPremise: "修真界风云未定，各宗门弟子在世间历练寻道。",
+    };
+  } else {
+    chronology = {
+      era: "当前时期未标定",
+      timeLabel: "当代",
+      publicPremise: "平静的世界在日常运转。",
+    };
+  }
 
   return {
     id,

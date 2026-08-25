@@ -48,25 +48,27 @@ export const OPENING_SYSTEM = [
   "【叙事契约 5 要素】",
   "1. 锚定（Anchor）：第一段内明确交代玩家当前身处的具体地点、环境质感与 immediate 处境。",
   "2. 身份（Identity）：自然融入玩家的角色身份背景（如学生、旅人、普通市民等），让玩家感受到「这是我的人生」，但绝不生硬复述人物卡标签。",
-  "3. 世界特异性（IP Specificity）：必须体现该世界与该时期的特异性元素（例如仕兰中学、滨海城市连日秋雨、街头电视滚动的失踪案新闻、老城区的五金店等），绝不能写成通用白开水。",
-  "4. 推动钩子（Actionable Hook）：必须发生至少一件打破静止的、具体的、可处理的新事件（如有人叫你、电视插播紧急新闻、同桌神色慌张翻找东西、门外传来异响、桌上留着一张奇怪纸条等）。必须让玩家当下就可以对此做点什么，拒绝纯静止环境白描。",
+  "3. 世界特异性（IP Specificity）：必须体现该世界与该时期的特异性元素（根据给出的公开背景与传闻），绝不能写成通用白开水。",
+  "4. 推动钩子（Actionable Hook）：必须发生至少一件打破静止的、具体的、可处理的新事件（如有人叫你、电视插播紧急新闻、身边人神色慌张、门口滑入一张警告纸条、遗留物品等）。必须让玩家当下就可以对此做点什么，拒绝纯静止环境白描。",
   "5. 行动交接（Handoff）：结尾自然将局面推到关键节点，将行动权交还给玩家。",
   "【严格视角规则】必须全程使用第二人称「你」。严禁以第三人称（如「林念安…」）描写玩家自身！",
   "【字数与密度】叙事正文约 250–450 字，段落分明，每段都有新信息或事件增量。",
   "【严禁泄露隐秘】普通人不可知晓龙类、卡塞尔、混血种、言灵、尼伯龙根等内部机密，只能感知表面世界的日常与隐匿异常。",
+  "【物理线索道具】如果场景中出现了玩家可以拾取、阅读、带走的新实体物品（如警告纸条、遗留信封、旧手机、车票等），请使用 <hook_item>物品名称</hook_item> 标出。",
   "【输出格式】请严格按照以下格式输出：",
   "<narrative>",
   "（这里写 250–450 字的第二人称开幕叙事正文，段落分明，使用 Markdown）",
   "</narrative>",
+  "<hook_item>（可选：如果在场有可拾取实体物品，写物品名，如 警告纸条 / 遗留信封 / 旧手机，无实体则留空）</hook_item>",
   "【眼下】",
   "（一句话总结当前玩家面临的未决局面/焦点）",
   "【选项】",
-  "A. （建设性/稳妥行动，自然语言，第一人称，如：我主动问同桌出了什么事）",
+  "A. （建设性/稳妥行动，自然语言，第一人称，如：我主动捡起地上的纸条仔细查看）",
   "B. （探索/观察行动，如：我仔细打量周围环境，看看有没有异常）",
   "C. （社交/询问行动，如：我转头找旁边的人打听刚才广播里的事情）",
   "D. （离开/自顾自处理自身事项的行动，如：我收拾好自己的书包，准备直接离开）",
-  "E. （高风险/激进/强硬行动，如：我一把按住同桌的手，追问到底怎么回事）",
-  "F. （出人意料/整活/非常规社交奇招，如：我一脸严肃地拍拍他的肩膀说「兄弟，你印堂发黑啊」）",
+  "E. （高风险/激进/强硬行动，如：我立刻推门追查刚才发出声音的人）",
+  "F. （出人意料/整活/非常规社交奇招，如：我对着门外大喊「有话当面出来说」）",
 ].join("\n");
 
 export function hasPerspectiveViolation(text: string, playerName?: string): boolean {
@@ -113,7 +115,7 @@ export function renderOpeningPrompt(input: OpeningPromptInput): string {
   parts.push(
     `【玩家身份】名字=${p.name}；年龄=${p.age ? p.age + "岁" : "18岁"}；性别=${p.gender || "未知"}；身世经历=${p.background || "普通人"}；性格=${p.personality || "务实"}；起始位置=${p.startingLocation || input.locationName}`,
   );
-  parts.push("【要求】请严格以第二人称「你」写出富有特异性、带有明确可操作 Hook 的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。");
+  parts.push("【要求】请严格以第二人称「你」写出富有特异性、带有明确可操作 Hook 的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。若有可拾取道具请用 <hook_item> 标出。");
   return parts.join("\n");
 }
 
@@ -121,19 +123,41 @@ export interface ParsedOpening {
   narrative: string;
   currentSituation: string;
   suggestions: import("../http/view.js").ActionSuggestion[];
+  hookItem?: string;
 }
 
 export function parseOpeningOutput(raw: string, defaultLoc: string = "这里"): ParsedOpening {
   let narrative = "";
   let currentSituation = "";
+  let hookItem: string | undefined = undefined;
   const suggestions: import("../http/view.js").ActionSuggestion[] = [];
 
   const narrativeMatch = raw.match(/<narrative>([\s\S]*?)<\/narrative>/i);
   if (narrativeMatch) {
     narrative = narrativeMatch[1]!.trim();
   } else {
-    const splitIdx = raw.search(/【(眼下|选项)】/);
+    const splitIdx = raw.search(/【(眼下|选项)】|<hook_item>/);
     narrative = (splitIdx > 0 ? raw.slice(0, splitIdx) : raw).trim();
+  }
+
+  const hookItemMatch = raw.match(/<hook_item>([^<]+)<\/hook_item>/i);
+  if (hookItemMatch) {
+    const itemText = hookItemMatch[1]!.trim();
+    if (itemText && !itemText.includes("无") && itemText.length < 20) {
+      hookItem = itemText;
+    }
+  }
+  // Heuristic fallback if model introduced an interactable item in narrative
+  if (!hookItem) {
+    if (/纸条|白纸/.test(narrative)) {
+      hookItem = "警告纸条";
+    } else if (/信封|牛皮纸/.test(narrative)) {
+      hookItem = "警告信";
+    } else if (/手机|翻盖手机/.test(narrative)) {
+      hookItem = "遗留的手机";
+    } else if (/车票|公交车票/.test(narrative)) {
+      hookItem = "可疑的车票";
+    }
   }
 
   const sitMatch = raw.match(/【眼下】\s*([^\n]+)/);
@@ -169,7 +193,63 @@ export function parseOpeningOutput(raw: string, defaultLoc: string = "这里"): 
     currentSituation = `当前处于${defaultLoc}，周围似乎有些反常的动向。`;
   }
 
-  return { narrative, currentSituation, suggestions };
+  return {
+    narrative,
+    currentSituation,
+    suggestions,
+    ...(hookItem ? { hookItem } : {}),
+  };
+}
+
+export interface DecisionGateInput {
+  dialogue: { addresseeName: string; npcReply: string } | null;
+  interpretation: { contributions: string[]; outcome: string };
+  envelope: { committed: string[]; uncommitted: string[] };
+  text: string;
+}
+
+export function evaluateDecisionGate(
+  input: DecisionGateInput,
+): { suggestions?: import("../http/view.js").ActionSuggestion[]; currentSituation: string | null } {
+  // Case 1: NPC Dialogue Node
+  if (input.dialogue) {
+    const npc = input.dialogue.addresseeName;
+    const replySnippet = input.dialogue.npcReply.replace(/\s+/g, " ").slice(0, 30);
+    const suggestions: import("../http/view.js").ActionSuggestion[] = [
+      { key: "A", label: `如实回应${npc}，说明自己的情况`, type: "constructive" },
+      { key: "B", label: `反问${npc}，打听更多内情与细节`, type: "constructive" },
+      { key: "C", label: `含糊应付过去，转移话题`, type: "constructive" },
+      { key: "D", label: `不予理会，自顾自做自己的事`, type: "constructive" },
+      { key: "E", label: `直接挑明疑点，严肃质问${npc}`, type: "extreme" },
+      { key: "F", label: `一本正经地开个玩笑逗逗${npc}`, type: "absurd" },
+    ];
+    return {
+      suggestions,
+      currentSituation: `眼下：${npc}正在和你交谈：「${replySnippet}…」`,
+    };
+  }
+
+  // Case 2: Action Refusal / Danger Node
+  if (input.envelope.uncommitted.length > 0) {
+    const reason = input.envelope.uncommitted[0] ?? "行动受阻";
+    const suggestions: import("../http/view.js").ActionSuggestion[] = [
+      { key: "A", label: "另寻其他途径或替代方案", type: "constructive" },
+      { key: "B", label: "退回安全位置，仔细观察周围动静", type: "constructive" },
+      { key: "C", label: "向在场的人询问刚才的情况", type: "constructive" },
+      { key: "D", label: "暂时放弃该意图，先处理日常事务", type: "constructive" },
+      { key: "E", label: "不顾阻碍，强行再次尝试", type: "extreme" },
+      { key: "F", label: "对着阻碍大声吐槽两句缓解气氛", type: "absurd" },
+    ];
+    return {
+      suggestions,
+      currentSituation: `眼下：你的行动受到阻碍（${reason}）。`,
+    };
+  }
+
+  // Case 3: Mundane Life Turn
+  return {
+    currentSituation: null,
+  };
 }
 
 export function renderNarratorPrompt(envelope: NarratorEnvelope): string {

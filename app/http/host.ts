@@ -281,26 +281,22 @@ export class PlayHost {
         parsed,
       });
 
-      let suggestions: import("./view.js").ActionSuggestion[] | undefined = undefined;
-      let currentSituation: string | null = null;
-      if (turn.dialogue) {
-        suggestions = [
-          { key: "A", label: `如实回应${turn.dialogue.addresseeName}，说明自己的情况`, type: "constructive" },
-          { key: "B", label: `反问${turn.dialogue.addresseeName}，打听更多细节`, type: "constructive" },
-          { key: "C", label: `含糊应付过去，转移话题`, type: "constructive" },
-          { key: "D", label: `不予理会，自顾自做自己的事`, type: "constructive" },
-          { key: "E", label: `直接挑明疑点，严肃质问${turn.dialogue.addresseeName}`, type: "extreme" },
-          { key: "F", label: `一本正经地开个玩笑逗逗${turn.dialogue.addresseeName}`, type: "absurd" },
-        ];
-        currentSituation = `眼下：${turn.dialogue.addresseeName}正在和你交谈。`;
-      }
+      const decision = import("../narrator/project.js").then((m) =>
+        m.evaluateDecisionGate({
+          dialogue: turn.dialogue,
+          interpretation: turn.interpretation,
+          envelope: turn.envelope,
+          text: turn.text,
+        }),
+      );
+      const evaluated = await decision;
 
       const result: TurnResult = {
         text: turn.text,
         parsed,
         state: playerState(session, {
-          currentSituation,
-          ...(suggestions ? { suggestions } : {}),
+          currentSituation: evaluated.currentSituation,
+          ...(evaluated.suggestions ? { suggestions: evaluated.suggestions } : {}),
         }),
       };
       this.done.set(turnId, { chunks, result });

@@ -34,6 +34,26 @@ export function recordResolvedScene(
   store.pruneContextKind(worldId, ns, "scene", RECENT_WINDOW);
 }
 
+export function recordOpeningScene(
+  store: WorldStore,
+  worldId: string,
+  observerId: string,
+  openingNarrative: string,
+): void {
+  const ns = observerNamespace(observerId);
+  const body = `开幕经历：${trimBody(openingNarrative)}`;
+  store.insertContextItem({
+    id: `scene-opening-${randomUUID()}`,
+    worldId,
+    namespace: ns,
+    kind: "scene",
+    title: "opening",
+    body,
+    seq: 0,
+  });
+  store.pruneContextKind(worldId, ns, "scene", RECENT_WINDOW);
+}
+
 export function recentSceneBodies(store: WorldStore, worldId: string, observerId: string): string[] {
   return store.listRecentScenes(worldId, observerNamespace(observerId), RECENT_WINDOW).map((row) => row.body);
 }

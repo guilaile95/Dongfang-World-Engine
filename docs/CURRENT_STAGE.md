@@ -71,21 +71,20 @@ OPEN_PRS:
   - PR #73 (greenfield/owner-reset): Engine baseline, OPEN, awaiting Owner merge.
   - PR #74 (feat/step18-chat-first-ui): Step 18B UI & Opening Direction Candidate, DRAFT, OPEN.
 
-OWNER_REAL_PLAY_2_FEEDBACK_RESOLVED:
-  1. Actionable Hook: Opening introduces active breaking events, anomalies, and immediate unresolved situations;
-  2. Strict Second-Person ("你"): Narrator locked to 2nd person, 3rd-person narrator references eliminated via perspective gate;
-  3. Timeline & Scene Anchor: Top bar displays `${era} · ${locationName} · ${timeLabel}` + "时期前情" modal with public lore and premise;
-  4. Real World Source Material: Opening pipeline retrieves legal public lore/beats without leaking secret lore;
-  5. High Info Density: Balanced ~350-450 character openings with rich IP specificity;
-  6. Dynamic Action Suggestions (A-F): 4 constructive + 1 extreme + 1 absurd suggestions as natural language inputs on actionable moments;
-  7. Clear Play Direction: "眼下" (Current Situation) bar provides immediate focus without artificial quest mechanics.
+ALL_FOLLOW_UP_ITEMS_CLOSED:
+  1. Durable Opening Hook: Opening hook item committed to Authority SQLite items table during startLife bootstrap; carried by player across turns and persistent upon reopen;
+  2. Opening Scene Continuity: recordOpeningScene persists opening narrative in player recent scenes, accessible to assemblePrompt in subsequent turns;
+  3. Meaningful Decision Presentation Gate: A-F generated strictly on key decision nodes (NPC dialogue, action refusal/danger), empty on mundane turns (e.g. drinking water);
+  4. Dynamic "眼下" (currentSituation): follows real unresolved situations and updates/clears as player acts;
+  5. Cross-World Chronology: Longzu (仕兰中学/2009秋), Mystery Recovery (大昌市/当代), Cultivation (仙元历), uncalibrated (当前时期未标定) without cross-world pollution;
+  6. Perspective Repair Secondary Validation: secondary check ensures repaired prose satisfies hasPerspectiveViolation & hasNarrationLeak, with safe 2nd-person fallback;
+  7. 3 Causal Paths & Real Play: 103/103 vitest passed, 3/3 Playwright passed, 6-round interactive play with gpt-5.6-luna passed.
 
 VERIFICATION_SUMMARY:
   - Typecheck: 0 errors on Node and Web (exactOptionalPropertyTypes verified).
-  - Unit/Integration: 101 passed across 23 test files in Vitest.
+  - Unit/Integration: 103 passed across 23 test files in Vitest.
   - E2E: 3 passed in Playwright (desktop, mobile, safe new save, era drawer, suggestions).
-  - 5-Opening Benchmark on Longzu: 5/5 PASSED (Lin Nian'an, Lu Xiaolou, Zhao Minglang, Shen Yuewei, Xu Zi'ang).
-  - 8-Round Real Play on Longzu with gpt-5.6-luna: completed with 100% causal and perspective consistency.
+  - 6-Round Real Interactive Play on Longzu with gpt-5.6-luna: 100% causal consistency, durable item carry, and scene continuity.
   - Test Data Isolation: data/local SHA-256 digests remain 100% untouched.
 
 NEXT_ACTION:

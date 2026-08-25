@@ -1,6 +1,6 @@
 import type { NpcVoice } from "./chat/npc.js";
 import { stubNpcVoice } from "./chat/npc.js";
-import { lastAddresseeId, recentSceneBodies, recordResolvedScene } from "./context/recent.js";
+import { lastAddresseeId, recentSceneBodies, recordOpeningScene, recordResolvedScene } from "./context/recent.js";
 import { recall } from "./context/recall.js";
 import type { Narrator } from "./narrator/client.js";
 import { stubNarrator } from "./narrator/client.js";
@@ -312,22 +312,46 @@ export class Session {
       profile,
     };
 
+    let parsed: import("./narrator/project.js").ParsedOpening;
     if (this.narrator.projectOpening) {
-      return this.narrator.projectOpening(input, onChunk);
+      parsed = await this.narrator.projectOpening(input, onChunk);
+    } else {
+      const narrative = await this.narrator.project(
+        {
+          playerContribution: "",
+          observerContext: `【世界】${input.worldTitle}【地点】${input.locationName}`,
+          committed: [],
+          uncommitted: [],
+          npcReply: null,
+          ephemeral: { recentScenes: [], ambient: this.ambient },
+        },
+        onChunk,
+      );
+      const m = await import("./narrator/project.js");
+      parsed = m.parseOpeningOutput(narrative, input.locationName);
     }
 
-    const narrative = await this.narrator.project(
-      {
-        playerContribution: "",
-        observerContext: `【世界】${input.worldTitle}【地点】${input.locationName}`,
-        committed: [],
-        uncommitted: [],
-        npcReply: null,
-        ephemeral: { recentScenes: [], ambient: this.ambient },
-      },
-      onChunk,
-    );
-    return import("./narrator/project.js").then((m) => m.parseOpeningOutput(narrative, input.locationName));
+    // 1. Commit bootstrap hook item to Authority items table if present
+    if (parsed.hookItem && player?.locationId) {
+      const existingItems = snapshot.items;
+      const alreadyPresent = existingItems.some(
+        (it) => it.name === parsed.hookItem && (it.locationId === player.locationId || it.carrierId === player.id),
+      );
+      if (!alreadyPresent) {
+        this.store.insertItem({
+          id: `item-hook-${Date.now()}`,
+          worldId,
+          name: parsed.hookItem,
+          locationId: player.locationId,
+          carrierId: null,
+        });
+      }
+    }
+
+    // 2. Record opening scene into player namespace continuity (recent scenes)
+    recordOpeningScene(this.store, worldId, this.compiled.playerId, parsed.narrative);
+
+    return parsed;
   }
 
   public close(): void {

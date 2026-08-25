@@ -74,7 +74,8 @@ export function createNarrator(client: ModelClient, apiKey: string): Narrator {
       });
       let text = result.text;
 
-      if (hasNarrationLeak(text) || hasPerspectiveViolation(text, input.profile.name)) {
+      const playerName = input.profile.name;
+      if (hasNarrationLeak(text) || hasPerspectiveViolation(text, playerName)) {
         const repairResult = await client.stream({
           role: "narrator",
           purpose: "narrator-repair",
@@ -82,9 +83,11 @@ export function createNarrator(client: ModelClient, apiKey: string): Narrator {
           prompt: text,
         });
         const repaired = repairResult.text;
-        text = hasNarrationLeak(repaired)
-          ? "暴雨拍打着窗户，周围的人各自忙碌着。你坐在原地，感到有什么事情正在悄然发生。"
-          : repaired;
+        if (hasNarrationLeak(repaired) || hasPerspectiveViolation(repaired, playerName)) {
+          text = `<narrative>暴雨拍打着窗户，周围的人各自忙碌着。你坐在原地，感到有什么事情正在悄然发生。</narrative>\n【眼下】周围有些反常的动向。\n【选项】\nA. 仔细观察四周动静\nB. 主动向旁边的人打听情况\nC. 暂时按兵不动\nD. 收拾东西离开这里\nE. 直接大声质问发生了什么\nF. 故作轻松地开个玩笑试探大家`;
+        } else {
+          text = repaired;
+        }
       }
 
       const parsed = parseOpeningOutput(text, input.locationName);
@@ -118,10 +121,10 @@ export function stubNarrator(): Narrator {
     },
 
     async projectOpening(input, onChunk) {
-      const narrative = `你站在${input.locationName}，天色渐晚，四周传来人们低语的声音。街道新闻还在滚动播报着最近几起尚未结案的失踪事件，气氛透着一丝不同寻常的紧绷。`;
-      const currentSituation = `眼下：你身处${input.locationName}，周围正议论着城里的失踪事件。`;
+      const narrative = `你站在${input.locationName}，天色渐晚，四周传来人们低语的声音。街道新闻还在滚动播报着最近几起尚未结案的失踪事件，气氛透着一丝不同寻常的紧绷。一张泛黄的警告纸条静静躺在脚边。`;
+      const currentSituation = `眼下：你身处${input.locationName}，周围正议论着城里的失踪事件，脚边有一张警告纸条。`;
       const suggestions: import("../http/view.js").ActionSuggestion[] = [
-        { key: "A", label: "主动打听最近的失踪事件详情", type: "constructive" },
+        { key: "A", label: "主动捡起地上的纸条仔细查看", type: "constructive" },
         { key: "B", label: "仔细观察在场人员的举止表情", type: "constructive" },
         { key: "C", label: "拿出自己的随身物品检查一番", type: "constructive" },
         { key: "D", label: `收拾好东西，离开${input.locationName}`, type: "constructive" },
@@ -131,7 +134,7 @@ export function stubNarrator(): Narrator {
       if (onChunk) {
         emitChunked(narrative, onChunk);
       }
-      return { narrative, currentSituation, suggestions };
+      return { narrative, currentSituation, suggestions, hookItem: "警告纸条" };
     },
   };
 }
