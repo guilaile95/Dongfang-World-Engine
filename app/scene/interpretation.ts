@@ -326,7 +326,7 @@ export function ensureSpokenMemory(
   return result.accepted ? result : null;
 }
 
-const CARRY_SPEECH = /背上|拿起|捡起/;
+const CARRY_SPEECH = /背上|拿起|捡起|拾起|收好|收进|放进书包|放入书包|装进书包|带上|取走/;
 
 export function ensureObviousCarry(
   store: WorldStore,

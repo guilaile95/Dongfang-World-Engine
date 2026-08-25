@@ -304,61 +304,6 @@ export class Session {
 
     const plan = planOpeningHook(worldId, location?.name || profile.startingLocation || "");
 
-    // 1. Pre-commit planned hook item to Authority BEFORE prompting the Narrator!
-    if (plan.kind === "durable_item" && plan.itemName && player?.locationId) {
-      const existingItems = snapshot.items;
-      const alreadyPresent = existingItems.some(
-        (it) => it.name === plan.itemName && (it.locationId === player.locationId || it.carrierId === player.id),
-      );
-      if (!alreadyPresent) {
-        this.store.insertItem({
-          id: `item-hook-opening`,
-          worldId,
-          name: plan.itemName,
-          locationId: player.locationId,
-          carrierId: null,
-        });
-      }
-      if (plan.itemContent) {
-        // Store durable claim for item content
-        const claimId = `claim-item-${plan.itemName}`;
-        this.store.insertClaim({
-          id: claimId,
-          worldId,
-          subject: plan.itemName,
-          predicate: "content",
-          object: plan.itemContent,
-          recordedAt: snapshot.world.time,
-          sourceEventId: null,
-          sourceSeedId: null,
-          sourceKind: "seed",
-        });
-        this.store.upsertKnowledge({
-          characterId: this.compiled.playerId,
-          claimId,
-          state: "confirmed",
-          sourceKind: "seed",
-          sourceCharacterId: null,
-          sourceEventId: null,
-          sourceSeedId: null,
-          learnedAt: snapshot.world.time,
-        });
-        // Store durable lore item in context_items
-        this.store.insertContextItem({
-          id: `lore-item-${plan.itemName}`,
-          worldId,
-          namespace: `char:${this.compiled.playerId}`,
-          kind: "lore",
-          title: `item:${plan.itemName}`,
-          body: `【${plan.itemName}内容】${plan.itemContent}`,
-          seq: 0,
-        });
-      }
-    }
-
-    // 2. Set persistent initial situation in store
-    this.store.setPlayerSituation(worldId, this.compiled.playerId, plan.situationSummary);
-
     const query = [location?.name, profile.startingLocation, profile.background].filter(Boolean).join(" ");
     const loreHits = recall(this.store, worldId, this.compiled.playerId, query, { kinds: ["lore"], limit: 4 });
 
@@ -395,8 +340,59 @@ export class Session {
       parsed = m.parseOpeningOutput(narrative, input.locationName, plan);
     }
 
-    // 3. Record opening scene into player namespace continuity (recent scenes)
-    recordOpeningScene(this.store, worldId, this.compiled.playerId, parsed.narrative);
+    // ONLY upon successful narrator generation, commit the planned hook and opening scene in a single transaction
+    this.store.transaction(() => {
+      if (plan.kind === "durable_item" && plan.itemName && player?.locationId) {
+        const freshSnapshot = this.store.snapshot(worldId);
+        const alreadyPresent = freshSnapshot.items.some(
+          (it) => it.name === plan.itemName && (it.locationId === player.locationId || it.carrierId === player.id),
+        );
+        if (!alreadyPresent) {
+          this.store.insertItem({
+            id: `item-hook-opening`,
+            worldId,
+            name: plan.itemName,
+            locationId: player.locationId,
+            carrierId: null,
+          });
+        }
+        if (plan.itemContent) {
+          const claimId = `claim-item-${plan.itemName}`;
+          this.store.insertClaim({
+            id: claimId,
+            worldId,
+            subject: plan.itemName,
+            predicate: "content",
+            object: plan.itemContent,
+            recordedAt: snapshot.world.time,
+            sourceEventId: null,
+            sourceSeedId: null,
+            sourceKind: "seed",
+          });
+          this.store.upsertKnowledge({
+            characterId: this.compiled.playerId,
+            claimId,
+            state: "confirmed",
+            sourceKind: "seed",
+            sourceCharacterId: null,
+            sourceEventId: null,
+            sourceSeedId: null,
+            learnedAt: snapshot.world.time,
+          });
+          this.store.insertContextItem({
+            id: `lore-item-${plan.itemName}`,
+            worldId,
+            namespace: `char:${this.compiled.playerId}`,
+            kind: "lore",
+            title: `item:${plan.itemName}`,
+            body: `【${plan.itemName}内容】${plan.itemContent}`,
+            seq: 0,
+          });
+        }
+      }
+      this.store.setPlayerSituation(worldId, this.compiled.playerId, parsed.currentSituation || plan.situationSummary);
+      recordOpeningScene(this.store, worldId, this.compiled.playerId, parsed.narrative);
+    });
 
     return parsed;
   }

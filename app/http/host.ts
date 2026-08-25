@@ -289,20 +289,28 @@ export class PlayHost {
             interpretation: turn.interpretation,
             envelope: turn.envelope,
             text: turn.text,
+            playerLine: trimmed,
           },
           existingSituation,
         ),
       );
       const evaluated = await decision;
-      if (evaluated.currentSituation) {
-        session.store.setPlayerSituation(worldId, session.compiled.playerId, evaluated.currentSituation);
+      let finalSituation: string | null = existingSituation;
+      if (evaluated.situationAction === "clear") {
+        session.store.clearPlayerSituation(worldId, session.compiled.playerId);
+        finalSituation = null;
+      } else if (evaluated.situationAction === "update" && evaluated.situationText) {
+        session.store.setPlayerSituation(worldId, session.compiled.playerId, evaluated.situationText);
+        finalSituation = evaluated.situationText;
+      } else if (evaluated.situationAction === "preserve") {
+        finalSituation = existingSituation;
       }
 
       const result: TurnResult = {
         text: turn.text,
         parsed,
         state: playerState(session, {
-          currentSituation: evaluated.currentSituation,
+          currentSituation: finalSituation,
           ...(evaluated.suggestions ? { suggestions: evaluated.suggestions } : {}),
         }),
       };

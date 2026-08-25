@@ -79,8 +79,8 @@ export interface OpeningHookPlan {
   narrativeDirective: string;
 }
 
-export function planOpeningHook(worldId: string, locationName: string): OpeningHookPlan {
-  if (worldId === "riverside-inn" || locationName.includes("堂屋") || locationName.includes("客栈")) {
+export function planOpeningHook(worldId: string, _locationName?: string): OpeningHookPlan {
+  if (worldId === "riverside-inn") {
     return {
       kind: "durable_item",
       itemName: "警告纸条",
@@ -89,7 +89,7 @@ export function planOpeningHook(worldId: string, locationName: string): OpeningH
       narrativeDirective: "堂屋桌角或脚边出现一张【警告纸条】，上面写着『别去后院地窖，今晚掌柜在提防生人。』",
     };
   }
-  if (worldId === "longzu" || locationName.includes("教学楼") || locationName.includes("学校") || locationName.includes("宿舍")) {
+  if (worldId === "longzu") {
     return {
       kind: "durable_item",
       itemName: "警告信",
@@ -98,7 +98,7 @@ export function planOpeningHook(worldId: string, locationName: string): OpeningH
       narrativeDirective: "门缝滑入一封【警告信】，上面写着『别走老码头那条路，今晚雨夜有人在等。』",
     };
   }
-  if (worldId === "shenmi-fusu" || locationName.includes("居民楼")) {
+  if (worldId === "shenmi-fusu") {
     return {
       kind: "durable_item",
       itemName: "奇怪的便签",
@@ -107,7 +107,7 @@ export function planOpeningHook(worldId: string, locationName: string): OpeningH
       narrativeDirective: "门把手或门缝处贴着一张【奇怪的便签】，写着『晚上听到敲门声千万别开，直接下楼。』",
     };
   }
-  if (worldId === "xiuxian" || locationName.includes("山门") || locationName.includes("大殿")) {
+  if (worldId === "xiuxian") {
     return {
       kind: "durable_item",
       itemName: "传音符纸",
@@ -242,6 +242,7 @@ export interface DecisionGateInput {
   interpretation: { contributions: string[]; outcome: string };
   envelope: { committed: string[]; uncommitted: string[] };
   text: string;
+  playerLine?: string;
 }
 
 export function isMeaningfulDecisionNode(input: DecisionGateInput): boolean {
@@ -255,34 +256,56 @@ export function isMeaningfulDecisionNode(input: DecisionGateInput): boolean {
   ) {
     return true;
   }
-  // 2. Dialogue node: check if NPC speech represents a true decision fork vs mundane chitchat
+  // 2. Dialogue node: check if NPC speech represents a true decision fork vs mundane chitchat / questions
   if (input.dialogue) {
     const text = input.dialogue.npcReply.trim();
-    // Mundane chitchat filter
-    const isMundane =
-      /^(是啊|嗯|哦|好|好的|慢走|知道了|天气|随便看|欢迎光临|没什么|没事的|再见|我也觉得|挺好|行吧)[，。！\s]*$/.test(text) ||
-      ((/(今天|明天|天气|挺凉快|凉快|挺热|吃饭|喝水|慢点走|早点回)/.test(text) || text.length < 15) &&
-        !/(别走|别去|危险|小心|赶快|快点|失踪|警告|秘密|案|门|信|纸条|等等|\?|？|！|!)/.test(text));
-    if (isMundane) {
-      return false;
-    }
-    // Meaningful signals: requests, questions, warnings, anomalies, secrets, urgency
-    const isMeaningful =
-      /(别走|别去|小心|危险|赶快|快点|帮我|你在干什么|发生什么|你听说|你必须|不能|跟我来|交出|为什么|谁|告诉我|去哪|失踪|纸条|信|密码|凶手|警告|秘密|\?|？|！|!)/.test(
+    // Everyday social greetings, chitchat, and common non-critical questions (NO suggestions)
+    const isEverydayChitchat =
+      /^(是啊|嗯|哦|好|好的|慢走|知道了|天气|随便看|欢迎光临|没什么|没事的|再见|我也觉得|挺好|行吧|早啊|明天见)[，。！\s]*$/.test(text) ||
+      /(吃饭|吃过|作业|写完|去哪|回家|放学|下课|打球|天气|挺凉快|凉快|挺热|喝水|慢点走|早点回|怎么了|没事|你好|早啊|明天见|路上小心|随便看|欢迎光临|慢走|知道了|行吧|好的|没事的|叫什么)/.test(text);
+
+    // Urgent / danger / crucial branching signals
+    const isCrisis =
+      /(别走|别去|快跑|快走|出事了|小心|危险|警告|失踪|凶手|死人|怪物|有鬼|逃命|秘密|紧急|求你救|救救我|陷阱|杀了|尸体|不能留|跟我来|交出)/.test(
         text,
       );
-    return isMeaningful;
+
+    if (isEverydayChitchat && !isCrisis) {
+      return false;
+    }
+    return isCrisis;
   }
   return false;
 }
 
+export interface DecisionGateOutput {
+  suggestions?: import("../http/view.js").ActionSuggestion[];
+  situationAction: "preserve" | "update" | "clear";
+  situationText: string | null;
+  currentSituation: string | null;
+}
+
+const DISMISS_SITUATION = /不管了|不理会|不看了|撕了|扔了|扔进垃圾桶|扔掉|烧了|随它去|算了|不再管|丢掉|丢弃|不理这封信|不理这纸条|当没看见/;
+
 export function evaluateDecisionGate(
   input: DecisionGateInput,
   activeSituation?: string | null,
-): { suggestions?: import("../http/view.js").ActionSuggestion[]; currentSituation: string | null } {
-  // If not a meaningful decision node, no suggestions! Active situation remains preserved!
+): DecisionGateOutput {
+  // Check if player explicitly dismissed or discarded the unresolved situation
+  const playerLine = input.playerLine || "";
+  if (DISMISS_SITUATION.test(playerLine)) {
+    return {
+      situationAction: "clear",
+      situationText: null,
+      currentSituation: null,
+    };
+  }
+
+  // If not a meaningful decision node, preserve the active situation without suggestions
   if (!isMeaningfulDecisionNode(input)) {
     return {
+      situationAction: "preserve",
+      situationText: activeSituation ?? null,
       currentSituation: activeSituation ?? null,
     };
   }
@@ -299,9 +322,12 @@ export function evaluateDecisionGate(
       { key: "E", label: `直接挑明疑点，严肃质问${npc}`, type: "extreme" },
       { key: "F", label: `一本正经地开个玩笑逗逗${npc}`, type: "absurd" },
     ];
+    const sit = `眼下：${npc}正在对你说：「${replySnippet}…」`;
     return {
       suggestions,
-      currentSituation: `眼下：${npc}正在对你说：「${replySnippet}…」`,
+      situationAction: "update",
+      situationText: sit,
+      currentSituation: sit,
     };
   }
 
@@ -315,9 +341,12 @@ export function evaluateDecisionGate(
     { key: "E", label: "不顾阻碍，强行再次尝试", type: "extreme" },
     { key: "F", label: "对着阻碍大声吐槽两句缓解气氛", type: "absurd" },
   ];
+  const sit = `眼下：你的行动受到阻碍（${reason}）。`;
   return {
     suggestions,
-    currentSituation: `眼下：你的行动受到阻碍（${reason}）。`,
+    situationAction: "update",
+    situationText: sit,
+    currentSituation: sit,
   };
 }
 

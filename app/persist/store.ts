@@ -447,7 +447,7 @@ export class WorldStore {
 
   public insertClaim(claim: ClaimRecord): void {
     this.sqlite.prepare(
-      `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
+      `INSERT OR REPLACE INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       claim.id,
@@ -505,7 +505,7 @@ export class WorldStore {
 
   public insertItem(item: ItemRecord): void {
     this.sqlite.prepare(
-      "INSERT INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
     ).run(item.id, item.worldId, item.name, item.locationId, item.carrierId);
   }
 

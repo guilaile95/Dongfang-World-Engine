@@ -110,6 +110,14 @@ export function resolveItemId(snapshot: WorldSnapshot, phrase: string): string |
     }
     return null;
   }
+  if (/(信封|信件|那封信|地上的信|这封信)/.test(text)) {
+    const letter = snapshot.items.find((row) => row.name.includes("信"));
+    if (letter) return letter.id;
+  }
+  if (/(纸条|便签|字条|那张纸|这张纸)/.test(text)) {
+    const note = snapshot.items.find((row) => row.name.includes("纸条") || row.name.includes("便签"));
+    if (note) return note.id;
+  }
   if (text.includes("书包")) {
     return snapshot.items.find((row) => row.id === "item-bag" || row.name.includes("书包"))?.id ?? null;
   }

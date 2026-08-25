@@ -69,24 +69,24 @@ PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18B_REAL_PLAY_CANDIDATE
 ACTIVE_ISSUE: #68
 OPEN_PRS:
   - PR #73 (greenfield/owner-reset): Engine baseline, OPEN, awaiting Owner merge.
-  - PR #74 (feat/step18-chat-first-ui): Step 18B UI & Opening Direction Candidate, DRAFT, OPEN.
+  - PR #74 (feat/step18-chat-first-ui): Step 18B UI & Opening Direction Candidate #3, DRAFT, OPEN.
 
-ALL_ROOT_CAUSE_ITEMS_CLOSED:
-  1. Opening Hook Architecture: Engine pre-plans opening hook (commits hook item & durable claim/lore content to Authority SQLite before prompting Narrator); Narrator describes pre-approved hook without inventing Authority items; durable item content accurately recalled 5+ turns later after opening scene is evicted from recent buffer;
-  2. Meaningful Decision Presentation Gate: Mundane NPC small talk (e.g. weather, chitchat) produces 0 suggestions; critical NPC warnings/crises or physical action barriers activate 6 natural language suggestions (A-D distinct routes, E extreme, F absurd);
-  3. Persistent "眼下" (Current Situation): Represents active unresolved situation, persists across mundane actions (drinking water, watching rain), updates on new events/barriers, and restores upon reopen;
-  4. True Cross-World Isolation: Cultivation and Mystery protocol worlds completely stripped of modern/Longzu defaults (no schoolbag, no campus, no coastal missing persons news);
-  5. Perspective Repair Secondary Validation: Repaired prose verified against both hasPerspectiveViolation and hasNarrationLeak with safe 2nd-person fallback;
-  6. Verification Metrics: Vitest (103 passed, 0 skipped, 0 failed / 103 total), Playwright (3 passed, 0 failed / 3 total), Real Model (gpt-5.6-luna) multi-turn interactive run passed with 100% causal consistency.
+ALL_FOUR_FINAL_ROOT_CAUSES_CLOSED:
+  1. Opening Initialization Safe Retry & Idempotency: Engine executes Opening pre-planning and commits hook item, claim, knowledge, lore, situation, and opening scene inside a transaction ONLY after Narrator succeeds. A failed first call leaves zero dirty/corrupted state, and attempt 2 generates cleanly without duplicate records;
+  2. Situation Lifecycle (preserve / update / clear): Decision Gate explicitly provides situationAction ('preserve', 'update', 'clear'). Mundane turns preserve situation; new crisis/barrier updates situation; player dismissal ("我把警告信扔了不管了") physically deletes the persistent situation from SQLite, and it never resurrects on reload or subsequent turns;
+  3. Strict Decision Gate: Everyday questions ("你吃饭了吗？", "作业写完了吗？", "今天去哪儿？") produce 0 suggestions; only true urgent warnings, crises, and physical barriers activate 6 natural language suggestions (A-F);
+  4. Real User Play Path in Opening Hook Tests: Real natural language "我伸手把桌上的警告纸条捡起来收好" -> carried -> 5 turns mundane eviction -> recall -> reopen persistence;
+  5. World-Identity-Only Hook Planning: planOpeningHook strictly binds to world ID rather than guessing IP from common location names ("宿舍", "山门").
 
 VERIFICATION_SUMMARY:
   - Typecheck: 0 errors on Node and Web (exactOptionalPropertyTypes: true).
-  - Unit/Integration: 103 passed across 23 test files in Vitest (0 skipped, 0 failed).
-  - E2E: 3 passed in Playwright (desktop, mobile, safe new save, era drawer, suggestions).
-  - Real Model 8-Round Test (gpt-5.6-luna): Verified durable hook pre-planning, 5-turn memory recall across recent window eviction, decision gate chitchat filtering vs barrier activation, and reopen persistence.
+  - Vitest: 23 passed / 23 suites, 105 passed, 0 skipped, 0 failed (105 total).
+  - Playwright E2E: 3 passed / 3 total, 0 failed.
+  - Opening Retry Path: 1st call fails (simulated LLM timeout) -> DB stays pristine -> 2nd call succeeds -> 3rd call idempotent.
   - Test Data Isolation: data/local SHA-256 digests remain 100% untouched.
 
 NEXT_ACTION:
-  - Hand off PR #74 to Owner for Real Play Candidate #3.
-  - Do not merge #73 or #74 without Owner authorization.
+  - Push to feat/step18-chat-first-ui and await exact-head CI.
+  - Report exact local vs CI metrics.
+  - Hand over PR #74 to Owner for Real Play Candidate #3.
 ```
