@@ -20,6 +20,7 @@ export interface ChatMessage {
 export interface WorldOption {
   id: string;
   title: string;
+  description: string;
   sourcePath: string;
   savePath: string;
 }

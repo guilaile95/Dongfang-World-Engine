@@ -65,16 +65,28 @@ Start with:
 ```text
 CURRENT ENGINEERING STATE
 
-PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18_CANDIDATE
+PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18_REAL_PLAY_CANDIDATE
 ACTIVE_ISSUE: #68
 OPEN_PRS:
-  - PR #73 (greenfield/owner-reset): Engine baseline passed Step 17 / real-play gate, OPEN, awaiting Owner merge.
-  - PR #74 (feat/step18-chat-first-ui): Step 18 Chat-first local play shell, DRAFT, OPEN, depends on #73.
-P1_STATUS:
-  - Safe new-save P1 resolved (existing save confirmation, pre-unlink verified backup, unique non-overwriting backup names, fail-closed, resume unchanged, player-safe privacy).
-SCOPE_BOUNDARIES:
-  - role switching = BLOCKED by current product model (single player identity in World Source).
-  - quick suggestions = DEFER (avoid verb menus).
+  - PR #73 (greenfield/owner-reset): Engine baseline, OPEN, awaiting Owner merge.
+  - PR #74 (feat/step18-chat-first-ui): Step 18 shell, DRAFT, OPEN, depends on #73.
+
+REJECTED_HEAD: 2eb7f829d44cc579e73d7ce0d379edcfff1f4fda
+REJECTED_REASONS_RESOLVED:
+  1. Test pollution: E2E and unit tests isolated to unique OS temp directories; data/local never touched.
+  2. Narration leak: Internal Engine markers (Authority, Candidate, Revision, Validator, B/C/S层, A→B→C, 当前状态/最近场景) fully stripped from context, leak gate regex with presentation repair added. Zero leaks across 12 real-play rounds.
+  3. Onboarding & Journey: World selection screen -> Random / Custom Player Profile -> Character Card + First Scene -> Chat.
+  4. Player Profile: Persistent identity stored in SQLite player_profiles table; survives session close and reopen.
+  5. Layout & Readability: Max width expanded to 1280px (prose 820px), Markdown hierarchy (react-markdown + remark-gfm), right-aligned player bubble, IME composition handling (event.isComposing).
+  6. Real Play Verification: 12-round fresh real play on Longzu world passed with full causal consistency (A->B->C), zero leaks, smooth narrative.
+
+VERIFICATION_GATES:
+  - Typecheck: PASS (Node + Web)
+  - Unit Tests: 92 passed (23 files)
+  - Build: PASS (dist/index.html + assets)
+  - Playwright E2E: 3 passed (data isolation, onboarding -> chat flow, safe new save)
+  - Fresh Real Play: 12 rounds completed, zero leaks, SQLite persistence verified.
+
 NEXT_ACTION:
-  - Owner Real Play on PR #74 candidate. Do not add speculative frontend features. Do not merge #73 or #74 without Owner authorization.
+  - Owner Second Real Play on PR #74 candidate. Do not merge #73 or #74 without Owner authorization.
 ```

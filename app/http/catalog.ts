@@ -17,17 +17,24 @@ export function worldCatalog(config: AppConfig): WorldOption[] {
   const worlds: WorldOption[] = [];
   if (config.worldSource && existsSync(config.worldSource)) {
     const compiled = loadWorldFile(config.worldSource);
+    const worldId = compiled.seed.world.id;
+    // Description from world theme – a brief public-facing flavour
+    const description = worldId === "longzu"
+      ? "当代都市。普通人的日常生活，以及藏在日常背后的某种隐秘。"
+      : `${compiled.packageTitle} · ${compiled.seed.world.name}`;
     worlds.push({
-      id: compiled.seed.world.id,
+      id: worldId,
       title: compiled.packageTitle,
+      description,
       sourcePath: config.worldSource,
-      savePath: resolve(playDir, `play-${compiled.seed.world.id}.sqlite`),
+      savePath: resolve(playDir, `play-${worldId}.sqlite`),
     });
   }
   if (existsSync(FIXTURE) && !worlds.some((row) => row.id === "riverside-inn")) {
     worlds.push({
       id: "riverside-inn",
       title: "临河客栈",
+      description: "平静的小镇旅馆，来往旅人的相遇之地。",
       sourcePath: FIXTURE,
       savePath: resolve(playDir, "play-riverside-inn.sqlite"),
     });

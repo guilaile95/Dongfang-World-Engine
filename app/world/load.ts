@@ -14,9 +14,11 @@ export function loadWorldFile(path: string): CompiledWorld {
 
 export function seedCompiled(store: WorldStore, compiled: CompiledWorld): void {
   if (!store.hasWorld(compiled.seed.world.id)) {
-    store.insertSeedWorld(compiled.seed);
-    for (const item of compiled.materials) {
-      store.insertContextItem(item);
-    }
+    store.transaction(() => {
+      store.insertSeedWorld(compiled.seed);
+      for (const item of compiled.materials) {
+        store.insertContextItem(item);
+      }
+    });
   }
 }

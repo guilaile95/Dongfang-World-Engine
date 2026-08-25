@@ -89,12 +89,27 @@ export class PlayHost {
     return worldCatalog(this.config);
   }
 
-  public worldsList(): Array<{ id: string; title: string; hasSave: boolean }> {
+  public worldsList(): Array<{ id: string; title: string; description: string; hasSave: boolean }> {
     return this.worlds().map((row) => ({
       id: row.id,
       title: row.title,
+      description: row.description,
       hasSave: existsSync(row.savePath),
     }));
+  }
+
+  public getPlayerProfile(worldId: string): import("../persist/store.js").PlayerProfile | null {
+    if (!this.session || this.currentId !== worldId) {
+      return null;
+    }
+    return this.session.store.getPlayerProfile(worldId);
+  }
+
+  public setPlayerProfile(profile: import("../persist/store.js").PlayerProfile): void {
+    if (!this.session || this.currentId !== profile.worldId) {
+      throw new Error("NO_SESSION");
+    }
+    this.session.store.setPlayerProfile(profile);
   }
 
   public currentWorldId(): string | null {
@@ -102,17 +117,18 @@ export class PlayHost {
   }
 
   public bootstrap(): {
-    worlds: Array<{ id: string; title: string; hasSave: boolean }>;
+    worlds: Array<{ id: string; title: string; description: string; hasSave: boolean }>;
     currentWorldId: string | null;
     state: PlayerState | null;
     messages: ChatMessage[];
+    playerProfile: import("../persist/store.js").PlayerProfile | null;
     roleSwitch: "blocked";
     roleSwitchReason: string;
   } {
     if (!this.session) {
       const first = this.worlds()[0];
-      if (first) {
-        this.open(first.id, existsSync(first.savePath) ? "resume" : "new");
+      if (first && existsSync(first.savePath)) {
+        this.open(first.id, "resume");
       }
     }
     return {
@@ -120,6 +136,7 @@ export class PlayHost {
       currentWorldId: this.currentId,
       state: this.session ? playerState(this.session) : null,
       messages: this.session ? chatHistory(this.session) : [],
+      playerProfile: this.currentId ? this.getPlayerProfile(this.currentId) : null,
       roleSwitch: "blocked",
       roleSwitchReason: "当前世界只有一个玩家身份，不能安全改成别的观察者。",
     };

@@ -121,17 +121,19 @@ export function packFromSlice(
 }
 
 export function renderContinuity(pack: ContinuityPack): string {
-  const recent = pack.recentScenes.join(" || ") || "（无）";
-  const recall = pack.episodic.map((row) => row.body).join(" / ") || "（无）";
+  const recent = pack.recentScenes.join("\n---\n") || "（无）";
+  const recall = pack.episodic.map((row) => row.body).join("\n") || "（无）";
   const who = pack.essentials.observerName ? `你是${pack.essentials.observerName}` : "你在场";
   const lines = [
-    `当前状态（权威）：世界=${pack.state.worldName}；时间=${pack.state.time}；地点=${pack.state.locationName}；在场=${pack.state.present}；可见物品=${pack.state.visibleItems}；你所知的说法=${pack.state.knownClaims}；当下可见=${pack.state.ambient}；你的印象=${pack.state.impressions}`,
-    `最近场景（非权威，不能覆盖已发生之事）：${recent}`,
-    `稳定设定：${who}；公开规则=${pack.essentials.publicRules}`,
-    `相关回忆（可见性之后，非事实权威）：${recall}`,
+    `【世界】${pack.state.worldName}　【时间】${pack.state.time}　【地点】${pack.state.locationName}`,
+    `【在场】${pack.state.present}　【物品】${pack.state.visibleItems}`,
+    `【说法】${pack.state.knownClaims}　【氛围】${pack.state.ambient}　【印象】${pack.state.impressions}`,
+    `【近况】\n${recent}`,
+    `【设定】${who}；${pack.essentials.publicRules}`,
+    `【回忆】${recall}`,
   ];
   if (pack.rollingSummary) {
-    lines.push(`滚动摘要（非权威，可重建，不能覆盖事实）：${pack.rollingSummary}`);
+    lines.push(`【摘要】${pack.rollingSummary}`);
   }
   return lines.join("\n");
 }

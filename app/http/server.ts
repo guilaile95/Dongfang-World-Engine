@@ -60,11 +60,44 @@ async function handle(
           messages: host.messages(),
           currentWorldId: host.currentWorldId(),
           worlds: host.worldsList(),
+          playerProfile: host.getPlayerProfile(body.worldId),
         });
       } catch (error) {
         const message = error instanceof Error && error.message.startsWith("BACKUP_FAILED")
           ? "备份旧存档失败，未进行新开，原存档已保留。"
           : "无法切换世界";
+        json(res, 500, { error: message });
+      }
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/profile") {
+      const worldId = url.searchParams.get("worldId") ?? "";
+      if (!worldId) {
+        json(res, 400, { error: "worldId required" });
+        return;
+      }
+      json(res, 200, { playerProfile: host.getPlayerProfile(worldId) });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/profile") {
+      const body = JSON.parse(await readBody(req)) as Partial<import("../persist/store.js").PlayerProfile>;
+      if (!body.worldId) {
+        json(res, 400, { error: "worldId required" });
+        return;
+      }
+      try {
+        host.setPlayerProfile({
+          worldId: body.worldId,
+          name: body.name ?? "",
+          age: body.age ?? "",
+          gender: body.gender ?? "",
+          background: body.background ?? "",
+          startingLocation: body.startingLocation ?? "",
+          personality: body.personality ?? "",
+        });
+        json(res, 200, { ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "error";
         json(res, 500, { error: message });
       }
       return;

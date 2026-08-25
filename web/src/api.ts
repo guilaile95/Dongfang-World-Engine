@@ -17,7 +17,18 @@ export interface ChatMessage {
 export interface WorldChoice {
   id: string;
   title: string;
+  description: string;
   hasSave: boolean;
+}
+
+export interface PlayerProfile {
+  worldId: string;
+  name: string;
+  age: string;
+  gender: string;
+  background: string;
+  startingLocation: string;
+  personality: string;
 }
 
 export interface Bootstrap {
@@ -25,6 +36,7 @@ export interface Bootstrap {
   currentWorldId: string | null;
   state: PlayerState | null;
   messages: ChatMessage[];
+  playerProfile: PlayerProfile | null;
   roleSwitch: "blocked";
 }
 
@@ -41,6 +53,7 @@ export async function switchWorld(worldId: string, mode: "resume" | "new"): Prom
   messages: ChatMessage[];
   currentWorldId: string;
   worlds?: WorldChoice[];
+  playerProfile: PlayerProfile | null;
 }> {
   const res = await fetch("/api/world", {
     method: "POST",
@@ -64,7 +77,19 @@ export async function switchWorld(worldId: string, mode: "resume" | "new"): Prom
     messages: ChatMessage[];
     currentWorldId: string;
     worlds?: WorldChoice[];
+    playerProfile: PlayerProfile | null;
   }>;
+}
+
+export async function saveProfile(profile: PlayerProfile): Promise<void> {
+  const res = await fetch("/api/profile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) {
+    throw new Error("存档人物信息失败");
+  }
 }
 
 export async function playTurn(

@@ -110,6 +110,15 @@ CREATE TABLE IF NOT EXISTS ui_messages (
   text TEXT NOT NULL,
   parsed INTEGER NOT NULL DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS player_profiles (
+  world_id TEXT PRIMARY KEY REFERENCES worlds(id),
+  name TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT '',
+  background TEXT NOT NULL DEFAULT '',
+  starting_location TEXT NOT NULL DEFAULT '',
+  personality TEXT NOT NULL DEFAULT ''
+);
 `;
 
 export interface ContextItemRecord {
@@ -633,4 +642,58 @@ export class WorldStore {
     ).all(worldId) as Array<{ role: "player" | "world" | "notice"; text: string; parsed: number }>;
     return rows.map((row) => ({ role: row.role, text: row.text, parsed: row.parsed === 1 }));
   }
+
+  public getPlayerProfile(worldId: string): PlayerProfile | null {
+    const row = this.sqlite.prepare("SELECT * FROM player_profiles WHERE world_id = ?").get(worldId) as {
+      world_id: string;
+      name: string;
+      age: string;
+      gender: string;
+      background: string;
+      starting_location: string;
+      personality: string;
+    } | undefined;
+    if (!row) {
+      return null;
+    }
+    return {
+      worldId: row.world_id,
+      name: row.name,
+      age: row.age,
+      gender: row.gender,
+      background: row.background,
+      startingLocation: row.starting_location,
+      personality: row.personality,
+    };
+  }
+
+  public setPlayerProfile(profile: PlayerProfile): void {
+    this.sqlite.prepare(
+      `INSERT INTO player_profiles (world_id, name, age, gender, background, starting_location, personality)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(world_id) DO UPDATE SET
+         name=excluded.name, age=excluded.age, gender=excluded.gender,
+         background=excluded.background, starting_location=excluded.starting_location,
+         personality=excluded.personality`,
+    ).run(
+      profile.worldId,
+      profile.name,
+      profile.age,
+      profile.gender,
+      profile.background,
+      profile.startingLocation,
+      profile.personality,
+    );
+  }
 }
+
+export interface PlayerProfile {
+  worldId: string;
+  name: string;
+  age: string;
+  gender: string;
+  background: string;
+  startingLocation: string;
+  personality: string;
+}
+
