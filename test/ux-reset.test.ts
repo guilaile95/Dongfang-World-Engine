@@ -6,13 +6,27 @@ import { describe, expect, it } from "vitest";
 import { PlayHost } from "../app/http/host.js";
 import { resetWorldCatalog } from "../app/http/catalog.js";
 import { createNarrator, stubNarrator } from "../app/narrator/client.js";
-import { hasNarrationLeak } from "../app/narrator/project.js";
+import {
+  hasNarrationLeak,
+  hasPerspectiveViolation,
+  parseOpeningOutput,
+  renderOpeningPrompt,
+} from "../app/narrator/project.js";
 import { WorldStore, type PlayerProfile } from "../app/persist/store.js";
 import { assemblePrompt } from "../app/visibility/assemble.js";
-import { openWorld } from "../app/session.js";
+import { openWorld, Session } from "../app/session.js";
+import { loadWorldFile } from "../app/world/load.js";
 import { WORLD_ID } from "../app/world/seed.js";
 import type { AppConfig } from "../app/config.js";
 import type { ModelClient } from "../app/model/client.js";
+
+function safeRmSync(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch {
+    // Ignore cleanup error on Windows temp
+  }
+}
 
 function fakeConfig(playDir: string): AppConfig {
   return {
@@ -81,10 +95,8 @@ describe("UX Reset: Narration Streaming Boundary", () => {
       async stream(req: import("../app/model/types.js").StreamRequest) {
         callCount++;
         if (req.purpose === "narrator-repair") {
-          // Repair succeeds with clean prose
           return { text: "夜风吹过街道，晚自习后的灯光渐渐熄灭。", record: dummyRecord };
         }
-        // First projection leaks internal state
         return { text: "夜风吹过街道……当前状态（权威）：loc-city……", record: dummyRecord };
       },
     } as unknown as ModelClient;
@@ -104,17 +116,13 @@ describe("UX Reset: Narration Streaming Boundary", () => {
       (chunk) => receivedChunks.push(chunk),
     );
 
-    // 1. Raw leaky chunks never entered collector
     for (const chunk of receivedChunks) {
       expect(hasNarrationLeak(chunk)).toBe(false);
       expect(chunk).not.toContain("当前状态");
       expect(chunk).not.toContain("loc-city");
     }
 
-    // 2. Repair called at most once
-    expect(callCount).toBe(2); // 1 projection + 1 repair
-
-    // 3. Collector received the clean repaired prose
+    expect(callCount).toBe(2);
     const assembledText = receivedChunks.join("");
     expect(assembledText).toBe("夜风吹过街道，晚自习后的灯光渐渐熄灭。");
     expect(result).toBe("夜风吹过街道，晚自习后的灯光渐渐熄灭。");
@@ -146,12 +154,192 @@ describe("UX Reset: Narration Streaming Boundary", () => {
       (chunk) => receivedChunks.push(chunk),
     );
 
-    expect(callCount).toBe(2); // 1 projection + 1 repair attempt
+    expect(callCount).toBe(2);
     expect(result).toBe("世界在继续运行。");
     const assembledText = receivedChunks.join("");
     expect(assembledText).toBe("世界在继续运行。");
     for (const chunk of receivedChunks) {
       expect(hasNarrationLeak(chunk)).toBe(false);
+    }
+  });
+});
+
+describe("Step 18B: Strict Second-Person Perspective", () => {
+  it("detects 3rd-person narrator referring to player outside of dialogue", () => {
+    expect(hasPerspectiveViolation("林念安把书包放到桌上，抬头看了一眼窗外。", "林念安")).toBe(true);
+    expect(hasPerspectiveViolation("林念安转过身，对同桌笑了笑。", "林念安")).toBe(true);
+    expect(hasPerspectiveViolation("赵明朗推开门走了进来。", "赵明朗")).toBe(true);
+  });
+
+  it("allows player name inside NPC spoken dialogue quotes", () => {
+    expect(hasPerspectiveViolation("同桌转过头拍了拍你：「林念安，你作业写完了吗？」", "林念安")).toBe(false);
+    expect(hasPerspectiveViolation("老班在黑板前喊了一声：“赵明朗，你上来解这道题。”", "赵明朗")).toBe(false);
+  });
+
+  it("triggers perspective repair when model uses 3rd-person perspective in opening", async () => {
+    let repairCalled = false;
+    const thirdPersonClient: ModelClient = {
+      records: [],
+      lastRecord: () => undefined,
+      async stream(req: import("../app/model/types.js").StreamRequest) {
+        if (req.purpose === "narrator-repair") {
+          repairCalled = true;
+          return {
+            text: "<narrative>暴雨拍打着教室的窗户，你把书包放到桌旁。身边的同桌神色慌张地在抽屉里翻找着什么。</narrative>\n【眼下】同桌神色慌张。\n【选项】\nA. 问他怎么了\nB. 观察四周\nC. 不理会\nD. 离开教室\nE. 一把抓起他的手腕\nF. 问他是不是作业忘带了",
+            record: dummyRecord,
+          };
+        }
+        return {
+          text: "<narrative>暴雨拍打着教室的窗户，林念安把书包放到桌旁。身边的同桌神色慌张地在抽屉里翻找着什么。</narrative>\n【眼下】同桌神色慌张。\n【选项】\nA. 问他怎么了\nB. 观察四周\nC. 不理会\nD. 离开教室\nE. 一把抓起他的手腕\nF. 问他是不是作业忘带了",
+          record: dummyRecord,
+        };
+      },
+    } as unknown as ModelClient;
+
+    const narrator = createNarrator(thirdPersonClient, "dummy-key");
+    const result = await narrator.projectOpening!({
+      worldTitle: "龙族",
+      era: "仕兰中学时期",
+      timeLabel: "2009年秋 · 傍晚",
+      publicPremise: "最近几起尚未结案的失踪案闹得满城风雨。",
+      locationName: "教学楼",
+      presentCharacters: ["同学"],
+      publicRules: [],
+      publicLore: [],
+      publicBeat: "新闻播报着雨夜失踪事件。",
+      profile: {
+        worldId: "longzu",
+        name: "林念安",
+        age: "18",
+        gender: "男",
+        background: "高三学生",
+        startingLocation: "教学楼",
+        personality: "沉着",
+      },
+    });
+
+    expect(repairCalled).toBe(true);
+    expect(result.narrative).toContain("你把书包");
+    expect(hasPerspectiveViolation(result.narrative, "林念安")).toBe(false);
+  });
+});
+
+describe("Step 18B: Opening Contract & Dynamic Suggestions", () => {
+  it("parses narrative, currentSituation, and 6 diverse suggestions (A-D, E extreme, F absurd)", () => {
+    const raw = `<narrative>
+窗外雷声沉闷地滚过天际，暴雨像水帘一样倾泻在仕兰中学的教学楼玻璃上。
+
+你刚把练习册收进书包，身旁的同桌突然猛地拉开抽屉，双手在里面疯狂翻找，脸色煞白得吓人。教室前方的广播喇叭滋滋作响，断断续续播着本地新闻：“……关于昨夜滨海大道的连环失踪……请市民注意安全……”
+
+同桌的呼吸急促起来，抬头惊恐地看了你一眼，嘴唇颤抖着似乎想说什么。
+</narrative>
+【眼下】放学后的暴雨声中，广播正播报连环失踪案，同桌在抽屉里摸索并惊恐地看着你。
+【选项】
+A. 主动低声询问同桌到底出了什么事
+B. 仔细观察他抽屉里到底有什么异常物件
+C. 转头向其他同学打听刚才广播里的失踪案细节
+D. 不管闲事，背上书包直接走出教室
+E. 一把按住他的抽屉，厉声质问他到底隐瞒了什么
+F. 故作严肃地拍拍他的肩膀说「兄弟，我看你印堂发黑，不如我给你算一卦」`;
+
+    const parsed = parseOpeningOutput(raw, "教学楼");
+    expect(parsed.narrative).toContain("仕兰中学");
+    expect(parsed.narrative).toContain("连环失踪");
+    expect(parsed.currentSituation).toContain("放学后的暴雨声中");
+    expect(parsed.suggestions.length).toBe(6);
+
+    const [a, b, c, d, e, f] = parsed.suggestions;
+    expect(a?.key).toBe("A");
+    expect(a?.type).toBe("constructive");
+    expect(e?.key).toBe("E");
+    expect(e?.type).toBe("extreme");
+    expect(f?.key).toBe("F");
+    expect(f?.type).toBe("absurd");
+  });
+
+  it("Opening Retrieval Receipt: retrieves player-legal world lore and NEVER exposes secret markers", async () => {
+    const playDir = mkdtempSync(join(tmpdir(), "dwe-receipt-test-"));
+    process.env.DWE_PLAY_DIR = playDir;
+    resetWorldCatalog();
+
+    try {
+      const config = fakeConfig(playDir);
+      const host = new PlayHost(config, true);
+      host.open("riverside-inn", "new");
+
+      const session = (host as any).session as Session;
+      const profile: PlayerProfile = {
+        worldId: "riverside-inn",
+        name: "李若晨",
+        age: "20",
+        gender: "男",
+        background: "寻找失踪朋友的旅人",
+        startingLocation: "堂屋",
+        personality: "机敏",
+      };
+
+      const opening = await host.startLife(profile);
+      expect(opening.message.role).toBe("world");
+      expect(opening.state.era).toBe("元和年间");
+      expect(opening.state.timeLabel).toBe("元和三年 · 清晨");
+      expect(opening.state.publicPremise).toContain("平静的小镇客栈");
+      expect(opening.state.currentSituation).toBeTruthy();
+      expect(opening.state.suggestions?.length).toBe(6);
+
+      // Verify no secret markers in player-facing opening state
+      const stateStr = JSON.stringify(opening.state);
+      expect(stateStr).not.toContain("loc-cellar");
+      expect(stateStr).not.toContain("guest-li-bag");
+
+      host.close();
+    } finally {
+      delete process.env.DWE_PLAY_DIR;
+      resetWorldCatalog();
+      safeRmSync(playDir);
+    }
+  });
+});
+
+describe("Step 18B: World Does Not Revolve Around Player", () => {
+  it("when player ignores the hook, world does not force it repeatedly but maintains causal state", async () => {
+    const playDir = mkdtempSync(join(tmpdir(), "dwe-no-revolve-"));
+    process.env.DWE_PLAY_DIR = playDir;
+    resetWorldCatalog();
+
+    try {
+      const config = fakeConfig(playDir);
+      const host = new PlayHost(config, true);
+      host.open("riverside-inn", "new");
+
+      const profile: PlayerProfile = {
+        worldId: "riverside-inn",
+        name: "李若晨",
+        age: "20",
+        gender: "男",
+        background: "普通客人",
+        startingLocation: "堂屋",
+        personality: "安分守己",
+      };
+
+      // 1. Opening presents situation
+      await host.startLife(profile);
+
+      // 2. Player explicitly ignores hook: "我不管其他事，在堂屋找张桌子坐下要碗热茶喝。"
+      const turn1 = await host.playTurn("我不管其他事，在堂屋找张桌子坐下要碗热茶喝。", "turn-1", () => undefined);
+      expect(turn1.state.locationName).toBe("堂屋");
+      // Mundane life turn does not force a 6-option decision modal
+      expect(turn1.state.suggestions).toBeUndefined();
+
+      // 3. Turn 2: player drinks tea calmly
+      const turn2 = await host.playTurn("我慢条斯理地把热茶喝完，稍作歇息。", "turn-2", () => undefined);
+      expect(turn2.state.locationName).toBe("堂屋");
+      expect(turn2.state.suggestions).toBeUndefined();
+
+      host.close();
+    } finally {
+      delete process.env.DWE_PLAY_DIR;
+      resetWorldCatalog();
+      safeRmSync(playDir);
     }
   });
 });
@@ -190,7 +378,6 @@ describe("UX Reset: Engine Player Identity & Persistence", () => {
 
       store1.initializePlayerProfile(profile);
 
-      // Verify immediate snapshot
       const snap1 = store1.snapshot("test-world");
       const player1 = snap1.characters.find((c) => c.kind === "player")!;
       expect(player1.name).toBe("林念安");
@@ -198,7 +385,6 @@ describe("UX Reset: Engine Player Identity & Persistence", () => {
 
       store1.close();
 
-      // Verify reopen from SQLite
       const store2 = new WorldStore(dbPath);
       const snap2 = store2.snapshot("test-world");
       const player2 = snap2.characters.find((c) => c.kind === "player")!;
@@ -210,7 +396,7 @@ describe("UX Reset: Engine Player Identity & Persistence", () => {
       expect(savedProfile?.background).toBe("高三学生，备战高考。");
       store2.close();
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      safeRmSync(tempDir);
     }
   });
 
@@ -243,7 +429,7 @@ describe("UX Reset: Engine Player Identity & Persistence", () => {
 
       store.close();
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      safeRmSync(tempDir);
     }
   });
 });
@@ -281,7 +467,6 @@ describe("UX Reset: Player Self-Context vs NPC Epistemic Privacy", () => {
 
       const snapshot = store.snapshot("test-world");
 
-      // Player continuity pack
       const playerPack = assemblePrompt({
         snapshot,
         observerId: "char-player",
@@ -291,11 +476,9 @@ describe("UX Reset: Player Self-Context vs NPC Epistemic Privacy", () => {
       expect(playerPack.prompt).toContain("汽修店");
       expect(playerPack.prompt).toContain("少言寡语");
 
-      // NPC continuity pack (MUST NOT have player's private profile)
       const npcPack = assemblePrompt({
         snapshot,
         observerId: "char-npc",
-        // No player profile passed to NPC!
       });
       expect(npcPack.prompt).toContain("你是同学");
       expect(npcPack.prompt).not.toContain("汽修店");
@@ -304,7 +487,7 @@ describe("UX Reset: Player Self-Context vs NPC Epistemic Privacy", () => {
 
       store.close();
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      safeRmSync(tempDir);
     }
   });
 });
@@ -338,26 +521,22 @@ describe("UX Reset: Opening Semantics & Idempotency", () => {
 
       const opening = await host.startLife(profile, () => undefined);
 
-      // Verify opening result
       expect(opening.message.role).toBe("world");
       expect(opening.message.text).toBeTruthy();
       expect(opening.state.characterName).toBe("李若晨");
       expect(opening.state.locationName).toBe("堂屋");
 
-      // Verify no interpreter / worldTick / event advancement occurred
       const snapAfter = store.snapshot("riverside-inn");
       expect(snapAfter.world.time).toBe(timeBefore);
       expect(snapAfter.world.revision).toBe(revBefore);
       const eventsAfter = store.sqlite.prepare("SELECT COUNT(*) as count FROM events WHERE world_id = ?").get("riverside-inn") as { count: number };
       expect(eventsAfter.count).toBe(eventsBefore.count);
 
-      // Verify UI message history contains only 1 world message (no synthetic player message!)
       const messages = host.messages();
       expect(messages.length).toBe(1);
       expect(messages[0]!.role).toBe("world");
       expect(messages[0]!.text).toBe(opening.message.text);
 
-      // Verify idempotency: calling startLife again returns the existing opening without re-generating
       const secondCall = await host.startLife(profile, () => undefined);
       expect(secondCall.message.text).toBe(opening.message.text);
       expect(host.messages().length).toBe(1);
@@ -366,7 +545,7 @@ describe("UX Reset: Opening Semantics & Idempotency", () => {
     } finally {
       delete process.env.DWE_PLAY_DIR;
       resetWorldCatalog();
-      rmSync(playDir, { recursive: true, force: true });
+      safeRmSync(playDir);
     }
   });
 });
@@ -414,7 +593,7 @@ describe("UX Reset: Test Data Isolation Guarantee", () => {
     } finally {
       delete process.env.DWE_PLAY_DIR;
       resetWorldCatalog();
-      rmSync(testPlayDir, { recursive: true, force: true });
+      safeRmSync(testPlayDir);
     }
   });
 });

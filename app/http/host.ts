@@ -136,18 +136,23 @@ export class PlayHost {
 
     this.session.store.initializePlayerProfile(profile);
 
-    const text = await this.session.projectOpening(profile, onChunk);
+    const parsed = await this.session.projectOpening(profile, onChunk);
 
     this.session.store.insertUiMessage({
       worldId,
       role: "world",
-      text,
+      text: parsed.narrative,
       parsed: true,
     });
 
+    const state = playerState(this.session, {
+      currentSituation: parsed.currentSituation,
+      suggestions: parsed.suggestions,
+    });
+
     return {
-      state: playerState(this.session),
-      message: { role: "world", text, parsed: true },
+      state,
+      message: { role: "world", text: parsed.narrative, parsed: true },
     };
   }
 
@@ -275,7 +280,29 @@ export class PlayHost {
         text: turn.text,
         parsed,
       });
-      const result: TurnResult = { text: turn.text, parsed, state: playerState(session) };
+
+      let suggestions: import("./view.js").ActionSuggestion[] | undefined = undefined;
+      let currentSituation: string | null = null;
+      if (turn.dialogue) {
+        suggestions = [
+          { key: "A", label: `如实回应${turn.dialogue.addresseeName}，说明自己的情况`, type: "constructive" },
+          { key: "B", label: `反问${turn.dialogue.addresseeName}，打听更多细节`, type: "constructive" },
+          { key: "C", label: `含糊应付过去，转移话题`, type: "constructive" },
+          { key: "D", label: `不予理会，自顾自做自己的事`, type: "constructive" },
+          { key: "E", label: `直接挑明疑点，严肃质问${turn.dialogue.addresseeName}`, type: "extreme" },
+          { key: "F", label: `一本正经地开个玩笑逗逗${turn.dialogue.addresseeName}`, type: "absurd" },
+        ];
+        currentSituation = `眼下：${turn.dialogue.addresseeName}正在和你交谈。`;
+      }
+
+      const result: TurnResult = {
+        text: turn.text,
+        parsed,
+        state: playerState(session, {
+          currentSituation,
+          ...(suggestions ? { suggestions } : {}),
+        }),
+      };
       this.done.set(turnId, { chunks, result });
       while (this.done.size > 32) {
         const first = this.done.keys().next().value;

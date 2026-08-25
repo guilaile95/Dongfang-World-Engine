@@ -3,6 +3,9 @@
 id: riverside-inn
 public_name: 临河客栈
 time: day-1-morning
+era: 元和年间
+time_label: 元和三年 · 清晨
+public_premise: 平静的小镇客栈，往来旅人的相遇之地。最近镇上因一位李姓客人失踪而流言纷纷。
 
 ## Rules
 [public] 地窖里的物事只有掌柜清楚，旁人不会随口知道。

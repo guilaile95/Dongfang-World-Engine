@@ -25,6 +25,9 @@ function parseStructured(text: string): WorldSource {
   let id = "";
   let publicName = "";
   let time = "t0";
+  let era = "";
+  let timeLabel = "";
+  let publicPremise = "";
   let i = 0;
   while (i < lines.length && !lines[i]?.startsWith("## ")) {
     const line = lines[i]?.trim() ?? "";
@@ -36,6 +39,12 @@ function parseStructured(text: string): WorldSource {
       publicName = line.slice(12).trim();
     } else if (line.startsWith("time:")) {
       time = line.slice(5).trim();
+    } else if (line.startsWith("era:")) {
+      era = line.slice(4).trim();
+    } else if (line.startsWith("time_label:")) {
+      timeLabel = line.slice(11).trim();
+    } else if (line.startsWith("public_premise:")) {
+      publicPremise = line.slice(15).trim();
     }
     i += 1;
   }
@@ -55,12 +64,20 @@ function parseStructured(text: string): WorldSource {
   if (locations.length === 0 || characters.length === 0) {
     throw new Error("WORLD_SOURCE_EMPTY: structured source needs Locations and Characters");
   }
+  const chronology: import("./source.js").WorldChronology | undefined = era || timeLabel || publicPremise
+    ? {
+        era: era || "当代",
+        timeLabel: timeLabel || time,
+        publicPremise: publicPremise || "平静的世界在日常运转。",
+      }
+    : undefined;
   return {
     id,
     packageTitle,
     publicName,
     time,
     sourceKind: "structured",
+    ...(chronology ? { chronology } : {}),
     rules,
     locations,
     characters,
@@ -158,12 +175,19 @@ function parseProtocol(text: string): WorldSource {
     knownBy: [{ characterId: "char-roommate", state: "rumor" }],
   });
 
+  const chronology: import("./source.js").WorldChronology = {
+    era: "仕兰中学时期",
+    timeLabel: "2009年秋 · 傍晚",
+    publicPremise: "最近这座滨海城市接连发生几起尚未解释的雨夜失踪事件，老城区的街头巷尾议论纷纷。",
+  };
+
   return {
     id,
     packageTitle,
     publicName: "当代世界",
     time: "当代",
     sourceKind: "protocol",
+    chronology,
     rules: rules.length > 0
       ? rules
       : [{ text: "世界不围绕玩家存在", visibility: "public" }],

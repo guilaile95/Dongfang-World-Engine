@@ -287,29 +287,47 @@ export class Session {
   public async projectOpening(
     profile: import("./persist/store.js").PlayerProfile,
     onChunk?: (text: string) => void,
-  ): Promise<string> {
+  ): Promise<import("./narrator/project.js").ParsedOpening> {
     const worldId = this.compiled.seed.world.id;
     const snapshot = this.store.snapshot(worldId);
-    const assembled = assemblePrompt({
-      snapshot,
-      observerId: this.compiled.playerId,
-      ambient: this.ambient,
-      playerProfile: profile,
-    });
+    const player = snapshot.characters.find((c) => c.id === this.compiled.playerId);
+    const location = snapshot.locations.find((l) => l.id === player?.locationId);
+    const present = snapshot.characters
+      .filter((c) => c.id !== this.compiled.playerId && c.locationId === player?.locationId)
+      .map((c) => c.name);
 
-    const envelope: NarratorEnvelope = {
-      playerContribution: "",
-      observerContext: assembled.prompt,
-      committed: [],
-      uncommitted: [],
-      npcReply: null,
-      ephemeral: {
-        recentScenes: [],
-        ambient: this.ambient,
-      },
+    const query = [location?.name, profile.startingLocation, profile.background].filter(Boolean).join(" ");
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, query, { kinds: ["lore"], limit: 4 });
+
+    const input: import("./narrator/project.js").OpeningPromptInput = {
+      worldTitle: this.compiled.packageTitle,
+      era: this.compiled.chronology?.era || "当代",
+      timeLabel: this.compiled.chronology?.timeLabel || snapshot.world.time,
+      publicPremise: this.compiled.chronology?.publicPremise || "平静的世界在日常运转。",
+      locationName: location?.name || profile.startingLocation || "普通城市",
+      presentCharacters: present,
+      publicRules: snapshot.world.rules,
+      publicLore: loreHits.map((hit) => hit.body),
+      publicBeat: this.compiled.theme.publicBeat,
+      profile,
     };
 
-    return this.narrator.project(envelope, onChunk);
+    if (this.narrator.projectOpening) {
+      return this.narrator.projectOpening(input, onChunk);
+    }
+
+    const narrative = await this.narrator.project(
+      {
+        playerContribution: "",
+        observerContext: `【世界】${input.worldTitle}【地点】${input.locationName}`,
+        committed: [],
+        uncommitted: [],
+        npcReply: null,
+        ephemeral: { recentScenes: [], ambient: this.ambient },
+      },
+      onChunk,
+    );
+    return import("./narrator/project.js").then((m) => m.parseOpeningOutput(narrative, input.locationName));
   }
 
   public close(): void {

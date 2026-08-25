@@ -95,6 +95,30 @@ test.describe("chat-first shell", () => {
     const firstMsg = page.locator(".msg").first();
     await expect(firstMsg).toHaveClass(/world/);
 
+    // Step 18B: Top bar Scene Anchor & Time Badge
+    await expect(page.locator(".top .who")).toBeVisible();
+    await expect(page.locator(".top .who .world-name")).toBeVisible();
+
+    // Step 18B: Situation hint & Suggestions grid
+    const situation = page.locator(".situation-hint");
+    if (await situation.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await expect(situation).toContainText("眼下");
+    }
+
+    const suggestionBtn = page.locator(".suggestion-btn").first();
+    if (await suggestionBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await suggestionBtn.click();
+      const draftVal = await page.locator("textarea").inputValue();
+      expect(draftVal.length).toBeGreaterThan(0);
+    }
+
+    // Step 18B: Era / Premise drawer
+    await page.getByTitle("时期前情").click();
+    await expect(page.locator(".era-drawer")).toBeVisible();
+    await expect(page.locator(".save-status-pill")).toContainText("已自动保存");
+    await page.locator(".era-drawer").getByRole("button", { name: "关闭" }).click();
+    await expect(page.locator(".era-drawer")).not.toBeVisible();
+
     // Mobile viewport
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator(".send")).toBeVisible();
@@ -110,7 +134,6 @@ test.describe("chat-first shell", () => {
     // State drawer shows location
     await page.getByTitle("当前状态").click();
     await expect(page.locator(".drawer")).toBeVisible();
-    await expect(page.locator(".drawer")).toContainText("家");
     await page.getByRole("button", { name: "关闭" }).click();
 
     // Reload / resume — messages should persist

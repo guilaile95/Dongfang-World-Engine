@@ -32,6 +32,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [eraOpen, setEraOpen] = useState(false);
   const [worldsOpen, setWorldsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState<WorldChoice | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: "world-select" });
@@ -288,15 +289,25 @@ export function App() {
     <div className="shell">
       <header className="top">
         <div className="who">
-          <span className="world-name">{state?.worldTitle ?? "东方狂想"}</span>
+          <span className="world-name">
+            {state?.era ? `${state.era} · ${state.locationName || "普通城市"}` : (state?.worldTitle ?? "东方狂想")}
+          </span>
           {playerProfile?.name && (
             <>
               <span className="dot">·</span>
               <span className="char-name">{playerProfile.name}</span>
             </>
           )}
+          {state?.timeLabel && (
+            <span className="time-badge">{state.timeLabel}</span>
+          )}
         </div>
         <div className="actions">
+          <button type="button" className="icon-btn" title="时期前情" onClick={() => setEraOpen(true)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/>
+            </svg>
+          </button>
           <button type="button" className="icon-btn" title="当前状态" onClick={() => setDrawerOpen(true)}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4" /><path d="M6 20v-1a6 6 0 0 1 12 0v1" />
@@ -340,13 +351,37 @@ export function App() {
       </div>
 
       <footer className="composer">
+        {state?.currentSituation && (
+          <div className="situation-hint">
+            <span className="situation-tag">💡 眼下</span>
+            <span className="situation-text">{state.currentSituation}</span>
+          </div>
+        )}
+        {state?.suggestions && state.suggestions.length > 0 && !busy && (
+          <div className="suggestions-grid">
+            {state.suggestions.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                className={`suggestion-btn ${opt.type}`}
+                onClick={() => {
+                  setDraft(opt.label);
+                  setTimeout(() => composerRef.current?.focus(), 0);
+                }}
+              >
+                <span className="opt-key">{opt.key}.</span>
+                <span className="opt-label">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {error && <div className="error-line">{error}</div>}
         {busy && !error && <div className="typing-dot"><span /><span /><span /></div>}
         <div className="row">
           <textarea
             ref={composerRef}
             value={draft}
-            placeholder="想做什么，直接说。"
+            placeholder="想做什么，直接说。也可以点击上方选项填入。"
             disabled={busy}
             onChange={(e) => {
               setDraft(e.target.value);
@@ -374,6 +409,51 @@ export function App() {
           </button>
         </div>
       </footer>
+
+      {/* Era / Premise Drawer */}
+      {eraOpen && (
+        <div className="overlay" onClick={() => setEraOpen(false)}>
+          <aside className="drawer era-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header">
+              <h2>{state?.worldTitle ?? "世界背景"}</h2>
+              <span className="save-status-pill">✓ 已自动保存</span>
+            </div>
+            <div className="drawer-rows">
+              {state?.era && (
+                <div className="drawer-row">
+                  <span>时期</span>
+                  <strong>{state.era}</strong>
+                </div>
+              )}
+              {state?.timeLabel && (
+                <div className="drawer-row">
+                  <span>时间</span>
+                  {state.timeLabel}
+                </div>
+              )}
+              {state?.locationName && (
+                <div className="drawer-row">
+                  <span>当前地点</span>
+                  {state.locationName}
+                </div>
+              )}
+              {state?.publicPremise && (
+                <div className="drawer-section">
+                  <span className="section-title">公开背景与大事</span>
+                  <p className="premise-body">{state.publicPremise}</p>
+                </div>
+              )}
+              {playerProfile?.background && (
+                <div className="drawer-section">
+                  <span className="section-title">你的身世</span>
+                  <p className="premise-body">{playerProfile.background}</p>
+                </div>
+              )}
+            </div>
+            <button type="button" className="close-btn" onClick={() => setEraOpen(false)}>关闭</button>
+          </aside>
+        </div>
+      )}
 
       {/* State Drawer */}
       {drawerOpen && state && (

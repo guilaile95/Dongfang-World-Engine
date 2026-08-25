@@ -1,5 +1,11 @@
 import type { Session } from "../session.js";
 
+export interface ActionSuggestion {
+  key: "A" | "B" | "C" | "D" | "E" | "F";
+  label: string;
+  type: "constructive" | "extreme" | "absurd";
+}
+
 /** Player-visible world slice. Never a snapshot, never engine IDs. */
 export interface PlayerState {
   worldTitle: string;
@@ -9,6 +15,11 @@ export interface PlayerState {
   locationName: string;
   carried: string[];
   nearby: string[];
+  era?: string;
+  timeLabel?: string;
+  publicPremise?: string;
+  currentSituation?: string | null;
+  suggestions?: ActionSuggestion[];
 }
 
 export interface ChatMessage {
@@ -23,9 +34,18 @@ export interface WorldOption {
   description: string;
   sourcePath: string;
   savePath: string;
+  era?: string;
+  timeLabel?: string;
+  publicPremise?: string;
 }
 
-export function playerState(session: Session): PlayerState {
+export function playerState(
+  session: Session,
+  extra?: {
+    currentSituation?: string | null;
+    suggestions?: ActionSuggestion[];
+  },
+): PlayerState {
   const compiled = session.compiled;
   const snap = session.store.snapshot(compiled.seed.world.id);
   const player = snap.characters.find((row) => row.id === compiled.playerId);
@@ -40,6 +60,11 @@ export function playerState(session: Session): PlayerState {
     nearby: snap.characters
       .filter((row) => row.id !== compiled.playerId && row.locationId === player?.locationId)
       .map((row) => row.name),
+    era: compiled.chronology?.era,
+    timeLabel: compiled.chronology?.timeLabel,
+    publicPremise: compiled.chronology?.publicPremise,
+    currentSituation: extra?.currentSituation ?? null,
+    ...(extra?.suggestions ? { suggestions: extra.suggestions } : {}),
   };
 }
 

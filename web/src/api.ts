@@ -1,3 +1,9 @@
+export interface ActionSuggestion {
+  key: "A" | "B" | "C" | "D" | "E" | "F";
+  label: string;
+  type: "constructive" | "extreme" | "absurd";
+}
+
 export interface PlayerState {
   worldTitle: string;
   worldName: string;
@@ -6,6 +12,11 @@ export interface PlayerState {
   locationName: string;
   carried: string[];
   nearby: string[];
+  era?: string;
+  timeLabel?: string;
+  publicPremise?: string;
+  currentSituation?: string | null;
+  suggestions?: ActionSuggestion[];
 }
 
 export interface ChatMessage {
@@ -19,6 +30,9 @@ export interface WorldChoice {
   title: string;
   description: string;
   hasSave: boolean;
+  era?: string;
+  timeLabel?: string;
+  publicPremise?: string;
 }
 
 export interface PlayerProfile {

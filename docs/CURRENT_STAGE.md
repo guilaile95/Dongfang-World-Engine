@@ -65,27 +65,30 @@ Start with:
 ```text
 CURRENT ENGINEERING STATE
 
-PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18_REAL_PLAY_CANDIDATE
+PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18B_REAL_PLAY_CANDIDATE
 ACTIVE_ISSUE: #68
 OPEN_PRS:
   - PR #73 (greenfield/owner-reset): Engine baseline, OPEN, awaiting Owner merge.
-  - PR #74 (feat/step18-chat-first-ui): Step 18 shell, DRAFT, OPEN, depends on #73.
+  - PR #74 (feat/step18-chat-first-ui): Step 18B UI & Opening Direction Candidate, DRAFT, OPEN.
 
-CURRENT_HEAD: feat/step18-chat-first-ui
-FOLLOW_UP_BLOCKERS_RESOLVED:
-  1. Streaming narration leak boundary: Model raw stream is buffered in server memory; presentation validation (hasNarrationLeak) runs before emission; single-shot presentation repair without advancing world state; safe fallback on secondary leak; safe chunked emission to browser. Verified with mock leak & fallback tests.
-  2. Engine Player Identity: Player Profile is transactionally written to player_profiles, and updates Character.name and Character.locationId (resolving startingLocation). Reopen persistence verified in SQLite.
-  3. Epistemic Privacy: Player Profile persona is injected into player self-context; strictly excluded from NPC observer context.
-  4. Dedicated Opening / Start Life: Separated from playTurn. Dedicated startLife / /api/opening endpoint projects initial opening scene with Player Profile + World Context without running Interpreter, worldTick, or creating synthetic player turns. World time, revision, and events count remain unchanged. Opening is idempotent across reloads.
-  5. Test Isolation Guarantee: Both Playwright E2E and Vitest verify data/local files and SHA-256 digests remain 100% untouched before and after test suites.
+OWNER_REAL_PLAY_2_FEEDBACK_RESOLVED:
+  1. Actionable Hook: Opening introduces active breaking events, anomalies, and immediate unresolved situations;
+  2. Strict Second-Person ("你"): Narrator locked to 2nd person, 3rd-person narrator references eliminated via perspective gate;
+  3. Timeline & Scene Anchor: Top bar displays `${era} · ${locationName} · ${timeLabel}` + "时期前情" modal with public lore and premise;
+  4. Real World Source Material: Opening pipeline retrieves legal public lore/beats without leaking secret lore;
+  5. High Info Density: Balanced ~350-450 character openings with rich IP specificity;
+  6. Dynamic Action Suggestions (A-F): 4 constructive + 1 extreme + 1 absurd suggestions as natural language inputs on actionable moments;
+  7. Clear Play Direction: "眼下" (Current Situation) bar provides immediate focus without artificial quest mechanics.
 
-VERIFICATION_GATES:
-  - Typecheck: PASS (Node + Web, 0 errors)
-  - Unit Tests: 95 passed (23 files)
-  - Build: PASS (dist/index.html + assets)
-  - Playwright E2E: 3 passed (data isolation, onboarding -> chat -> opening -> conversation -> fail-closed, safe new save)
-  - Fresh Real Play: 6 rounds + opening + resume passed on Longzu with gpt-5.6-luna (zero leaks, causal consistency verified).
+VERIFICATION_SUMMARY:
+  - Typecheck: 0 errors on Node and Web (exactOptionalPropertyTypes verified).
+  - Unit/Integration: 101 passed across 23 test files in Vitest.
+  - E2E: 3 passed in Playwright (desktop, mobile, safe new save, era drawer, suggestions).
+  - 5-Opening Benchmark on Longzu: 5/5 PASSED (Lin Nian'an, Lu Xiaolou, Zhao Minglang, Shen Yuewei, Xu Zi'ang).
+  - 8-Round Real Play on Longzu with gpt-5.6-luna: completed with 100% causal and perspective consistency.
+  - Test Data Isolation: data/local SHA-256 digests remain 100% untouched.
 
 NEXT_ACTION:
-  - Ready for Owner Real Play on PR #74 candidate. Do not merge #73 or #74 without Owner authorization.
+  - Push feat/step18-chat-first-ui to GitHub, verify CI, and hand off to Owner for Real Play #3.
+  - Do not merge #73 or #74 without Owner authorization.
 ```
