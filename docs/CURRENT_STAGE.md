@@ -65,9 +65,16 @@ Start with:
 ```text
 CURRENT ENGINEERING STATE
 
-EXACT_MAIN:
-PROJECT_STATUS: OWNER_GREENFIELD_RESET
+PROJECT_STATUS: OWNER_GREENFIELD_RESET / STEP_18_CANDIDATE
 ACTIVE_ISSUE: #68
-OPEN_PRS: do not merge #65/#67
-NEXT_ACTION: Items 4–8 of the real-play gate completed on this worktree (4c/5/6c/7/8 PASS). Next: Owner review of receipts; do not merge without authorization.
+OPEN_PRS:
+  - PR #73 (greenfield/owner-reset): Engine baseline passed Step 17 / real-play gate, OPEN, awaiting Owner merge.
+  - PR #74 (feat/step18-chat-first-ui): Step 18 Chat-first local play shell, DRAFT, OPEN, depends on #73.
+P1_STATUS:
+  - Safe new-save P1 resolved (existing save confirmation, pre-unlink verified backup, unique non-overwriting backup names, fail-closed, resume unchanged, player-safe privacy).
+SCOPE_BOUNDARIES:
+  - role switching = BLOCKED by current product model (single player identity in World Source).
+  - quick suggestions = DEFER (avoid verb menus).
+NEXT_ACTION:
+  - Owner Real Play on PR #74 candidate. Do not add speculative frontend features. Do not merge #73 or #74 without Owner authorization.
 ```

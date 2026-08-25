@@ -133,8 +133,50 @@ textarea {
 .world-row em { color: var(--accent); font-style: normal; margin-left: 8px; font-size: 12px; }
 .hint { color: var(--mute); font-size: 13px; margin-top: 16px; }
 
+.dialog {
+  width: min(380px, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  margin: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.dialog h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dialog-body {
+  color: var(--story);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.btn-danger {
+  background: var(--accent);
+  color: #1a1510;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-danger:hover {
+  opacity: 0.9;
+}
+
 @media (max-width: 720px) {
   .overlay { align-items: flex-end; }
+  .overlay:has(.dialog) { align-items: center; justify-content: center; }
   .drawer, .sheet {
     width: 100%;
     border-left: 0;

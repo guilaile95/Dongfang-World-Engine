@@ -1,4 +1,6 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { copyFileSync, existsSync, statSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
+import Database from "better-sqlite3";
 import { createNpcVoice, stubNpcVoice } from "../chat/npc.js";
 import type { AppConfig } from "../config.js";
 import { createModelClient } from "../model/client.js";
@@ -9,6 +11,56 @@ import { openWorld, Session, UNPARSED_HINT } from "../session.js";
 import { loadWorldFile } from "../world/load.js";
 import { worldCatalog } from "./catalog.js";
 import { chatHistory, playerState, type ChatMessage, type PlayerState, type WorldOption } from "./view.js";
+
+export function createSaveBackup(
+  savePath: string,
+  worldId: string,
+  copyFn: (src: string, dest: string) => void = copyFileSync,
+): string {
+  if (!existsSync(savePath)) {
+    return "";
+  }
+  const dir = dirname(savePath);
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const timestamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`;
+
+  let candidateName = `play-${worldId}.backup-${timestamp}.sqlite`;
+  let backupPath = join(dir, candidateName);
+  let counter = 1;
+  while (existsSync(backupPath)) {
+    candidateName = `play-${worldId}.backup-${timestamp}-${counter}.sqlite`;
+    backupPath = join(dir, candidateName);
+    counter++;
+  }
+
+  try {
+    copyFn(savePath, backupPath);
+    if (!existsSync(backupPath) || statSync(backupPath).size === 0) {
+      throw new Error("BACKUP_FILE_INVALID");
+    }
+    const verifyDb = new Database(backupPath, { readonly: true, fileMustExist: true });
+    try {
+      const row = verifyDb.prepare("SELECT id FROM worlds WHERE id = ?").get(worldId)
+        ?? verifyDb.prepare("SELECT id FROM worlds LIMIT 1").get();
+      if (!row) {
+        throw new Error("BACKUP_VERIFY_NO_WORLD");
+      }
+    } finally {
+      verifyDb.close();
+    }
+    return backupPath;
+  } catch (error) {
+    if (existsSync(backupPath)) {
+      try {
+        unlinkSync(backupPath);
+      } catch {
+        // ignore cleanup error
+      }
+    }
+    throw new Error(`BACKUP_FAILED: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 export interface TurnResult {
   text: string;
@@ -30,10 +82,19 @@ export class PlayHost {
   public constructor(
     private readonly config: AppConfig,
     private readonly stub: boolean = false,
+    private readonly copyFileFn: (src: string, dest: string) => void = copyFileSync,
   ) {}
 
   public worlds(): WorldOption[] {
     return worldCatalog(this.config);
+  }
+
+  public worldsList(): Array<{ id: string; title: string; hasSave: boolean }> {
+    return this.worlds().map((row) => ({
+      id: row.id,
+      title: row.title,
+      hasSave: existsSync(row.savePath),
+    }));
   }
 
   public currentWorldId(): string | null {
@@ -41,7 +102,7 @@ export class PlayHost {
   }
 
   public bootstrap(): {
-    worlds: Array<{ id: string; title: string }>;
+    worlds: Array<{ id: string; title: string; hasSave: boolean }>;
     currentWorldId: string | null;
     state: PlayerState | null;
     messages: ChatMessage[];
@@ -55,7 +116,7 @@ export class PlayHost {
       }
     }
     return {
-      worlds: this.worlds().map((row) => ({ id: row.id, title: row.title })),
+      worlds: this.worldsList(),
       currentWorldId: this.currentId,
       state: this.session ? playerState(this.session) : null,
       messages: this.session ? chatHistory(this.session) : [],
@@ -75,6 +136,7 @@ export class PlayHost {
     this.done.clear();
     this.inflight.clear();
     if (mode === "new" && existsSync(option.savePath)) {
+      createSaveBackup(option.savePath, option.id, this.copyFileFn);
       unlinkSync(option.savePath);
     }
     const compiled = loadWorldFile(option.sourcePath);

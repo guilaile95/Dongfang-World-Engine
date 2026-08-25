@@ -53,8 +53,20 @@ async function handle(
         json(res, 400, { error: "invalid world request" });
         return;
       }
-      const state = host.open(body.worldId, body.mode);
-      json(res, 200, { state, messages: host.messages(), currentWorldId: host.currentWorldId() });
+      try {
+        const state = host.open(body.worldId, body.mode);
+        json(res, 200, {
+          state,
+          messages: host.messages(),
+          currentWorldId: host.currentWorldId(),
+          worlds: host.worldsList(),
+        });
+      } catch (error) {
+        const message = error instanceof Error && error.message.startsWith("BACKUP_FAILED")
+          ? "备份旧存档失败，未进行新开，原存档已保留。"
+          : "无法切换世界";
+        json(res, 500, { error: message });
+      }
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/turn") {

@@ -11,6 +11,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [confirmReset, setConfirmReset] = useState<WorldChoice | null>(null);
   const pin = useRef(true);
   const scroller = useRef<HTMLDivElement>(null);
   const sending = useRef(false);
@@ -93,18 +94,31 @@ export function App() {
     }
   }
 
+  function onNewWorldClick(world: WorldChoice): void {
+    if (world.hasSave) {
+      setConfirmReset(world);
+    } else {
+      void changeWorld(world.id, "new");
+    }
+  }
+
   async function changeWorld(id: string, mode: "resume" | "new"): Promise<void> {
     setSettings(false);
+    setConfirmReset(null);
     setBusy(true);
     try {
       const result = await switchWorld(id, mode);
       setCurrentWorldId(result.currentWorldId);
       setState(result.state);
       setMessages(result.messages);
+      if (result.worlds) {
+        setWorlds(result.worlds);
+      }
       setError(null);
       pin.current = true;
-    } catch {
-      setError("无法切换世界。");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "无法切换世界。";
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -191,7 +205,7 @@ export function App() {
                   <button type="button" className="text-btn" onClick={() => void changeWorld(world.id, "resume")}>
                     继续
                   </button>
-                  <button type="button" className="text-btn" onClick={() => void changeWorld(world.id, "new")}>
+                  <button type="button" className="text-btn" onClick={() => onNewWorldClick(world)}>
                     新开
                   </button>
                 </div>
@@ -199,6 +213,35 @@ export function App() {
             ))}
             <p className="hint">每个世界只有一个玩家身份。换人目前还做不到。</p>
           </aside>
+        </div>
+      )}
+
+      {confirmReset && (
+        <div className="overlay" onClick={() => setConfirmReset(null)}>
+          <div className="dialog" onClick={(event) => event.stopPropagation()}>
+            <h3>重新开始「{confirmReset.title}」</h3>
+            <p className="dialog-body">
+              这个世界已经有存档。
+              <br />
+              新开会从头开始，现有存档将先保留为备份。
+            </p>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => setConfirmReset(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => void changeWorld(confirmReset.id, "new")}
+              >
+                保留旧档并新开
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

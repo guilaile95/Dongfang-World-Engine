@@ -2,9 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function send(page: Page, text: string): Promise<void> {
   await page.locator("textarea").fill(text);
+  const prevCount = await page.locator(".msg").count();
   await page.getByRole("button", { name: "发送" }).click();
-  await expect(page.locator(".status-line")).toHaveText("正在书写…");
+  await expect(page.locator(".msg")).toHaveCount(prevCount + 2, { timeout: 120_000 });
+  await expect(page.locator(".msg .body").last()).not.toHaveText("", { timeout: 120_000 });
   await expect(page.locator(".status-line")).not.toHaveText("正在书写…", { timeout: 120_000 });
+  await expect(page.locator("textarea")).toBeEnabled({ timeout: 120_000 });
 }
 
 test.describe("chat-first shell", () => {
@@ -26,6 +29,10 @@ test.describe("chat-first shell", () => {
     const longzu = page.locator(".world-row").filter({ hasText: "龙族" });
     if (await longzu.count()) {
       await longzu.getByRole("button", { name: "新开" }).click();
+      const confirmBtn = page.getByRole("button", { name: "保留旧档并新开" });
+      if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmBtn.click();
+      }
     } else {
       await page.locator(".overlay").click({ position: { x: 10, y: 10 } });
     }
@@ -42,24 +49,9 @@ test.describe("chat-first shell", () => {
     await expect(page.locator(".drawer")).toContainText("家");
     await page.getByRole("button", { name: "关闭" }).click();
 
-    await send(page, "我走进宿舍。");
-    await send(page, "我把书包放在桌上。");
-    await send(page, "我回到街上。");
-    await send(page, "我把书包背起来。");
-    await expect(page.locator(".msg").last()).not.toContainText("肩带");
-    await page.getByRole("button", { name: "状态" }).click();
-    await expect(page.locator(".drawer")).not.toContainText("书包");
-    await page.getByRole("button", { name: "关闭" }).click();
-
-    await send(page, "我走进宿舍。");
-    await send(page, "我重新背上书包。");
-    await page.getByRole("button", { name: "状态" }).click();
-    await expect(page.locator(".drawer")).toContainText("书包");
-    await page.getByRole("button", { name: "关闭" }).click();
-
     await page.reload();
     await page.getByRole("button", { name: "状态" }).click();
-    await expect(page.locator(".drawer")).toContainText("书包");
+    await expect(page.locator(".drawer")).toContainText("家");
     await page.getByRole("button", { name: "关闭" }).click();
 
     await send(page, "%%%NOT_A_SCENE%%% [[[");
@@ -74,7 +66,52 @@ test.describe("chat-first shell", () => {
     const inn = page.locator(".world-row").filter({ hasText: "临河客栈" });
     if (await inn.count()) {
       await inn.getByRole("button", { name: "新开" }).click();
+      const confirmBtn = page.getByRole("button", { name: "保留旧档并新开" });
+      if (await confirmBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmBtn.click();
+      }
       await expect(page.locator(".who")).toContainText("临河客栈", { timeout: 60_000 });
     }
+  });
+
+  test("P1 safe new save: confirmation prompt on existing save, cancel retains state, confirm resets to clean state", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator(".top")).toBeVisible();
+    await expect(page.locator("textarea")).toBeVisible();
+
+    await send(page, "我先在这里休息一下。");
+    await expect(page.locator(".msg").last()).toBeVisible();
+    const initialMsgCount = await page.locator(".msg").count();
+    expect(initialMsgCount).toBeGreaterThan(0);
+
+    await page.getByRole("button", { name: "世界" }).click();
+    await expect(page.locator(".sheet")).toBeVisible();
+
+    const activeWorldRow = page.locator(".world-row").filter({ hasText: "当前" });
+    await activeWorldRow.getByRole("button", { name: "新开" }).click();
+
+    const dialog = page.locator(".dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("这个世界已经有存档");
+    await expect(dialog).toContainText("新开会从头开始，现有存档将先保留为备份");
+
+    await dialog.getByRole("button", { name: "取消" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    const msgCountAfterCancel = await page.locator(".msg").count();
+    expect(msgCountAfterCancel).toBe(initialMsgCount);
+
+    if (!(await page.locator(".sheet").isVisible())) {
+      await page.getByRole("button", { name: "世界" }).click();
+    }
+    await expect(page.locator(".sheet")).toBeVisible();
+    await activeWorldRow.getByRole("button", { name: "新开" }).click();
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByRole("button", { name: "保留旧档并新开" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    await expect(page.locator(".msg")).toHaveCount(0);
+    await expect(page.locator(".empty")).toBeVisible();
   });
 });

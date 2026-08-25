@@ -17,6 +17,7 @@ export interface ChatMessage {
 export interface WorldChoice {
   id: string;
   title: string;
+  hasSave: boolean;
 }
 
 export interface Bootstrap {
@@ -39,6 +40,7 @@ export async function switchWorld(worldId: string, mode: "resume" | "new"): Prom
   state: PlayerState;
   messages: ChatMessage[];
   currentWorldId: string;
+  worlds?: WorldChoice[];
 }> {
   const res = await fetch("/api/world", {
     method: "POST",
@@ -46,9 +48,23 @@ export async function switchWorld(worldId: string, mode: "resume" | "new"): Prom
     body: JSON.stringify({ worldId, mode }),
   });
   if (!res.ok) {
-    throw new Error("无法切换世界");
+    let errorMsg = "无法切换世界";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) {
+        errorMsg = body.error;
+      }
+    } catch {
+      // fallback to default
+    }
+    throw new Error(errorMsg);
   }
-  return res.json() as Promise<{ state: PlayerState; messages: ChatMessage[]; currentWorldId: string }>;
+  return res.json() as Promise<{
+    state: PlayerState;
+    messages: ChatMessage[];
+    currentWorldId: string;
+    worlds?: WorldChoice[];
+  }>;
 }
 
 export async function playTurn(
