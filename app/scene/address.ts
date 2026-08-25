@@ -56,6 +56,22 @@ export function canHear(
   return Boolean(speaker && listener && speaker.locationId === listener.locationId);
 }
 
+/** Intended addressee may come from earlier language. Face-to-face reply needs post-commit presence. */
+export function reachableAddressee(
+  snapshot: WorldSnapshot,
+  speakerId: string,
+  intended: CharacterRecord | null,
+): CharacterRecord | null {
+  if (!intended) {
+    return null;
+  }
+  const current = snapshot.characters.find((row) => row.id === intended.id);
+  if (!current || current.kind !== "npc") {
+    return null;
+  }
+  return canHear(snapshot, speakerId, current.id) ? current : null;
+}
+
 function nameAliases(name: string): string[] {
   const aliases = [name];
   if (/^[\u4e00-\u9fff]+$/.test(name) && name.length >= 2) {

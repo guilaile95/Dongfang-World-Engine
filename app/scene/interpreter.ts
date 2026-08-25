@@ -28,6 +28,7 @@ export const INTERPRETER_SYSTEM = [
   "找不到匹配的持久结果时：outcome 用 ephemeral、clarify 或 fail，proposals 必须为空。禁止改成另一个看起来合法的动作。",
   "proposals 只能是 claim_record、memory_note、character_move、item_place、item_carry。不要 fact_assert，不要拨时间，不要授予 knowledge。",
   "memory_note 合法字段只能是 type, text, 以及可选 characterId。禁止 content、message、value。写日记/自己记下：用 memory_note，不要填别人的 characterId。这是玩家自己的印象，不是 Fact，也不是别人的 Knowledge。",
+  "对在场的人明确说「记住」「别忘」「这是我们说定的」且内容之后还用得上：必须 memory_note，characterId 为对方。不要升成 Fact 或 Knowledge。天气、吃饭、闲聊不要因此写 Memory。",
   "claim_record 合法字段只能是 type, subject, predicate, object。禁止 content。",
   "character_move 合法字段只能是 type, location（已有地点的中文名）。禁止编造不存在的地点。回家用「家」，走进食堂用「食堂」。",
   "item_place 合法字段只能是 type, item, 可选 location。item_carry 合法字段只能是 type, item。桌上/这里表示当前所在地点，不要编造家具地点。",

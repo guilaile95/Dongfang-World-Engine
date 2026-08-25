@@ -91,6 +91,23 @@ export function enableBackgroundEvolutionBecause(reason: {
   return backgroundWorldEvolutionEnabled(reason.evidence);
 }
 
+/** Same public beat is not re-injected every turn unless a tick wrote new supporting state. */
+export function dampPublicBeat(
+  beat: string,
+  lastInjected: string | null,
+  newEvents: Array<{ type: string; producer: string }>,
+): string[] {
+  const trimmed = beat.trim();
+  if (!trimmed) {
+    return [];
+  }
+  const supported = newEvents.some((event) => event.producer === "world_tick" && event.type !== "time_advance");
+  if (trimmed === lastInjected && !supported) {
+    return [];
+  }
+  return [trimmed];
+}
+
 export function planTurnAutonomy(
   snapshot: WorldSnapshot,
   compiled: CompiledWorld,

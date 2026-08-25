@@ -7,6 +7,7 @@ export interface NarratorEnvelope {
   playerContribution: string;
   observerContext: string;
   committed: string[];
+  uncommitted: string[];
   npcReply: { name: string; line: string } | null;
   ephemeral: {
     recentScenes: string[];
@@ -55,6 +56,32 @@ export function committedProjection(
       const item = snapshot?.items.find((row) => row.id === payload["itemId"])?.name;
       lines.push(`你带着物品：${item ?? payload["itemId"]}`);
     }
+  }
+  return lines;
+}
+
+/** Rejected durable attempts are not “still happening” in the world. */
+export function uncommittedProjection(
+  raw: SceneInterpretation,
+  bound: BoundInterpretation,
+): string[] {
+  if (bound.submitted && bound.result.accepted) {
+    return [];
+  }
+  const lines: string[] = [];
+  for (const proposal of raw.proposals) {
+    if (proposal.type === "character_move") {
+      lines.push(`未发生：到达「${proposal.location}」`);
+    }
+    if (proposal.type === "item_place") {
+      lines.push(`未发生：放下「${proposal.item}」`);
+    }
+    if (proposal.type === "item_carry") {
+      lines.push(`未发生：拿起或背上「${proposal.item}」`);
+    }
+  }
+  if (lines.length > 0 && bound.result.reasons.length > 0) {
+    lines.push(`原因：${bound.result.reasons.join("，")}`);
   }
   return lines;
 }

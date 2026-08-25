@@ -67,6 +67,59 @@ export interface BoundInterpretation {
 
 const SPEECH = new Set<ContributionKind>(["speak", "ask"]);
 const DIARY = /日记|写进日记|写下来|记在本子|写进本子/;
+const REMEMBER_SPEECH = /记住|别忘|不要忘|记着|牢记|说定/;
+
+export function isRememberSpeech(playerLine: string): boolean {
+  return REMEMBER_SPEECH.test(playerLine) && !DIARY.test(playerLine);
+}
+
+const MOVE_SPEECH = /回家|走进|进入|回到|前往|来到|去/;
+
+export function withObviousMove(
+  interpretation: SceneInterpretation,
+  input: { playerLine: string; locationId: string | null; currentLocationId: string },
+): SceneInterpretation {
+  if (!input.locationId || input.locationId === input.currentLocationId || !MOVE_SPEECH.test(input.playerLine)) {
+    return interpretation;
+  }
+  if (interpretation.proposals.some((row) => row.type === "character_move")) {
+    return interpretation;
+  }
+  return {
+    ...interpretation,
+    contributions: [...new Set([...interpretation.contributions, "world_attempt" as const])],
+    futureCausal: true,
+    outcome: "candidate",
+    proposals: [
+      ...interpretation.proposals,
+      { type: "character_move", location: input.locationId },
+    ],
+  };
+}
+
+/** Engine-side: explicit “remember this” to a present addressee is durable Memory, not Fact. */
+export function withSpokenMemory(
+  interpretation: SceneInterpretation,
+  input: { addresseeId: string; playerLine: string },
+): SceneInterpretation {
+  if (!isRememberSpeech(input.playerLine)) {
+    return interpretation;
+  }
+  const existing = interpretation.proposals.find((row) => row.type === "memory_note");
+  const text = existing && existing.type === "memory_note" ? existing.text : `玩家让你记住：${input.playerLine.trim()}`;
+  const proposals: SceneInterpretation["proposals"] = [
+    ...interpretation.proposals.filter((row) => row.type !== "memory_note"),
+    { type: "memory_note", text, characterId: input.addresseeId },
+  ];
+  const contributions = [...new Set([...interpretation.contributions, "speak" as const, "durable_attempt" as const])];
+  return {
+    ...interpretation,
+    contributions,
+    futureCausal: true,
+    outcome: "candidate",
+    proposals,
+  };
+}
 
 export function normalizeInterpretation(raw: unknown): SceneInterpretation {
   const parsed = interpretationSchema.safeParse(raw);
@@ -239,6 +292,66 @@ export function applyInterpretation(
     parsed,
     result,
   };
+}
+
+export function ensureSpokenMemory(
+  store: WorldStore,
+  input: { worldId: string; addresseeId: string; playerLine: string },
+): SubmitResult | null {
+  if (!isRememberSpeech(input.playerLine)) {
+    return null;
+  }
+  const snapshot = store.snapshot(input.worldId);
+  const already = snapshot.memories.some(
+    (row) =>
+      row.characterId === input.addresseeId
+      && (row.text.includes(input.playerLine.trim()) || row.text.startsWith("玩家让你记住")),
+  );
+  if (already) {
+    return null;
+  }
+  const result = submitCandidates(store, {
+    producer: "llm",
+    candidates: [
+      {
+        type: "memory_note",
+        worldId: input.worldId,
+        expectedRevision: snapshot.world.revision,
+        memoryId: `mem-${randomUUID()}`,
+        characterId: input.addresseeId,
+        text: `玩家让你记住：${input.playerLine.trim()}`,
+      },
+    ],
+  });
+  return result.accepted ? result : null;
+}
+
+export function ensureObviousMove(
+  store: WorldStore,
+  input: { worldId: string; playerId: string; playerLine: string },
+): SubmitResult | null {
+  if (!MOVE_SPEECH.test(input.playerLine)) {
+    return null;
+  }
+  const snapshot = store.snapshot(input.worldId);
+  const player = snapshot.characters.find((row) => row.id === input.playerId);
+  const dest = resolveLocationId(snapshot, input.playerLine);
+  if (!player || !dest || dest === player.locationId) {
+    return null;
+  }
+  const result = submitCandidates(store, {
+    producer: "llm",
+    candidates: [
+      {
+        type: "character_move",
+        worldId: input.worldId,
+        expectedRevision: snapshot.world.revision,
+        characterId: input.playerId,
+        locationId: dest,
+      },
+    ],
+  });
+  return result.accepted ? result : null;
 }
 
 export function ephemeralInterpretation(): SceneInterpretation {

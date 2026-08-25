@@ -25,6 +25,7 @@
     "experiment:8": "npm run build && node dist/experiment-8-longrun.js",
     "experiment:17-preflight": "npm run build && node dist/experiment-step17-preflight.js",
     "experiment:17-longrun": "npm run build && node dist/experiment-step17-longrun.js",
+    "experiment:causal-closure": "npm run build && node dist/experiment-causal-closure.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

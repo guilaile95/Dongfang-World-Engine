@@ -4,15 +4,21 @@ import { lastAddresseeId, recentSceneBodies, recordResolvedScene } from "./conte
 import { recall } from "./context/recall.js";
 import type { Narrator } from "./narrator/client.js";
 import { stubNarrator } from "./narrator/client.js";
-import { committedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
+import { committedProjection, uncommittedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
-import { continueAddressee } from "./scene/address.js";
+import { continueAddressee, reachableAddressee } from "./scene/address.js";
 import {
   applyInterpretation,
+  ensureObviousMove,
+  ensureSpokenMemory,
   ephemeralInterpretation,
+  withObviousMove,
+  withSpokenMemory,
   type BoundInterpretation,
   type SceneInterpretation,
 } from "./scene/interpretation.js";
+import { dampPublicBeat } from "./world/autonomy.js";
+import { resolveLocationId } from "./world/resolve.js";
 import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import type { ObserverContext } from "./visibility/context.js";
@@ -44,6 +50,7 @@ export interface TurnView {
 
 export class Session {
   private ambient: string[] = [];
+  private lastPublicBeat: string | null = null;
   private readonly interpreter: SceneInterpreter;
   private readonly npcVoice: NpcVoice;
 
@@ -108,18 +115,19 @@ export class Session {
           playerContribution: trimmed,
           observerContext: pack.prompt,
           committed: [],
+          uncommitted: [],
           npcReply: null,
           ephemeral: { recentScenes: recentForPlayer, ambient: this.ambient },
         },
         parsed: false,
       };
     }
+    const eventsBefore = this.store.listEvents(worldId).length;
     if (trimmed.length > 0) {
-      const tick = worldTick(this.store, this.compiled);
-      this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
+      worldTick(this.store, this.compiled);
     }
     const snapshotForAddress = this.store.snapshot(worldId);
-    const addressee = trimmed.length > 0
+    const intended = trimmed.length > 0
       ? continueAddressee(
         snapshotForAddress,
         this.compiled.playerId,
@@ -127,13 +135,65 @@ export class Session {
         lastAddresseeId(this.store, worldId, this.compiled.playerId),
       )
       : null;
-    const interpretation = applyInterpretation(this.store, {
+    const player = snapshotForAddress.characters.find((row) => row.id === this.compiled.playerId);
+    let toApply = raw;
+    if (intended) {
+      toApply = withSpokenMemory(toApply, { addresseeId: intended.id, playerLine: trimmed });
+    }
+    toApply = withObviousMove(toApply, {
+      playerLine: trimmed,
+      locationId: resolveLocationId(snapshotForAddress, trimmed),
+      currentLocationId: player?.locationId ?? "",
+    });
+    let interpretation = applyInterpretation(this.store, {
       worldId,
       playerId: this.compiled.playerId,
-      addresseeId: addressee?.id ?? null,
+      addresseeId: intended?.id ?? null,
       parsed: interpreted.parsed,
-      interpretation: raw,
+      interpretation: toApply,
     });
+    const wroteMemory = interpretation.result.events.some(
+      (event) => event.type === "memory_note" && event.payload["characterId"] === intended?.id,
+    );
+    const extra = [
+      intended && !wroteMemory
+        ? ensureSpokenMemory(this.store, {
+          worldId,
+          addresseeId: intended.id,
+          playerLine: trimmed,
+        })
+        : null,
+      ensureObviousMove(this.store, {
+        worldId,
+        playerId: this.compiled.playerId,
+        playerLine: trimmed,
+      }),
+    ].flatMap((row) => row?.events ?? []);
+    if (extra.length > 0) {
+      interpretation = {
+        ...interpretation,
+        submitted: true,
+        futureCausal: true,
+        outcome: "candidate",
+        result: {
+          accepted: true,
+          events: [...interpretation.result.events, ...extra],
+          snapshot: this.store.snapshot(worldId),
+          reasons: [],
+        },
+      };
+    }
+    const snapshot = this.store.snapshot(worldId);
+    const newEvents = this.store.listEvents(worldId).slice(eventsBefore);
+    const themeHere = snapshot.characters.find((row) => row.id === this.compiled.theme.characterId)?.locationId
+      === snapshot.characters.find((row) => row.id === this.compiled.playerId)?.locationId;
+    const tickBeat = this.compiled.theme.publicBeatScope === "public_world" || themeHere
+      ? this.compiled.theme.publicBeat
+      : "";
+    this.ambient = dampPublicBeat(tickBeat, this.lastPublicBeat, newEvents);
+    if (this.ambient[0]) {
+      this.lastPublicBeat = this.ambient[0];
+    }
     const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed, { kinds: ["lore"] }).map((hit) => ({
       title: hit.title,
       body: hit.body,
@@ -142,14 +202,14 @@ export class Session {
       kind: hit.kind,
     }));
     const assembled = assemblePrompt({
-      snapshot: this.store.snapshot(worldId),
+      snapshot,
       observerId: this.compiled.playerId,
       query: trimmed,
       ambient: this.ambient,
       loreHits,
       recentScenes: recentForPlayer,
     });
-    const snapshot = this.store.snapshot(worldId);
+    const addressee = reachableAddressee(snapshot, this.compiled.playerId, intended);
     let dialogue: DialogueTurn | null = null;
     if (addressee) {
       const npcLore = recall(this.store, worldId, addressee.id, trimmed, { kinds: ["lore"] }).map((hit) => ({
@@ -183,6 +243,7 @@ export class Session {
       playerContribution: trimmed,
       observerContext: assembled.prompt,
       committed: committedProjection(interpretation, this.compiled.playerId, snapshot),
+      uncommitted: uncommittedProjection(toApply, interpretation),
       npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null,
       ephemeral: {
         recentScenes: recentForPlayer,
