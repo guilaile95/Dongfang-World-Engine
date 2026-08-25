@@ -103,6 +103,13 @@ CREATE TABLE IF NOT EXISTS context_items (
   body TEXT NOT NULL,
   seq INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS ui_messages (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  parsed INTEGER NOT NULL DEFAULT 1
+);
 `;
 
 export interface ContextItemRecord {
@@ -606,5 +613,24 @@ export class WorldStore {
 
   public deleteAllContext(worldId: string): void {
     this.sqlite.prepare("DELETE FROM context_items WHERE world_id = ?").run(worldId);
+  }
+
+  public insertUiMessage(input: { worldId: string; role: "player" | "world" | "notice"; text: string; parsed: boolean }): void {
+    this.sqlite.prepare(
+      "INSERT INTO ui_messages (world_id, role, text, parsed) VALUES (?, ?, ?, ?)",
+    ).run(input.worldId, input.role, input.text, input.parsed ? 1 : 0);
+    const cutoff = this.sqlite.prepare(
+      `SELECT seq FROM ui_messages WHERE world_id = ? ORDER BY seq DESC LIMIT 1 OFFSET 199`,
+    ).get(input.worldId) as { seq: number } | undefined;
+    if (cutoff) {
+      this.sqlite.prepare("DELETE FROM ui_messages WHERE world_id = ? AND seq < ?").run(input.worldId, cutoff.seq);
+    }
+  }
+
+  public listUiMessages(worldId: string): Array<{ role: "player" | "world" | "notice"; text: string; parsed: boolean }> {
+    const rows = this.sqlite.prepare(
+      "SELECT role, text, parsed FROM ui_messages WHERE world_id = ? ORDER BY seq ASC",
+    ).all(worldId) as Array<{ role: "player" | "world" | "notice"; text: string; parsed: number }>;
+    return rows.map((row) => ({ role: row.role, text: row.text, parsed: row.parsed === 1 }));
   }
 }

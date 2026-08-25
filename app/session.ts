@@ -9,6 +9,7 @@ import { WorldStore } from "./persist/store.js";
 import { continueAddressee, reachableAddressee } from "./scene/address.js";
 import {
   applyInterpretation,
+  ensureObviousCarry,
   ensureObviousMove,
   ensureSpokenMemory,
   ephemeralInterpretation,
@@ -164,6 +165,11 @@ export class Session {
         })
         : null,
       ensureObviousMove(this.store, {
+        worldId,
+        playerId: this.compiled.playerId,
+        playerLine: trimmed,
+      }),
+      ensureObviousCarry(this.store, {
         worldId,
         playerId: this.compiled.playerId,
         playerLine: trimmed,
