@@ -24,6 +24,7 @@ export interface CompiledWorld {
   packageTitle: string;
   sourceKind: WorldSource["sourceKind"];
   theme: WorldSource["theme"];
+  chronology: import("./source.js").WorldChronology;
   materials: ContextItemRecord[];
 }
 
@@ -33,6 +34,14 @@ export function compileWorld(source: WorldSource): CompiledWorld {
     throw new Error("WORLD_SOURCE_NO_PLAYER");
   }
   const seedId = `seed-${source.id}`;
+  const isLongzu = source.id === "longzu" || source.packageTitle.includes("龙族");
+  const chronology: import("./source.js").WorldChronology = source.chronology ?? {
+    era: isLongzu ? "仕兰中学时期" : "当前时期未标定",
+    timeLabel: isLongzu ? "2009年秋 · 傍晚" : source.time,
+    publicPremise: isLongzu
+      ? "最近这座滨海城市接连发生几起尚未解释的雨夜失踪事件，老城区的街头巷尾议论纷纷。"
+      : "平静的世界在日常运转。",
+  };
   const world: WorldRecord = {
     id: source.id,
     name: source.publicName,
@@ -100,6 +109,7 @@ export function compileWorld(source: WorldSource): CompiledWorld {
     packageTitle: source.packageTitle,
     sourceKind: source.sourceKind,
     theme: source.theme,
+    chronology,
     materials: [],
   };
 }

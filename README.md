@@ -46,6 +46,13 @@ npm run play
 
 提示符是 `>`。输入自然语言。`:quit` 退出。
 
+浏览器聊天壳（本机单进程）：
+
+```powershell
+npm run play:web
+# 打开 http://127.0.0.1:8787
+```
+
 确定性单元测试、权限/Replay/adversarial 仍用最小 synthetic fixture；不要把真实世界大文件塞进每一条单测。
 
 API Key **只**来自环境变量或平台凭证。不要写进代码、fixture、日志或模型 trace。

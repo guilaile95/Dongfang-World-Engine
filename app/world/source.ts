@@ -2,12 +2,19 @@ import type { KnowledgeState } from "../authority/types.js";
 
 export type Visibility = "public" | "hidden";
 
+export interface WorldChronology {
+  era: string;
+  timeLabel: string;
+  publicPremise: string;
+}
+
 export interface WorldSource {
   id: string;
   packageTitle: string;
   publicName: string;
   time: string;
   sourceKind: "structured" | "protocol";
+  chronology?: WorldChronology;
   rules: Array<{ text: string; visibility: Visibility }>;
   locations: Array<{ id: string; name: string; visibility: Visibility }>;
   characters: Array<{

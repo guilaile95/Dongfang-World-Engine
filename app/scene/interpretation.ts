@@ -326,6 +326,40 @@ export function ensureSpokenMemory(
   return result.accepted ? result : null;
 }
 
+const CARRY_SPEECH = /背上|拿起|捡起|拾起|收好|收进|放进书包|放入书包|装进书包|带上|取走/;
+
+export function ensureObviousCarry(
+  store: WorldStore,
+  input: { worldId: string; playerId: string; playerLine: string },
+): SubmitResult | null {
+  if (!CARRY_SPEECH.test(input.playerLine)) {
+    return null;
+  }
+  const snapshot = store.snapshot(input.worldId);
+  const player = snapshot.characters.find((row) => row.id === input.playerId);
+  const itemId = resolveItemId(snapshot, input.playerLine);
+  const item = itemId ? snapshot.items.find((row) => row.id === itemId) : null;
+  if (!player || !item || item.carrierId === input.playerId) {
+    return null;
+  }
+  if (item.locationId !== player.locationId) {
+    return null;
+  }
+  const result = submitCandidates(store, {
+    producer: "llm",
+    candidates: [
+      {
+        type: "item_carry",
+        worldId: input.worldId,
+        expectedRevision: snapshot.world.revision,
+        itemId: item.id,
+        characterId: input.playerId,
+      },
+    ],
+  });
+  return result.accepted ? result : null;
+}
+
 export function ensureObviousMove(
   store: WorldStore,
   input: { worldId: string; playerId: string; playerLine: string },

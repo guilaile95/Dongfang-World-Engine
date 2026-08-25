@@ -1,14 +1,16 @@
 import type { NpcVoice } from "./chat/npc.js";
 import { stubNpcVoice } from "./chat/npc.js";
-import { lastAddresseeId, recentSceneBodies, recordResolvedScene } from "./context/recent.js";
+import { lastAddresseeId, recentSceneBodies, recordOpeningScene, recordResolvedScene } from "./context/recent.js";
 import { recall } from "./context/recall.js";
 import type { Narrator } from "./narrator/client.js";
 import { stubNarrator } from "./narrator/client.js";
+import { planOpeningHook } from "./narrator/project.js";
 import { committedProjection, uncommittedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
 import { continueAddressee, reachableAddressee } from "./scene/address.js";
 import {
   applyInterpretation,
+  ensureObviousCarry,
   ensureObviousMove,
   ensureSpokenMemory,
   ephemeralInterpretation,
@@ -79,6 +81,7 @@ export class Session {
   ): Promise<TurnView> {
     const trimmed = playerLine.trim();
     const worldId = this.compiled.seed.world.id;
+    const profile = this.store.getPlayerProfile(worldId);
     const recentForPlayer = recentSceneBodies(this.store, worldId, this.compiled.playerId);
     const pack = assemblePrompt({
       snapshot: this.store.snapshot(worldId),
@@ -86,6 +89,7 @@ export class Session {
       query: trimmed,
       ambient: this.ambient,
       recentScenes: recentForPlayer,
+      playerProfile: profile,
     });
     const interpreted = trimmed.length > 0
       ? await this.interpreter.interpret({
@@ -168,6 +172,11 @@ export class Session {
         playerId: this.compiled.playerId,
         playerLine: trimmed,
       }),
+      ensureObviousCarry(this.store, {
+        worldId,
+        playerId: this.compiled.playerId,
+        playerLine: trimmed,
+      }),
     ].flatMap((row) => row?.events ?? []);
     if (extra.length > 0) {
       interpretation = {
@@ -194,7 +203,12 @@ export class Session {
     if (this.ambient[0]) {
       this.lastPublicBeat = this.ambient[0];
     }
-    const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed, { kinds: ["lore"] }).map((hit) => ({
+    const carriedItems = snapshot.items.filter(
+      (it) => it.carrierId === this.compiled.playerId || it.locationId === player?.locationId,
+    );
+    const itemQuery = carriedItems.map((it) => `item:${it.name}`).join(" ");
+    const combinedQuery = [trimmed, itemQuery].filter(Boolean).join(" ");
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, combinedQuery, { kinds: ["lore"] }).map((hit) => ({
       title: hit.title,
       body: hit.body,
       score: hit.score,
@@ -208,6 +222,7 @@ export class Session {
       ambient: this.ambient,
       loreHits,
       recentScenes: recentForPlayer,
+      playerProfile: profile,
     });
     const addressee = reachableAddressee(snapshot, this.compiled.playerId, intended);
     let dialogue: DialogueTurn | null = null;
@@ -273,6 +288,113 @@ export class Session {
       envelope,
       parsed: interpreted.parsed,
     };
+  }
+
+  public async projectOpening(
+    profile: import("./persist/store.js").PlayerProfile,
+    onChunk?: (text: string) => void,
+  ): Promise<import("./narrator/project.js").ParsedOpening> {
+    const worldId = this.compiled.seed.world.id;
+    const snapshot = this.store.snapshot(worldId);
+    const player = snapshot.characters.find((c) => c.id === this.compiled.playerId);
+    const location = snapshot.locations.find((l) => l.id === player?.locationId);
+    const present = snapshot.characters
+      .filter((c) => c.id !== this.compiled.playerId && c.locationId === player?.locationId)
+      .map((c) => c.name);
+
+    const plan = planOpeningHook(worldId, location?.name || profile.startingLocation || "");
+
+    const query = [location?.name, profile.startingLocation, profile.background].filter(Boolean).join(" ");
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, query, { kinds: ["lore"], limit: 4 });
+
+    const input: import("./narrator/project.js").OpeningPromptInput = {
+      worldTitle: this.compiled.packageTitle,
+      era: this.compiled.chronology?.era || "当代",
+      timeLabel: this.compiled.chronology?.timeLabel || snapshot.world.time,
+      publicPremise: this.compiled.chronology?.publicPremise || "平静的世界在日常运转。",
+      locationName: location?.name || profile.startingLocation || "普通城市",
+      presentCharacters: present,
+      publicRules: snapshot.world.rules,
+      publicLore: loreHits.map((hit) => hit.body),
+      publicBeat: this.compiled.theme.publicBeat,
+      profile,
+      plannedHook: plan,
+    };
+
+    let parsed: import("./narrator/project.js").ParsedOpening;
+    if (this.narrator.projectOpening) {
+      parsed = await this.narrator.projectOpening(input, onChunk);
+    } else {
+      const narrative = await this.narrator.project(
+        {
+          playerContribution: "",
+          observerContext: `【世界】${input.worldTitle}【地点】${input.locationName}`,
+          committed: [],
+          uncommitted: [],
+          npcReply: null,
+          ephemeral: { recentScenes: [], ambient: this.ambient },
+        },
+        onChunk,
+      );
+      const m = await import("./narrator/project.js");
+      parsed = m.parseOpeningOutput(narrative, input.locationName, plan);
+    }
+
+    // ONLY upon successful narrator generation, commit the planned hook and opening scene in a single transaction
+    this.store.transaction(() => {
+      if (plan.kind === "durable_item" && plan.itemName && player?.locationId) {
+        const freshSnapshot = this.store.snapshot(worldId);
+        const alreadyPresent = freshSnapshot.items.some(
+          (it) => it.name === plan.itemName && (it.locationId === player.locationId || it.carrierId === player.id),
+        );
+        if (!alreadyPresent) {
+          this.store.insertItem({
+            id: `item-hook-opening`,
+            worldId,
+            name: plan.itemName,
+            locationId: player.locationId,
+            carrierId: null,
+          });
+        }
+        if (plan.itemContent) {
+          const claimId = `claim-item-${plan.itemName}`;
+          this.store.insertClaim({
+            id: claimId,
+            worldId,
+            subject: plan.itemName,
+            predicate: "content",
+            object: plan.itemContent,
+            recordedAt: snapshot.world.time,
+            sourceEventId: null,
+            sourceSeedId: null,
+            sourceKind: "seed",
+          });
+          this.store.upsertKnowledge({
+            characterId: this.compiled.playerId,
+            claimId,
+            state: "confirmed",
+            sourceKind: "seed",
+            sourceCharacterId: null,
+            sourceEventId: null,
+            sourceSeedId: null,
+            learnedAt: snapshot.world.time,
+          });
+          this.store.insertContextItem({
+            id: `lore-item-${plan.itemName}`,
+            worldId,
+            namespace: `char:${this.compiled.playerId}`,
+            kind: "lore",
+            title: `item:${plan.itemName}`,
+            body: `【${plan.itemName}内容】${plan.itemContent}`,
+            seq: 0,
+          });
+        }
+      }
+      this.store.setPlayerSituation(worldId, this.compiled.playerId, parsed.currentSituation || plan.situationSummary);
+      recordOpeningScene(this.store, worldId, this.compiled.playerId, parsed.narrative);
+    });
+
+    return parsed;
   }
 
   public close(): void {

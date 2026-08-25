@@ -103,6 +103,22 @@ CREATE TABLE IF NOT EXISTS context_items (
   body TEXT NOT NULL,
   seq INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS ui_messages (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  parsed INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS player_profiles (
+  world_id TEXT PRIMARY KEY REFERENCES worlds(id),
+  name TEXT NOT NULL DEFAULT '',
+  age TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT '',
+  background TEXT NOT NULL DEFAULT '',
+  starting_location TEXT NOT NULL DEFAULT '',
+  personality TEXT NOT NULL DEFAULT ''
+);
 `;
 
 export interface ContextItemRecord {
@@ -431,7 +447,7 @@ export class WorldStore {
 
   public insertClaim(claim: ClaimRecord): void {
     this.sqlite.prepare(
-      `INSERT INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
+      `INSERT OR REPLACE INTO claims (id, world_id, subject, predicate, object, recorded_at, source_event_id, source_seed_id, source_kind)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       claim.id,
@@ -489,7 +505,7 @@ export class WorldStore {
 
   public insertItem(item: ItemRecord): void {
     this.sqlite.prepare(
-      "INSERT INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO items (id, world_id, name, location_id, carrier_id) VALUES (?, ?, ?, ?, ?)",
     ).run(item.id, item.worldId, item.name, item.locationId, item.carrierId);
   }
 
@@ -607,4 +623,136 @@ export class WorldStore {
   public deleteAllContext(worldId: string): void {
     this.sqlite.prepare("DELETE FROM context_items WHERE world_id = ?").run(worldId);
   }
+
+  public insertUiMessage(input: { worldId: string; role: "player" | "world" | "notice"; text: string; parsed: boolean }): void {
+    this.sqlite.prepare(
+      "INSERT INTO ui_messages (world_id, role, text, parsed) VALUES (?, ?, ?, ?)",
+    ).run(input.worldId, input.role, input.text, input.parsed ? 1 : 0);
+    const cutoff = this.sqlite.prepare(
+      `SELECT seq FROM ui_messages WHERE world_id = ? ORDER BY seq DESC LIMIT 1 OFFSET 199`,
+    ).get(input.worldId) as { seq: number } | undefined;
+    if (cutoff) {
+      this.sqlite.prepare("DELETE FROM ui_messages WHERE world_id = ? AND seq < ?").run(input.worldId, cutoff.seq);
+    }
+  }
+
+  public listUiMessages(worldId: string): Array<{ role: "player" | "world" | "notice"; text: string; parsed: boolean }> {
+    const rows = this.sqlite.prepare(
+      "SELECT role, text, parsed FROM ui_messages WHERE world_id = ? ORDER BY seq ASC",
+    ).all(worldId) as Array<{ role: "player" | "world" | "notice"; text: string; parsed: number }>;
+    return rows.map((row) => ({ role: row.role, text: row.text, parsed: row.parsed === 1 }));
+  }
+
+  public getPlayerProfile(worldId: string): PlayerProfile | null {
+    const row = this.sqlite.prepare("SELECT * FROM player_profiles WHERE world_id = ?").get(worldId) as {
+      world_id: string;
+      name: string;
+      age: string;
+      gender: string;
+      background: string;
+      starting_location: string;
+      personality: string;
+    } | undefined;
+    if (!row) {
+      return null;
+    }
+    return {
+      worldId: row.world_id,
+      name: row.name,
+      age: row.age,
+      gender: row.gender,
+      background: row.background,
+      startingLocation: row.starting_location,
+      personality: row.personality,
+    };
+  }
+
+  public setPlayerProfile(profile: PlayerProfile): void {
+    this.sqlite.prepare(
+      `INSERT INTO player_profiles (world_id, name, age, gender, background, starting_location, personality)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(world_id) DO UPDATE SET
+         name=excluded.name, age=excluded.age, gender=excluded.gender,
+         background=excluded.background, starting_location=excluded.starting_location,
+         personality=excluded.personality`,
+    ).run(
+      profile.worldId,
+      profile.name,
+      profile.age,
+      profile.gender,
+      profile.background,
+      profile.startingLocation,
+      profile.personality,
+    );
+  }
+
+  public initializePlayerProfile(profile: PlayerProfile): void {
+    this.transaction(() => {
+      this.setPlayerProfile(profile);
+
+      const player = this.sqlite.prepare(
+        "SELECT id, name, location_id FROM characters WHERE world_id = ? AND kind = 'player'",
+      ).get(profile.worldId) as { id: string; name: string; location_id: string } | undefined;
+
+      if (!player) {
+        throw new Error(`PLAYER_CHARACTER_NOT_FOUND:${profile.worldId}`);
+      }
+
+      if (profile.name.trim()) {
+        this.sqlite.prepare(
+          "UPDATE characters SET name = ? WHERE id = ? AND world_id = ?",
+        ).run(profile.name.trim(), player.id, profile.worldId);
+      }
+
+      if (profile.startingLocation.trim()) {
+        const targetLoc = profile.startingLocation.trim();
+        const loc = this.sqlite.prepare(
+          "SELECT id FROM locations WHERE world_id = ? AND (id = ? OR name = ?)",
+        ).get(profile.worldId, targetLoc, targetLoc) as { id: string } | undefined;
+
+        if (!loc) {
+          throw new Error(`INVALID_STARTING_LOCATION:${targetLoc}`);
+        }
+
+        this.sqlite.prepare(
+          "UPDATE characters SET location_id = ? WHERE id = ? AND world_id = ?",
+        ).run(loc.id, player.id, profile.worldId);
+      }
+    });
+  }
+
+  public setPlayerSituation(worldId: string, observerId: string, situation: string): void {
+    const ns = `char:${observerId}`;
+    this.sqlite.prepare(
+      `INSERT INTO context_items (id, world_id, namespace, kind, title, body, seq)
+       VALUES (?, ?, ?, 'summary', 'situation', ?, 0)
+       ON CONFLICT(id) DO UPDATE SET body = excluded.body`,
+    ).run(`situation-${worldId}-${observerId}`, worldId, ns, situation);
+  }
+
+  public getPlayerSituation(worldId: string, observerId: string): string | null {
+    const ns = `char:${observerId}`;
+    const row = this.sqlite.prepare(
+      "SELECT body FROM context_items WHERE world_id = ? AND namespace = ? AND kind = 'summary' AND title = 'situation'",
+    ).get(worldId, ns) as { body: string } | undefined;
+    return row?.body ?? null;
+  }
+
+  public clearPlayerSituation(worldId: string, observerId: string): void {
+    const ns = `char:${observerId}`;
+    this.sqlite.prepare(
+      "DELETE FROM context_items WHERE world_id = ? AND namespace = ? AND kind = 'summary' AND title = 'situation'",
+    ).run(worldId, ns);
+  }
 }
+
+export interface PlayerProfile {
+  worldId: string;
+  name: string;
+  age: string;
+  gender: string;
+  background: string;
+  startingLocation: string;
+  personality: string;
+}
+

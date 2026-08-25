@@ -38,17 +38,17 @@ describe("context continuity layers", () => {
       "rolling_summary",
     ]);
     const text = assembled.prompt;
-    const stateAt = text.indexOf("当前状态（权威）");
-    const recentAt = text.indexOf("最近场景（非权威");
-    const essentialsAt = text.indexOf("稳定设定：");
-    const recallAt = text.indexOf("相关回忆（可见性之后");
+    const stateAt = text.indexOf("【世界】");
+    const recentAt = text.indexOf("【近况】");
+    const essentialsAt = text.indexOf("【设定】");
+    const recallAt = text.indexOf("【回忆】");
     expect(stateAt).toBeGreaterThanOrEqual(0);
     expect(stateAt).toBeLessThan(recentAt);
     expect(recentAt).toBeLessThan(essentialsAt);
     expect(essentialsAt).toBeLessThan(recallAt);
     expect(text).toContain("汤好了吗");
     expect(text).toContain("堂屋还亮着灯");
-    expect(text).not.toContain("滚动摘要");
+    expect(text).not.toContain("【摘要】");
     expect(text).not.toContain("整座客栈已经没了");
     expect(assembled.continuity.rollingSummary).toBeNull();
     expect(assembled.continuity.recentScenes.length).toBeLessThanOrEqual(RECENT_WINDOW);
@@ -114,8 +114,8 @@ describe("context continuity layers", () => {
         provenBy: "step-14-real-play",
       },
     });
-    expect(assembled.prompt).toContain("滚动摘要（非权威，可重建，不能覆盖事实）");
-    expect(assembled.prompt.indexOf("相关回忆")).toBeLessThan(assembled.prompt.indexOf("滚动摘要"));
+    expect(assembled.prompt).toContain("【摘要】客栈已烧毁，guest-li-bag 不在地窖。");
+    expect(assembled.prompt.indexOf("【回忆】")).toBeLessThan(assembled.prompt.indexOf("【摘要】"));
     expect(store.snapshot(WORLD_ID).facts).toEqual(before);
     expect(store.snapshot(WORLD_ID).facts.some((row) => row.id === FACT_BAG)).toBe(true);
     store.close();

@@ -25,6 +25,9 @@ function parseStructured(text: string): WorldSource {
   let id = "";
   let publicName = "";
   let time = "t0";
+  let era = "";
+  let timeLabel = "";
+  let publicPremise = "";
   let i = 0;
   while (i < lines.length && !lines[i]?.startsWith("## ")) {
     const line = lines[i]?.trim() ?? "";
@@ -36,6 +39,12 @@ function parseStructured(text: string): WorldSource {
       publicName = line.slice(12).trim();
     } else if (line.startsWith("time:")) {
       time = line.slice(5).trim();
+    } else if (line.startsWith("era:")) {
+      era = line.slice(4).trim();
+    } else if (line.startsWith("time_label:")) {
+      timeLabel = line.slice(11).trim();
+    } else if (line.startsWith("public_premise:")) {
+      publicPremise = line.slice(15).trim();
     }
     i += 1;
   }
@@ -55,12 +64,20 @@ function parseStructured(text: string): WorldSource {
   if (locations.length === 0 || characters.length === 0) {
     throw new Error("WORLD_SOURCE_EMPTY: structured source needs Locations and Characters");
   }
+  const chronology: import("./source.js").WorldChronology | undefined = era || timeLabel || publicPremise
+    ? {
+        era: era || "当代",
+        timeLabel: timeLabel || time,
+        publicPremise: publicPremise || "平静的世界在日常运转。",
+      }
+    : undefined;
   return {
     id,
     packageTitle,
     publicName,
     time,
     sourceKind: "structured",
+    ...(chronology ? { chronology } : {}),
     rules,
     locations,
     characters,
@@ -81,89 +98,228 @@ function parseProtocol(text: string): WorldSource {
     visibility: "public" as const,
   })).filter((row) => row.text.length > 0);
 
-  const locations: WorldSource["locations"] = [
-    { id: "loc-city", name: "普通城市", visibility: "public" },
-    { id: "loc-campus", name: "普通大学校园", visibility: "public" },
-    { id: "loc-home", name: "家", visibility: "public" },
-    { id: "loc-dorm", name: "宿舍", visibility: "public" },
-    { id: "loc-cafeteria", name: "食堂", visibility: "public" },
-    { id: "loc-teaching", name: "教学楼", visibility: "public" },
-    { id: "loc-store", name: "便利店", visibility: "public" },
-  ];
-  if (text.includes("卡塞尔")) {
-    locations.push({ id: "loc-cassel", name: "卡塞尔学院", visibility: "hidden" });
-  }
+  const isLongzu = id === "longzu" || packageTitle.includes("龙族") || /仕兰|卡塞尔|路明非|楚子航/.test(text);
+  const isMystery = packageTitle.includes("神秘复苏") || /神秘复苏|大昌市|杨间/.test(text);
+  const isCultivation = packageTitle.includes("修仙") || /修仙|宗门|炼气|筑基|韩立/.test(text);
 
   const named = namedCharacters(chapter(text, "十六"));
-  const hybridId = "char-hybrid";
-  const characters: WorldSource["characters"] = [
-    { id: "char-player", name: "普通人", kind: "player", locationId: "loc-city" },
-    { id: "char-roommate", name: "同学", kind: "npc", locationId: "loc-city" },
-    { id: "char-cafeteria", name: "食堂师傅", kind: "npc", locationId: "loc-cafeteria" },
-    {
-      id: hybridId,
-      name: "隐秘行动者",
-      kind: "npc",
-      locationId: locations.some((row) => row.id === "loc-cassel") ? "loc-cassel" : "loc-city",
-      theme: true,
-    },
-    ...named.map((person) => ({
-      id: person.id,
-      name: person.name,
-      kind: "npc" as const,
-      locationId: locations.some((row) => row.id === "loc-cassel") ? "loc-cassel" : "loc-city",
-    })),
-  ];
-
+  let locations: WorldSource["locations"];
+  let characters: WorldSource["characters"];
   const facts: WorldSource["facts"] = [];
   const claims: WorldSource["claims"] = [];
-  const knowers = [hybridId, ...named.map((person) => person.id)];
-  if (/龙族|混血种|屠龙/.test(text)) {
-    facts.push({
-      id: "fact-dragons-exist",
-      subject: "dragons",
-      predicate: "exist",
-      object: "true",
-      visibility: "hidden",
-    });
+  let items: WorldSource["items"] = [];
+  let theme: WorldSource["theme"];
+  let chronology: import("./source.js").WorldChronology;
+  let publicName: string;
+  let time: string;
+
+  if (isLongzu) {
+    publicName = "当代世界";
+    time = "2009年秋 · 傍晚";
+    chronology = {
+      era: "仕兰中学时期",
+      timeLabel: "2009年秋 · 傍晚",
+      publicPremise: "最近这座滨海城市接连发生几起尚未解释的雨夜失踪事件，老城区的街头巷尾议论纷纷。",
+    };
+    locations = [
+      { id: "loc-teaching", name: "教学楼", visibility: "public" },
+      { id: "loc-gate", name: "学校大门", visibility: "public" },
+      { id: "loc-street", name: "老街", visibility: "public" },
+      { id: "loc-home", name: "家", visibility: "public" },
+      { id: "loc-dorm", name: "宿舍", visibility: "public" },
+      { id: "loc-cafeteria", name: "食堂", visibility: "public" },
+      { id: "loc-store", name: "便利店", visibility: "public" },
+      { id: "loc-campus", name: "普通大学校园", visibility: "public" },
+      { id: "loc-city", name: "普通城市", visibility: "public" },
+    ];
+    if (text.includes("卡塞尔")) {
+      locations.push({ id: "loc-cassel", name: "卡塞尔学院", visibility: "hidden" });
+    }
+    const hybridId = "char-hybrid";
+    const knowers = [hybridId, ...named.map((person) => person.id)];
+    characters = [
+      { id: "char-player", name: "普通人", kind: "player", locationId: "loc-city" },
+      { id: "char-roommate", name: "同学", kind: "npc", locationId: "loc-city" },
+      { id: "char-guard", name: "门卫大爷", kind: "npc", locationId: "loc-gate" },
+      { id: "char-cafeteria", name: "食堂师傅", kind: "npc", locationId: "loc-cafeteria" },
+      {
+        id: hybridId,
+        name: "隐秘行动者",
+        kind: "npc",
+        locationId: locations.some((row) => row.id === "loc-cassel") ? "loc-cassel" : "loc-city",
+        theme: true,
+      },
+      ...named.map((person) => ({
+        id: person.id,
+        name: person.name,
+        kind: "npc" as const,
+        locationId: locations.some((row) => row.id === "loc-cassel") ? "loc-cassel" : "loc-city",
+      })),
+    ];
+    if (/龙族|混血种|屠龙/.test(text)) {
+      facts.push({
+        id: "fact-dragons-exist",
+        subject: "dragons",
+        predicate: "exist",
+        object: "true",
+        visibility: "hidden",
+      });
+      claims.push({
+        id: "claim-dragons-exist",
+        subject: "dragons",
+        predicate: "exist",
+        object: "true",
+        knownBy: knowers.map((characterId) => ({ characterId, state: "confirmed" as const })),
+      });
+    }
     claims.push({
-      id: "claim-dragons-exist",
-      subject: "dragons",
-      predicate: "exist",
-      object: "true",
-      knownBy: knowers.map((characterId) => ({ characterId, state: "confirmed" as const })),
+      id: "claim-city-missing",
+      subject: "city-news",
+      predicate: "reports",
+      object: "unsolved-missing-person",
+      knownBy: [{ characterId: "char-roommate", state: "rumor" }],
     });
-  }
-  if (text.includes("卡塞尔")) {
-    facts.push({
-      id: "fact-cassel-academy",
-      subject: "cassel",
-      predicate: "is",
-      object: "mixed-blood-academy",
-      visibility: "hidden",
-    });
+    if (text.includes("卡塞尔")) {
+      facts.push({
+        id: "fact-cassel-academy",
+        subject: "cassel",
+        predicate: "is",
+        object: "mixed-blood-academy",
+        visibility: "hidden",
+      });
+      claims.push({
+        id: "claim-cassel-academy",
+        subject: "cassel",
+        predicate: "is",
+        object: "mixed-blood-academy",
+        knownBy: knowers.map((characterId) => ({ characterId, state: "confirmed" as const })),
+      });
+    }
+    items = [
+      { id: "item-bag", name: "书包", locationId: null, carrierId: "char-player" },
+      { id: "item-key", name: "钥匙", locationId: "loc-dorm", carrierId: null },
+    ];
+    theme = {
+      characterId: hybridId,
+      memory: "隐秘一侧的调查还没结束，不能因为市井日常就把已经开始的事放下。",
+      publicBeat: "街头新闻仍在报一桩没有结案的失踪。",
+      publicBeatScope: "public_world",
+    };
+  } else if (isMystery) {
+    publicName = "神秘复苏世界";
+    time = "当代 · 傍晚";
+    chronology = {
+      era: "大昌市时期",
+      timeLabel: "当代 · 傍晚",
+      publicPremise: "城市里暗流涌动，各类神秘灵异传闻在小圈子里悄然传播。",
+    };
+    locations = [
+      { id: "loc-living", name: "居民楼", visibility: "public" },
+      { id: "loc-street", name: "街道", visibility: "public" },
+      { id: "loc-hall", name: "走廊", visibility: "public" },
+    ];
+    characters = [
+      { id: "char-player", name: "普通人", kind: "player", locationId: "loc-living" },
+      { id: "char-neighbor", name: "邻居", kind: "npc", locationId: "loc-living" },
+      ...named.map((person) => ({
+        id: person.id,
+        name: person.name,
+        kind: "npc" as const,
+        locationId: "loc-street",
+      })),
+    ];
     claims.push({
-      id: "claim-cassel-academy",
-      subject: "cassel",
-      predicate: "is",
-      object: "mixed-blood-academy",
-      knownBy: knowers.map((characterId) => ({ characterId, state: "confirmed" as const })),
+      id: "claim-city-anomaly",
+      subject: "city-rumors",
+      predicate: "mentions",
+      object: "strange-anomalies",
+      knownBy: [{ characterId: "char-neighbor", state: "rumor" }],
     });
+    items = [
+      { id: "item-phone", name: "手机", locationId: null, carrierId: "char-player" },
+    ];
+    theme = {
+      characterId: "char-neighbor",
+      memory: "最近夜里总有些奇怪的声音，最好别乱走。",
+      publicBeat: "城市广播偶尔插播着某些路段突发管制的通知。",
+      publicBeatScope: "public_world",
+    };
+  } else if (isCultivation) {
+    publicName = "修仙世界";
+    time = "清晨";
+    chronology = {
+      era: "仙元历",
+      timeLabel: "清晨",
+      publicPremise: "修真界风云未定，各宗门弟子在世间历练寻道。",
+    };
+    locations = [
+      { id: "loc-gate", name: "山门", visibility: "public" },
+      { id: "loc-hall", name: "宗门大殿", visibility: "public" },
+      { id: "loc-room", name: "弟子居", visibility: "public" },
+    ];
+    characters = [
+      { id: "char-player", name: "外门弟子", kind: "player", locationId: "loc-gate" },
+      { id: "char-brother", name: "同门师兄", kind: "npc", locationId: "loc-gate" },
+      ...named.map((person) => ({
+        id: person.id,
+        name: person.name,
+        kind: "npc" as const,
+        locationId: "loc-hall",
+      })),
+    ];
+    claims.push({
+      id: "claim-sect-trial",
+      subject: "sect-news",
+      predicate: "announces",
+      object: "annual-trial-upcoming",
+      knownBy: [{ characterId: "char-brother", state: "confirmed" }],
+    });
+    items = [
+      { id: "item-sword", name: "木剑", locationId: null, carrierId: "char-player" },
+      { id: "item-pouch", name: "粗布储物袋", locationId: null, carrierId: "char-player" },
+    ];
+    theme = {
+      characterId: "char-brother",
+      memory: "宗门大比临近，不可荒废修行。",
+      publicBeat: "山门外的灵鹤掠过云海，远处钟声回荡。",
+      publicBeatScope: "public_world",
+    };
+  } else {
+    publicName = "当代世界";
+    time = "当代";
+    chronology = {
+      era: "当前时期未标定",
+      timeLabel: "当代",
+      publicPremise: "平静的世界在日常运转。",
+    };
+    locations = [
+      { id: "loc-start", name: "此地", visibility: "public" },
+    ];
+    characters = [
+      { id: "char-player", name: "旅人", kind: "player", locationId: "loc-start" },
+      ...named.map((person) => ({
+        id: person.id,
+        name: person.name,
+        kind: "npc" as const,
+        locationId: "loc-start",
+      })),
+    ];
+    items = [];
+    theme = {
+      characterId: "char-player",
+      memory: "",
+      publicBeat: "",
+      publicBeatScope: "public_world",
+    };
   }
-  claims.push({
-    id: "claim-city-missing",
-    subject: "city-news",
-    predicate: "reports",
-    object: "unsolved-missing-person",
-    knownBy: [{ characterId: "char-roommate", state: "rumor" }],
-  });
 
   return {
     id,
     packageTitle,
-    publicName: "当代世界",
-    time: "当代",
+    publicName,
+    time,
     sourceKind: "protocol",
+    chronology,
     rules: rules.length > 0
       ? rules
       : [{ text: "世界不围绕玩家存在", visibility: "public" }],
@@ -171,16 +327,8 @@ function parseProtocol(text: string): WorldSource {
     characters,
     facts,
     claims,
-    theme: {
-      characterId: hybridId,
-      memory: "隐秘一侧的调查还没结束，不能因为市井日常就把已经开始的事放下。",
-      publicBeat: "街头新闻仍在报一桩没有结案的失踪。",
-      publicBeatScope: "public_world",
-    },
-    items: [
-      { id: "item-bag", name: "书包", locationId: null, carrierId: "char-player" },
-      { id: "item-key", name: "钥匙", locationId: "loc-dorm", carrierId: null },
-    ],
+    theme,
+    items,
   };
 }
 

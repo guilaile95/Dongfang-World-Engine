@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+web/dist/
 build/
 coverage/
 
@@ -42,3 +43,6 @@ Thumbs.db
 .tmp/
 tmp/
 *.tmp
+test-results/
+playwright-report/
+web/e2e/*.png
