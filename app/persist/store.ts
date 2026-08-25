@@ -720,6 +720,30 @@ export class WorldStore {
       }
     });
   }
+
+  public setPlayerSituation(worldId: string, observerId: string, situation: string): void {
+    const ns = `char:${observerId}`;
+    this.sqlite.prepare(
+      `INSERT INTO context_items (id, world_id, namespace, kind, title, body, seq)
+       VALUES (?, ?, ?, 'summary', 'situation', ?, 0)
+       ON CONFLICT(id) DO UPDATE SET body = excluded.body`,
+    ).run(`situation-${worldId}-${observerId}`, worldId, ns, situation);
+  }
+
+  public getPlayerSituation(worldId: string, observerId: string): string | null {
+    const ns = `char:${observerId}`;
+    const row = this.sqlite.prepare(
+      "SELECT body FROM context_items WHERE world_id = ? AND namespace = ? AND kind = 'summary' AND title = 'situation'",
+    ).get(worldId, ns) as { body: string } | undefined;
+    return row?.body ?? null;
+  }
+
+  public clearPlayerSituation(worldId: string, observerId: string): void {
+    const ns = `char:${observerId}`;
+    this.sqlite.prepare(
+      "DELETE FROM context_items WHERE world_id = ? AND namespace = ? AND kind = 'summary' AND title = 'situation'",
+    ).run(worldId, ns);
+  }
 }
 
 export interface PlayerProfile {

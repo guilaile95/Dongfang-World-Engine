@@ -71,6 +71,58 @@ export const OPENING_SYSTEM = [
   "F. （出人意料/整活/非常规社交奇招，如：我对着门外大喊「有话当面出来说」）",
 ].join("\n");
 
+export interface OpeningHookPlan {
+  kind: "durable_item" | "ephemeral_event";
+  itemName?: string;
+  itemContent?: string;
+  situationSummary: string;
+  narrativeDirective: string;
+}
+
+export function planOpeningHook(worldId: string, locationName: string): OpeningHookPlan {
+  if (worldId === "riverside-inn" || locationName.includes("堂屋") || locationName.includes("客栈")) {
+    return {
+      kind: "durable_item",
+      itemName: "警告纸条",
+      itemContent: "别去后院地窖，今晚掌柜在提防生人。",
+      situationSummary: "堂屋留有一张提醒别去地窖的警告纸条，掌柜神色有些异样。",
+      narrativeDirective: "堂屋桌角或脚边出现一张【警告纸条】，上面写着『别去后院地窖，今晚掌柜在提防生人。』",
+    };
+  }
+  if (worldId === "longzu" || locationName.includes("教学楼") || locationName.includes("学校") || locationName.includes("宿舍")) {
+    return {
+      kind: "durable_item",
+      itemName: "警告信",
+      itemContent: "别走老码头那条路，今晚雨夜有人在等。",
+      situationSummary: "门缝滑入了一封未具名的警告信，外头汽车与电话声交织。",
+      narrativeDirective: "门缝滑入一封【警告信】，上面写着『别走老码头那条路，今晚雨夜有人在等。』",
+    };
+  }
+  if (worldId === "shenmi-fusu" || locationName.includes("居民楼")) {
+    return {
+      kind: "durable_item",
+      itemName: "奇怪的便签",
+      itemContent: "晚上听到敲门声千万别开，直接下楼。",
+      situationSummary: "门把手上贴着一张警告不要开门的便签，楼道有些阴冷。",
+      narrativeDirective: "门把手或门缝处贴着一张【奇怪的便签】，写着『晚上听到敲门声千万别开，直接下楼。』",
+    };
+  }
+  if (worldId === "xiuxian" || locationName.includes("山门") || locationName.includes("大殿")) {
+    return {
+      kind: "durable_item",
+      itemName: "传音符纸",
+      itemContent: "后山有异动，巡夜弟子速至大殿集合。",
+      situationSummary: "山门石阶旁落着一张闪烁微光的传音符纸，远处钟声回荡。",
+      narrativeDirective: "石阶旁拾得一张【传音符纸】，上面留有字迹『后山有异动，巡夜弟子速至大殿集合。』",
+    };
+  }
+  return {
+    kind: "ephemeral_event",
+    situationSummary: "周围的环境有些不同寻常的动向。",
+    narrativeDirective: "远处传来一阵异样的声响与动静，打破了四周的平静。",
+  };
+}
+
 export function hasPerspectiveViolation(text: string, playerName?: string): boolean {
   if (!playerName || playerName.trim().length < 2) {
     return false;
@@ -96,6 +148,7 @@ export interface OpeningPromptInput {
   publicLore: string[];
   publicBeat: string;
   profile: import("../persist/store.js").PlayerProfile;
+  plannedHook?: OpeningHookPlan;
 }
 
 export function renderOpeningPrompt(input: OpeningPromptInput): string {
@@ -115,7 +168,10 @@ export function renderOpeningPrompt(input: OpeningPromptInput): string {
   parts.push(
     `【玩家身份】名字=${p.name}；年龄=${p.age ? p.age + "岁" : "18岁"}；性别=${p.gender || "未知"}；身世经历=${p.background || "普通人"}；性格=${p.personality || "务实"}；起始位置=${p.startingLocation || input.locationName}`,
   );
-  parts.push("【要求】请严格以第二人称「你」写出富有特异性、带有明确可操作 Hook 的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。若有可拾取道具请用 <hook_item> 标出。");
+  if (input.plannedHook) {
+    parts.push(`【本局开场既定事件（必须遵从描写）】${input.plannedHook.narrativeDirective}`);
+  }
+  parts.push("【要求】请严格以第二人称「你」写出富有特异性、忠实体现既定开场事件的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。");
   return parts.join("\n");
 }
 
@@ -126,10 +182,10 @@ export interface ParsedOpening {
   hookItem?: string;
 }
 
-export function parseOpeningOutput(raw: string, defaultLoc: string = "这里"): ParsedOpening {
+export function parseOpeningOutput(raw: string, defaultLoc: string = "这里", plan?: OpeningHookPlan): ParsedOpening {
   let narrative = "";
-  let currentSituation = "";
-  let hookItem: string | undefined = undefined;
+  let currentSituation = plan?.situationSummary ?? "";
+  let hookItem: string | undefined = plan?.itemName;
   const suggestions: import("../http/view.js").ActionSuggestion[] = [];
 
   const narrativeMatch = raw.match(/<narrative>([\s\S]*?)<\/narrative>/i);
@@ -138,26 +194,6 @@ export function parseOpeningOutput(raw: string, defaultLoc: string = "这里"): 
   } else {
     const splitIdx = raw.search(/【(眼下|选项)】|<hook_item>/);
     narrative = (splitIdx > 0 ? raw.slice(0, splitIdx) : raw).trim();
-  }
-
-  const hookItemMatch = raw.match(/<hook_item>([^<]+)<\/hook_item>/i);
-  if (hookItemMatch) {
-    const itemText = hookItemMatch[1]!.trim();
-    if (itemText && !itemText.includes("无") && itemText.length < 20) {
-      hookItem = itemText;
-    }
-  }
-  // Heuristic fallback if model introduced an interactable item in narrative
-  if (!hookItem) {
-    if (/纸条|白纸/.test(narrative)) {
-      hookItem = "警告纸条";
-    } else if (/信封|牛皮纸/.test(narrative)) {
-      hookItem = "警告信";
-    } else if (/手机|翻盖手机/.test(narrative)) {
-      hookItem = "遗留的手机";
-    } else if (/车票|公交车票/.test(narrative)) {
-      hookItem = "可疑的车票";
-    }
   }
 
   const sitMatch = raw.match(/【眼下】\s*([^\n]+)/);
@@ -208,9 +244,49 @@ export interface DecisionGateInput {
   text: string;
 }
 
+export function isMeaningfulDecisionNode(input: DecisionGateInput): boolean {
+  // 1. Action barrier / Refusal / Hazard / Failure / Physical Obstacle
+  if (
+    input.envelope.uncommitted.length > 0 ||
+    input.interpretation.outcome === "fail" ||
+    input.interpretation.contributions.includes("refuse") ||
+    (input.interpretation.contributions.includes("durable_attempt") && input.interpretation.outcome !== "candidate") ||
+    /(受阻|锁死|打不开|纹丝未动|纹丝不动|无法进入|无法打开|被锁|撞不开)/.test(input.text)
+  ) {
+    return true;
+  }
+  // 2. Dialogue node: check if NPC speech represents a true decision fork vs mundane chitchat
+  if (input.dialogue) {
+    const text = input.dialogue.npcReply.trim();
+    // Mundane chitchat filter
+    const isMundane =
+      /^(是啊|嗯|哦|好|好的|慢走|知道了|天气|随便看|欢迎光临|没什么|没事的|再见|我也觉得|挺好|行吧)[，。！\s]*$/.test(text) ||
+      ((/(今天|明天|天气|挺凉快|凉快|挺热|吃饭|喝水|慢点走|早点回)/.test(text) || text.length < 15) &&
+        !/(别走|别去|危险|小心|赶快|快点|失踪|警告|秘密|案|门|信|纸条|等等|\?|？|！|!)/.test(text));
+    if (isMundane) {
+      return false;
+    }
+    // Meaningful signals: requests, questions, warnings, anomalies, secrets, urgency
+    const isMeaningful =
+      /(别走|别去|小心|危险|赶快|快点|帮我|你在干什么|发生什么|你听说|你必须|不能|跟我来|交出|为什么|谁|告诉我|去哪|失踪|纸条|信|密码|凶手|警告|秘密|\?|？|！|!)/.test(
+        text,
+      );
+    return isMeaningful;
+  }
+  return false;
+}
+
 export function evaluateDecisionGate(
   input: DecisionGateInput,
+  activeSituation?: string | null,
 ): { suggestions?: import("../http/view.js").ActionSuggestion[]; currentSituation: string | null } {
+  // If not a meaningful decision node, no suggestions! Active situation remains preserved!
+  if (!isMeaningfulDecisionNode(input)) {
+    return {
+      currentSituation: activeSituation ?? null,
+    };
+  }
+
   // Case 1: NPC Dialogue Node
   if (input.dialogue) {
     const npc = input.dialogue.addresseeName;
@@ -225,30 +301,23 @@ export function evaluateDecisionGate(
     ];
     return {
       suggestions,
-      currentSituation: `眼下：${npc}正在和你交谈：「${replySnippet}…」`,
+      currentSituation: `眼下：${npc}正在对你说：「${replySnippet}…」`,
     };
   }
 
-  // Case 2: Action Refusal / Danger Node
-  if (input.envelope.uncommitted.length > 0) {
-    const reason = input.envelope.uncommitted[0] ?? "行动受阻";
-    const suggestions: import("../http/view.js").ActionSuggestion[] = [
-      { key: "A", label: "另寻其他途径或替代方案", type: "constructive" },
-      { key: "B", label: "退回安全位置，仔细观察周围动静", type: "constructive" },
-      { key: "C", label: "向在场的人询问刚才的情况", type: "constructive" },
-      { key: "D", label: "暂时放弃该意图，先处理日常事务", type: "constructive" },
-      { key: "E", label: "不顾阻碍，强行再次尝试", type: "extreme" },
-      { key: "F", label: "对着阻碍大声吐槽两句缓解气氛", type: "absurd" },
-    ];
-    return {
-      suggestions,
-      currentSituation: `眼下：你的行动受到阻碍（${reason}）。`,
-    };
-  }
-
-  // Case 3: Mundane Life Turn
+  // Case 2: Action Refusal / Danger / Obstacle Node
+  const reason = input.envelope.uncommitted[0] ?? "当前行动受阻或无法继续";
+  const suggestions: import("../http/view.js").ActionSuggestion[] = [
+    { key: "A", label: "另寻其他途径或替代方案", type: "constructive" },
+    { key: "B", label: "退回安全位置，仔细观察周围动静", type: "constructive" },
+    { key: "C", label: "向在场的人询问刚才的情况", type: "constructive" },
+    { key: "D", label: "暂时放弃该意图，先处理日常事务", type: "constructive" },
+    { key: "E", label: "不顾阻碍，强行再次尝试", type: "extreme" },
+    { key: "F", label: "对着阻碍大声吐槽两句缓解气氛", type: "absurd" },
+  ];
   return {
-    currentSituation: null,
+    suggestions,
+    currentSituation: `眼下：你的行动受到阻碍（${reason}）。`,
   };
 }
 

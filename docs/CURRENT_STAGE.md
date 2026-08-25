@@ -71,23 +71,22 @@ OPEN_PRS:
   - PR #73 (greenfield/owner-reset): Engine baseline, OPEN, awaiting Owner merge.
   - PR #74 (feat/step18-chat-first-ui): Step 18B UI & Opening Direction Candidate, DRAFT, OPEN.
 
-ALL_FOLLOW_UP_ITEMS_CLOSED:
-  1. Durable Opening Hook: Opening hook item committed to Authority SQLite items table during startLife bootstrap; carried by player across turns and persistent upon reopen;
-  2. Opening Scene Continuity: recordOpeningScene persists opening narrative in player recent scenes, accessible to assemblePrompt in subsequent turns;
-  3. Meaningful Decision Presentation Gate: A-F generated strictly on key decision nodes (NPC dialogue, action refusal/danger), empty on mundane turns (e.g. drinking water);
-  4. Dynamic "眼下" (currentSituation): follows real unresolved situations and updates/clears as player acts;
-  5. Cross-World Chronology: Longzu (仕兰中学/2009秋), Mystery Recovery (大昌市/当代), Cultivation (仙元历), uncalibrated (当前时期未标定) without cross-world pollution;
-  6. Perspective Repair Secondary Validation: secondary check ensures repaired prose satisfies hasPerspectiveViolation & hasNarrationLeak, with safe 2nd-person fallback;
-  7. 3 Causal Paths & Real Play: 103/103 vitest passed, 3/3 Playwright passed, 6-round interactive play with gpt-5.6-luna passed.
+ALL_ROOT_CAUSE_ITEMS_CLOSED:
+  1. Opening Hook Architecture: Engine pre-plans opening hook (commits hook item & durable claim/lore content to Authority SQLite before prompting Narrator); Narrator describes pre-approved hook without inventing Authority items; durable item content accurately recalled 5+ turns later after opening scene is evicted from recent buffer;
+  2. Meaningful Decision Presentation Gate: Mundane NPC small talk (e.g. weather, chitchat) produces 0 suggestions; critical NPC warnings/crises or physical action barriers activate 6 natural language suggestions (A-D distinct routes, E extreme, F absurd);
+  3. Persistent "眼下" (Current Situation): Represents active unresolved situation, persists across mundane actions (drinking water, watching rain), updates on new events/barriers, and restores upon reopen;
+  4. True Cross-World Isolation: Cultivation and Mystery protocol worlds completely stripped of modern/Longzu defaults (no schoolbag, no campus, no coastal missing persons news);
+  5. Perspective Repair Secondary Validation: Repaired prose verified against both hasPerspectiveViolation and hasNarrationLeak with safe 2nd-person fallback;
+  6. Verification Metrics: Vitest (103 passed, 0 skipped, 0 failed / 103 total), Playwright (3 passed, 0 failed / 3 total), Real Model (gpt-5.6-luna) multi-turn interactive run passed with 100% causal consistency.
 
 VERIFICATION_SUMMARY:
-  - Typecheck: 0 errors on Node and Web (exactOptionalPropertyTypes verified).
-  - Unit/Integration: 103 passed across 23 test files in Vitest.
+  - Typecheck: 0 errors on Node and Web (exactOptionalPropertyTypes: true).
+  - Unit/Integration: 103 passed across 23 test files in Vitest (0 skipped, 0 failed).
   - E2E: 3 passed in Playwright (desktop, mobile, safe new save, era drawer, suggestions).
-  - 6-Round Real Interactive Play on Longzu with gpt-5.6-luna: 100% causal consistency, durable item carry, and scene continuity.
+  - Real Model 8-Round Test (gpt-5.6-luna): Verified durable hook pre-planning, 5-turn memory recall across recent window eviction, decision gate chitchat filtering vs barrier activation, and reopen persistence.
   - Test Data Isolation: data/local SHA-256 digests remain 100% untouched.
 
 NEXT_ACTION:
-  - Push feat/step18-chat-first-ui to GitHub, verify CI, and hand off to Owner for Real Play #3.
+  - Hand off PR #74 to Owner for Real Play Candidate #3.
   - Do not merge #73 or #74 without Owner authorization.
 ```

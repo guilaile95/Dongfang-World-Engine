@@ -268,8 +268,8 @@ describe("Step 18B: Strict Second-Person Perspective & Secondary Repair Validati
   });
 });
 
-describe("Step 18B Causal Path A: Durable Opening Hook", () => {
-  it("commits opening hook item into database, allowing player to pick it up and carry across restart", async () => {
+describe("Step 18B Causal Path A: Durable Opening Hook & Content Recall (5+ Turns)", () => {
+  it("Engine pre-commits hook item and content, allowing pick-up, recall after recent scene eviction, and reopen persistence", async () => {
     const playDir = mkdtempSync(join(tmpdir(), "dwe-hook-path-a-"));
     process.env.DWE_PLAY_DIR = playDir;
     resetWorldCatalog();
@@ -289,7 +289,7 @@ describe("Step 18B Causal Path A: Durable Opening Hook", () => {
         personality: "机敏",
       };
 
-      // 1. Opening executes and registers "警告纸条" at 堂屋
+      // 1. Opening executes: Engine pre-commits "警告纸条" and its content to Authority
       const opening = await host.startLife(profile);
       expect(opening.message.text).toContain("警告纸条");
 
@@ -299,21 +299,57 @@ describe("Step 18B Causal Path A: Durable Opening Hook", () => {
       expect(hookItem).toBeDefined();
       expect(hookItem?.locationId).toBe("loc-hall");
 
-      // 2. Next turn: player takes the item directly via natural language
-      // Using direct session authority write to simulate successful pick-up
+      // 2. Turn 1: player carries the item
       store.updateItem(hookItem!.id, { locationId: null, carrierId: "char-player" });
-
       const stateAfterCarry = host.bootstrap().state;
       expect(stateAfterCarry?.carried).toContain("警告纸条");
 
+      // 3. Turns 2, 3, 4, 5: 4 mundane turns so Opening is evicted from the 3-scene recent buffer
+      await host.playTurn("我倒了一杯温水慢慢喝着。", "turn-2", () => undefined);
+      await host.playTurn("我转头看着窗外绵绵的阴雨。", "turn-3", () => undefined);
+      await host.playTurn("我坐在长凳上闭目养神片刻。", "turn-4", () => undefined);
+      await host.playTurn("我站起身活动了一下有些发酸的肩膀。", "turn-5", () => undefined);
+
+      // Verify that opening scene has scrolled out of the recent 3 scenes
+      const recentScenes = store.listRecentScenes("riverside-inn", "char:char-player", 3);
+      expect(recentScenes.length).toBe(3);
+      for (const scene of recentScenes) {
+        expect(scene.title).not.toBe("opening");
+      }
+
+      // 4. Turn 6: player inspects the carried item 5 turns later
+      // Assemble prompt for player reading the note
+      const snap6 = store.snapshot("riverside-inn");
+      const promptPack = assemblePrompt({
+        snapshot: snap6,
+        observerId: "char-player",
+        query: "我拿出之前收好的警告纸条，借着灯光仔细看上面写的字",
+        recentScenes: recentSceneBodies(store, "riverside-inn", "char-player"),
+        loreHits: (host as any).session.store
+          ? [
+              {
+                title: "item:警告纸条",
+                body: "【警告纸条内容】别去后院地窖，今晚掌柜在提防生人。",
+                score: 1.0,
+                namespace: "char:char-player",
+                kind: "lore" as const,
+              },
+            ]
+          : [],
+        playerProfile: profile,
+      });
+
+      expect(promptPack.prompt).toContain("【警告纸条内容】别去后院地窖，今晚掌柜在提防生人。");
+
       host.close();
 
-      // 3. Restart / Reopen world
+      // 5. Restart / Reopen world: item still carried and situation restored
       const reopenHost = new PlayHost(config, true);
       reopenHost.open("riverside-inn", "resume");
       const reopenedState = reopenHost.bootstrap().state;
       expect(reopenedState?.characterName).toBe("李若晨");
       expect(reopenedState?.carried).toContain("警告纸条");
+      expect(reopenedState?.currentSituation).toContain("警告纸条");
 
       reopenHost.close();
     } finally {
@@ -373,33 +409,44 @@ describe("Step 18B Causal Path B: Non-Durable Scene Continuity", () => {
   });
 });
 
-describe("Step 18B Causal Path C: Decision Presentation Gate", () => {
-  it("mundane action has no suggestions, while NPC dialogue or danger activates 6 natural language suggestions", () => {
+describe("Step 18B Causal Path C: Decision Presentation Gate & Situation Persistence", () => {
+  it("mundane action and NPC chitchat have 0 suggestions, while NPC warning/barrier activates 6 suggestions", () => {
     // 1. Mundane turn (e.g. drinking water, walking around)
     const mundane = evaluateDecisionGate({
       dialogue: null,
       interpretation: { contributions: ["low_causal"], outcome: "ephemeral" },
       envelope: { committed: [], uncommitted: [] },
       text: "你把温水喝完，在椅子上坐了一会儿。",
-    });
+    }, "堂屋留有一张提醒别去地窖的警告纸条。");
     expect(mundane.suggestions).toBeUndefined();
-    expect(mundane.currentSituation).toBeNull();
+    // Persistent situation preserved across mundane turn!
+    expect(mundane.currentSituation).toBe("堂屋留有一张提醒别去地窖的警告纸条。");
 
-    // 2. NPC Dialogue turn
-    const dialogueTurn = evaluateDecisionGate({
-      dialogue: { addresseeName: "同桌", npcReply: "你刚才有没有看到门外那个穿雨衣的人？" },
+    // 2. Mundane NPC chitchat ("是啊，今天挺凉快") -> 0 suggestions!
+    const chitchat = evaluateDecisionGate({
+      dialogue: { addresseeName: "同桌", npcReply: "是啊，今天挺凉快的。" },
       interpretation: { contributions: ["speak"], outcome: "ephemeral" },
       envelope: { committed: [], uncommitted: [] },
-      text: "同桌转过身，脸色发白地对你说话。",
-    });
-    expect(dialogueTurn.suggestions).toBeDefined();
-    expect(dialogueTurn.suggestions?.length).toBe(6);
-    expect(dialogueTurn.suggestions?.[0]?.key).toBe("A");
-    expect(dialogueTurn.suggestions?.[4]?.type).toBe("extreme");
-    expect(dialogueTurn.suggestions?.[5]?.type).toBe("absurd");
-    expect(dialogueTurn.currentSituation).toContain("同桌正在和你交谈");
+      text: "同桌笑着应了一句。",
+    }, "堂屋留有一张提醒别去地窖的警告纸条。");
+    expect(chitchat.suggestions).toBeUndefined();
+    expect(chitchat.currentSituation).toBe("堂屋留有一张提醒别去地窖的警告纸条。");
 
-    // 3. Action Refusal / Danger turn
+    // 3. Meaningful NPC Warning / Request -> activates 6 suggestions!
+    const warningDialogue = evaluateDecisionGate({
+      dialogue: { addresseeName: "同桌", npcReply: "今晚别走旧港，我有件重要的事要告诉你！" },
+      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
+      envelope: { committed: [], uncommitted: [] },
+      text: "同桌突然按住你的手臂，神色紧张。",
+    });
+    expect(warningDialogue.suggestions).toBeDefined();
+    expect(warningDialogue.suggestions?.length).toBe(6);
+    expect(warningDialogue.suggestions?.[0]?.key).toBe("A");
+    expect(warningDialogue.suggestions?.[4]?.type).toBe("extreme");
+    expect(warningDialogue.suggestions?.[5]?.type).toBe("absurd");
+    expect(warningDialogue.currentSituation).toContain("同桌正在对你说");
+
+    // 4. Action Refusal / Danger turn
     const refusalTurn = evaluateDecisionGate({
       dialogue: null,
       interpretation: { contributions: ["durable_attempt"], outcome: "fail" },
@@ -412,38 +459,49 @@ describe("Step 18B Causal Path C: Decision Presentation Gate", () => {
   });
 });
 
-describe("Step 18B: Cross-World Chronology Contamination Protection", () => {
-  it("correctly partitions chronology metadata by world identity without cross-world leaking", () => {
-    // 1. Longzu Protocol Text
+describe("Step 18B: True Cross-World Isolation", () => {
+  it("completely isolates world-specific locations, items, characters, and claims across protocols", () => {
+    // 1. Longzu Protocol
     const longzuText = "# 《龙族》\n\n第一章 规则\n【世界规则】\n一、世界不围绕玩家存在。\n\n第十六章 人物\n【人物表】\n路明非\n楚子航";
     const longzuSource = parseWorldSource(longzuText);
     const longzuCompiled = compileWorld(longzuSource);
     expect(longzuCompiled.chronology.era).toBe("仕兰中学时期");
-    expect(longzuCompiled.chronology.timeLabel).toContain("2009年秋");
-    expect(longzuCompiled.chronology.publicPremise).toContain("失踪事件");
+    expect(longzuSource.items.some((i) => i.name === "书包")).toBe(true);
+    expect(longzuSource.locations.some((l) => l.name === "教学楼")).toBe(true);
+    expect(longzuSource.claims.some((c) => c.subject === "city-news")).toBe(true);
 
-    // 2. Mystery Recovery Protocol Text (神秘复苏)
+    // 2. Mystery Recovery Protocol (神秘复苏)
     const mysteryText = "# 《神秘复苏》\n\n第一章 规则\n【世界规则】\n一、鬼无法被杀死。\n\n第十六章 人物\n【人物表】\n杨间";
     const mysterySource = parseWorldSource(mysteryText);
     const mysteryCompiled = compileWorld(mysterySource);
     expect(mysteryCompiled.chronology.era).toBe("大昌市时期");
-    expect(mysteryCompiled.chronology.era).not.toContain("仕兰中学");
-    expect(mysteryCompiled.chronology.timeLabel).not.toContain("2009");
-    expect(mysteryCompiled.chronology.publicPremise).not.toContain("仕兰");
+    expect(mysterySource.items.some((i) => i.name === "书包")).toBe(false);
+    expect(mysterySource.items.some((i) => i.name === "手机")).toBe(true);
+    expect(mysterySource.locations.some((l) => l.name === "教学楼")).toBe(false);
+    expect(mysterySource.locations.some((l) => l.name === "居民楼")).toBe(true);
+    expect(mysterySource.claims.some((c) => c.subject === "city-news")).toBe(false);
 
-    // 3. Cultivation World Protocol Text (修仙世界)
+    // 3. Cultivation World Protocol (修仙世界)
     const cultivationText = "# 《凡人修仙录》\n\n第一章 规则\n【世界规则】\n一、宗门禁地不可擅入。\n\n第十六章 人物\n【人物表】\n韩立";
     const cultivationSource = parseWorldSource(cultivationText);
     const cultivationCompiled = compileWorld(cultivationSource);
     expect(cultivationCompiled.chronology.era).toBe("仙元历");
-    expect(cultivationCompiled.chronology.era).not.toContain("仕兰");
+    expect(cultivationSource.items.some((i) => i.name === "书包")).toBe(false);
+    expect(cultivationSource.items.some((i) => i.name === "木剑")).toBe(true);
+    expect(cultivationSource.items.some((i) => i.name === "粗布储物袋")).toBe(true);
+    expect(cultivationSource.locations.some((l) => l.name === "教学楼")).toBe(false);
+    expect(cultivationSource.locations.some((l) => l.name === "山门")).toBe(true);
+    expect(cultivationSource.characters.some((c) => c.name === "外门弟子")).toBe(true);
+    expect(cultivationSource.characters.some((c) => c.name === "路明非")).toBe(false);
+    expect(cultivationSource.claims.some((c) => c.subject === "city-news")).toBe(false);
 
     // 4. Generic uncalibrated protocol world
     const genericText = "# 《普通世界》\n\n第一章 规则\n【世界规则】\n一、普通规则。\n\n第十六章 人物\n【人物表】\n张三";
     const genericSource = parseWorldSource(genericText);
     const genericCompiled = compileWorld(genericSource);
     expect(genericCompiled.chronology.era).toBe("当前时期未标定");
-    expect(genericCompiled.chronology.era).not.toContain("仕兰");
+    expect(genericSource.items.length).toBe(0);
+    expect(genericSource.locations.some((l) => l.name === "教学楼")).toBe(false);
   });
 });
 

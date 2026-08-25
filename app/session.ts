@@ -4,6 +4,7 @@ import { lastAddresseeId, recentSceneBodies, recordOpeningScene, recordResolvedS
 import { recall } from "./context/recall.js";
 import type { Narrator } from "./narrator/client.js";
 import { stubNarrator } from "./narrator/client.js";
+import { planOpeningHook } from "./narrator/project.js";
 import { committedProjection, uncommittedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
 import { continueAddressee, reachableAddressee } from "./scene/address.js";
@@ -202,7 +203,12 @@ export class Session {
     if (this.ambient[0]) {
       this.lastPublicBeat = this.ambient[0];
     }
-    const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed, { kinds: ["lore"] }).map((hit) => ({
+    const carriedItems = snapshot.items.filter(
+      (it) => it.carrierId === this.compiled.playerId || it.locationId === player?.locationId,
+    );
+    const itemQuery = carriedItems.map((it) => `item:${it.name}`).join(" ");
+    const combinedQuery = [trimmed, itemQuery].filter(Boolean).join(" ");
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, combinedQuery, { kinds: ["lore"] }).map((hit) => ({
       title: hit.title,
       body: hit.body,
       score: hit.score,
@@ -296,6 +302,63 @@ export class Session {
       .filter((c) => c.id !== this.compiled.playerId && c.locationId === player?.locationId)
       .map((c) => c.name);
 
+    const plan = planOpeningHook(worldId, location?.name || profile.startingLocation || "");
+
+    // 1. Pre-commit planned hook item to Authority BEFORE prompting the Narrator!
+    if (plan.kind === "durable_item" && plan.itemName && player?.locationId) {
+      const existingItems = snapshot.items;
+      const alreadyPresent = existingItems.some(
+        (it) => it.name === plan.itemName && (it.locationId === player.locationId || it.carrierId === player.id),
+      );
+      if (!alreadyPresent) {
+        this.store.insertItem({
+          id: `item-hook-opening`,
+          worldId,
+          name: plan.itemName,
+          locationId: player.locationId,
+          carrierId: null,
+        });
+      }
+      if (plan.itemContent) {
+        // Store durable claim for item content
+        const claimId = `claim-item-${plan.itemName}`;
+        this.store.insertClaim({
+          id: claimId,
+          worldId,
+          subject: plan.itemName,
+          predicate: "content",
+          object: plan.itemContent,
+          recordedAt: snapshot.world.time,
+          sourceEventId: null,
+          sourceSeedId: null,
+          sourceKind: "seed",
+        });
+        this.store.upsertKnowledge({
+          characterId: this.compiled.playerId,
+          claimId,
+          state: "confirmed",
+          sourceKind: "seed",
+          sourceCharacterId: null,
+          sourceEventId: null,
+          sourceSeedId: null,
+          learnedAt: snapshot.world.time,
+        });
+        // Store durable lore item in context_items
+        this.store.insertContextItem({
+          id: `lore-item-${plan.itemName}`,
+          worldId,
+          namespace: `char:${this.compiled.playerId}`,
+          kind: "lore",
+          title: `item:${plan.itemName}`,
+          body: `【${plan.itemName}内容】${plan.itemContent}`,
+          seq: 0,
+        });
+      }
+    }
+
+    // 2. Set persistent initial situation in store
+    this.store.setPlayerSituation(worldId, this.compiled.playerId, plan.situationSummary);
+
     const query = [location?.name, profile.startingLocation, profile.background].filter(Boolean).join(" ");
     const loreHits = recall(this.store, worldId, this.compiled.playerId, query, { kinds: ["lore"], limit: 4 });
 
@@ -310,6 +373,7 @@ export class Session {
       publicLore: loreHits.map((hit) => hit.body),
       publicBeat: this.compiled.theme.publicBeat,
       profile,
+      plannedHook: plan,
     };
 
     let parsed: import("./narrator/project.js").ParsedOpening;
@@ -328,27 +392,10 @@ export class Session {
         onChunk,
       );
       const m = await import("./narrator/project.js");
-      parsed = m.parseOpeningOutput(narrative, input.locationName);
+      parsed = m.parseOpeningOutput(narrative, input.locationName, plan);
     }
 
-    // 1. Commit bootstrap hook item to Authority items table if present
-    if (parsed.hookItem && player?.locationId) {
-      const existingItems = snapshot.items;
-      const alreadyPresent = existingItems.some(
-        (it) => it.name === parsed.hookItem && (it.locationId === player.locationId || it.carrierId === player.id),
-      );
-      if (!alreadyPresent) {
-        this.store.insertItem({
-          id: `item-hook-${Date.now()}`,
-          worldId,
-          name: parsed.hookItem,
-          locationId: player.locationId,
-          carrierId: null,
-        });
-      }
-    }
-
-    // 2. Record opening scene into player namespace continuity (recent scenes)
+    // 3. Record opening scene into player namespace continuity (recent scenes)
     recordOpeningScene(this.store, worldId, this.compiled.playerId, parsed.narrative);
 
     return parsed;

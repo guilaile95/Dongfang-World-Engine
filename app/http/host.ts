@@ -281,15 +281,22 @@ export class PlayHost {
         parsed,
       });
 
+      const existingSituation = session.store.getPlayerSituation(worldId, session.compiled.playerId);
       const decision = import("../narrator/project.js").then((m) =>
-        m.evaluateDecisionGate({
-          dialogue: turn.dialogue,
-          interpretation: turn.interpretation,
-          envelope: turn.envelope,
-          text: turn.text,
-        }),
+        m.evaluateDecisionGate(
+          {
+            dialogue: turn.dialogue,
+            interpretation: turn.interpretation,
+            envelope: turn.envelope,
+            text: turn.text,
+          },
+          existingSituation,
+        ),
       );
       const evaluated = await decision;
+      if (evaluated.currentSituation) {
+        session.store.setPlayerSituation(worldId, session.compiled.playerId, evaluated.currentSituation);
+      }
 
       const result: TurnResult = {
         text: turn.text,

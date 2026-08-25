@@ -50,6 +50,8 @@ export function playerState(
   const snap = session.store.snapshot(compiled.seed.world.id);
   const player = snap.characters.find((row) => row.id === compiled.playerId);
   const location = snap.locations.find((row) => row.id === player?.locationId);
+  const persistentSituation = session.store.getPlayerSituation(compiled.seed.world.id, compiled.playerId);
+  const activeSituation = extra?.currentSituation !== undefined ? extra.currentSituation : persistentSituation;
   return {
     worldTitle: compiled.packageTitle,
     worldName: snap.world.name,
@@ -63,7 +65,7 @@ export function playerState(
     era: compiled.chronology?.era,
     timeLabel: compiled.chronology?.timeLabel,
     publicPremise: compiled.chronology?.publicPremise,
-    currentSituation: extra?.currentSituation ?? null,
+    currentSituation: activeSituation ?? null,
     ...(extra?.suggestions ? { suggestions: extra.suggestions } : {}),
   };
 }
