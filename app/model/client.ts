@@ -1,12 +1,14 @@
 import type { AppConfig } from "../config.js";
 import { assertNoSecret, redactSecret } from "../secrets.js";
 import { createAiSdkDriver } from "./ai-sdk-driver.js";
+import { attempt, sumUsage, truncateRaw, zodIssuePaths } from "./diagnostics.js";
 import { classifyError } from "./errors.js";
 import type {
   CallRecord,
   ModelDriver,
   StreamRequest,
   StreamResult,
+  StructuredAttempt,
   StructuredMode,
   StructuredRequest,
   StructuredResult,
@@ -66,7 +68,9 @@ export class ModelClient {
 
   public async generateStructured<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>> {
     const started = Date.now();
+    const attempts: StructuredAttempt[] = [];
     try {
+      const nativeStarted = Date.now();
       const outcome = await this.withRetry(
         (model) =>
           this.driver.generateObject({
@@ -90,20 +94,74 @@ export class ModelClient {
             fallbackUsed: outcome.fallbackUsed,
             structuredMode: "native",
             outputChars: JSON.stringify(parsed.data).length,
+            attempts,
           }),
         };
       }
-      return await this.jsonFallback(request, started, outcome.model, outcome.retryCount, outcome.fallbackUsed);
+      attempts.push(
+        attempt({
+          stage: "native",
+          started: nativeStarted,
+          usage: outcome.value.usage,
+          rawText: safeJson(outcome.value.object),
+          zodIssues: zodIssuePaths(parsed.error),
+          errorCategory: "schema",
+          errorMessage: parsed.error.message,
+        }),
+      );
+      return await this.jsonFallback(
+        request,
+        started,
+        outcome.model,
+        outcome.retryCount,
+        outcome.fallbackUsed,
+        attempts,
+      );
     } catch (error) {
       const classified = classifyError(error);
-      if (classified.category === "schema" || classified.category === "unsupported") {
-        return this.jsonFallback(request, started, this.config.model, 0, false);
+      attempts.push(
+        attempt({
+          stage: "native",
+          started,
+          extractError: classified.message,
+          errorCategory: classified.category,
+          errorMessage: classified.message,
+        }),
+      );
+      if (classified.category === "auth") {
+        return {
+          object: null,
+          record: this.fail(request, started, error, "none", 0, false, attempts),
+        };
       }
+      return this.jsonFallback(request, started, this.config.model, 0, false, attempts);
+    }
+  }
+
+  /** One plain-text JSON call. No native Output.object, no repair. For precheck only. */
+  public async generateJsonOnce<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>> {
+    const started = Date.now();
+    const textPath = await this.tryJsonText(request, this.config.model, 0);
+    if (textPath.ok) {
       return {
-        object: null,
-        record: this.fail(request, started, error, "none", 0),
+        object: textPath.object,
+        record: this.finish({
+          request,
+          model: this.config.model,
+          usage: textPath.usage,
+          started,
+          retryCount: 0,
+          fallbackUsed: false,
+          structuredMode: "json_text",
+          outputChars: JSON.stringify(textPath.object).length,
+          attempts: [textPath.attempt],
+        }),
       };
     }
+    return {
+      object: null,
+      record: this.fail(request, started, textPath.error, "json_text", 0, false, [textPath.attempt]),
+    };
   }
 
   private async jsonFallback<T>(
@@ -112,8 +170,10 @@ export class ModelClient {
     model: string,
     retryCount: number,
     fallbackUsed: boolean,
+    attempts: StructuredAttempt[],
   ): Promise<StructuredResult<T>> {
     const textPath = await this.tryJsonText(request, model, 0);
+    attempts.push(textPath.attempt);
     if (textPath.ok) {
       return {
         object: textPath.object,
@@ -126,10 +186,12 @@ export class ModelClient {
           fallbackUsed,
           structuredMode: "json_text",
           outputChars: JSON.stringify(textPath.object).length,
+          attempts,
         }),
       };
     }
     const repaired = await this.tryJsonText(request, model, 1, textPath.issues);
+    attempts.push(repaired.attempt);
     if (repaired.ok) {
       return {
         object: repaired.object,
@@ -142,12 +204,13 @@ export class ModelClient {
           fallbackUsed,
           structuredMode: "json_repair",
           outputChars: JSON.stringify(repaired.object).length,
+          attempts,
         }),
       };
     }
     return {
       object: null,
-      record: this.fail(request, started, repaired.error, "json_repair", retryCount, fallbackUsed),
+      record: this.fail(request, started, repaired.error, "json_repair", retryCount, fallbackUsed, attempts),
     };
   }
 
@@ -156,7 +219,12 @@ export class ModelClient {
     model: string,
     repair: 0 | 1,
     issues: string[] = [],
-  ): Promise<{ ok: true; object: T; usage: TokenUsage } | { ok: false; error: unknown; issues: string[] }> {
+  ): Promise<
+    | { ok: true; object: T; usage: TokenUsage; attempt: StructuredAttempt; issues: string[] }
+    | { ok: false; error: unknown; issues: string[]; attempt: StructuredAttempt }
+  > {
+    const stage = repair === 1 ? "json_repair" : "json_text";
+    const started = Date.now();
     const system = [
       request.system,
       "Reply with JSON only. No markdown.",
@@ -166,18 +234,69 @@ export class ModelClient {
       .join("\n");
     try {
       const result = await this.driver.generateText({ system, prompt: request.prompt, model });
-      const raw = extractJson(result.text);
-      const parsed = request.schema.safeParse(raw);
-      if (!parsed.success) {
+      try {
+        const raw = extractJson(result.text);
+        const parsed = request.schema.safeParse(raw);
+        if (!parsed.success) {
+          return {
+            ok: false,
+            error: parsed.error,
+            issues: parsed.error.issues.map((issue) => issue.message),
+            attempt: attempt({
+              stage,
+              started,
+              usage: result.usage,
+              rawText: result.text,
+              zodIssues: zodIssuePaths(parsed.error),
+              errorCategory: "schema",
+              errorMessage: parsed.error.message,
+            }),
+          };
+        }
+        return {
+          ok: true,
+          object: parsed.data,
+          usage: result.usage,
+          issues: [],
+          attempt: attempt({
+            stage,
+            started,
+            usage: result.usage,
+            rawText: result.text,
+            errorCategory: "none",
+          }),
+        };
+      } catch (extractError) {
+        const classified = classifyError(extractError);
         return {
           ok: false,
-          error: parsed.error,
-          issues: parsed.error.issues.map((issue) => issue.message),
+          error: extractError,
+          issues: [classified.message],
+          attempt: attempt({
+            stage,
+            started,
+            usage: result.usage,
+            rawText: result.text,
+            extractError: classified.message,
+            errorCategory: classified.category,
+            errorMessage: classified.message,
+          }),
         };
       }
-      return { ok: true, object: parsed.data, usage: result.usage };
     } catch (error) {
-      return { ok: false, error, issues };
+      const classified = classifyError(error);
+      return {
+        ok: false,
+        error,
+        issues: [classified.message],
+        attempt: attempt({
+          stage,
+          started,
+          extractError: classified.message,
+          errorCategory: classified.category,
+          errorMessage: classified.message,
+        }),
+      };
     }
   }
 
@@ -227,6 +346,7 @@ export class ModelClient {
     fallbackUsed: boolean;
     structuredMode: StructuredMode;
     outputChars: number;
+    attempts?: StructuredAttempt[];
   }): CallRecord {
     const record: CallRecord = {
       role: input.request.role,
@@ -244,6 +364,7 @@ export class ModelClient {
       errorMessage: null,
       promptChars: input.request.system.length + input.request.prompt.length,
       outputChars: input.outputChars,
+      attempts: input.attempts ?? [],
     };
     this.push(record);
     return record;
@@ -256,16 +377,18 @@ export class ModelClient {
     structuredMode: StructuredMode,
     retryCount: number,
     fallbackUsed = false,
+    attempts: StructuredAttempt[] = [],
   ): CallRecord {
     const classified = classifyError(error);
+    const usage = sumUsage(attempts);
     const record: CallRecord = {
       role: request.role,
       purpose: request.purpose,
       provider: "openai-compatible",
       model: this.config.model,
-      inputTokens: null,
-      outputTokens: null,
-      costUsd: null,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      costUsd: estimateCost(usage, this.config),
       latencyMs: Date.now() - started,
       retryCount,
       fallbackUsed,
@@ -274,6 +397,12 @@ export class ModelClient {
       errorMessage: redactSecret(classified.message, this.config.apiKey),
       promptChars: request.system.length + request.prompt.length,
       outputChars: 0,
+      attempts: attempts.map((row) => ({
+        ...row,
+        rawText: truncateRaw(row.rawText),
+        errorMessage: row.errorMessage ? redactSecret(row.errorMessage, this.config.apiKey) : null,
+        extractError: row.extractError ? redactSecret(row.extractError, this.config.apiKey) : null,
+      })),
     };
     this.push(record);
     return record;
@@ -297,6 +426,7 @@ export function formatCallLine(record: CallRecord): string {
     `cost=${cost}`,
     `${record.latencyMs}ms`,
     `retries=${record.retryCount}`,
+    `mode=${record.structuredMode}`,
     `err=${record.errorCategory}`,
   ].join(" ");
 }
@@ -307,7 +437,58 @@ export function extractJson(text: string): unknown {
   if (start < 0) {
     throw new Error("no JSON object in model text");
   }
-  return JSON.parse(trimmed.slice(start)) as unknown;
+  const slice = trimmed.slice(start);
+  try {
+    return JSON.parse(slice) as unknown;
+  } catch {
+    return firstJsonValue(slice);
+  }
+}
+
+function firstJsonValue(text: string): unknown {
+  const open = text[0];
+  const close = open === "[" ? "]" : "}";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === open) {
+      depth += 1;
+    } else if (char === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return JSON.parse(text.slice(0, index + 1)) as unknown;
+      }
+    }
+  }
+  throw new Error("no JSON object in model text");
+}
+
+function safeJson(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
 }
 
 function estimateCost(usage: TokenUsage, config: AppConfig): number | null {

@@ -7,8 +7,9 @@ export interface RecallHit extends ContextItemRecord {
 }
 
 /**
- * Search only the observer's namespace plus public lore.
- * Full-world index then filter is not provided.
+ * Search only the observer's namespace plus public lore, after Visibility.
+ * Default kind is lore. Summaries are not play recall until continuity expands.
+ * Full-world index then filter is not provided. Not a Vector DB.
  */
 export function observerNamespaces(observerId: string): string[] {
   return [PUBLIC_NS, observerNamespace(observerId)];
@@ -19,9 +20,13 @@ export function recall(
   worldId: string,
   observerId: string,
   query: string,
-  limit = 6,
+  options: { limit?: number; kinds?: ContextItemRecord["kind"][] } = {},
 ): RecallHit[] {
-  const items = store.listContextItems(worldId, observerNamespaces(observerId));
+  const kinds = options.kinds ?? ["lore"];
+  const limit = options.limit ?? 6;
+  const items = store
+    .listContextItems(worldId, observerNamespaces(observerId))
+    .filter((item) => kinds.includes(item.kind));
   const ranked = items
     .map((item) => ({ ...item, score: scoreText(`${item.title} ${item.body}`, query) }))
     .filter((item) => (query.trim() ? item.score > 0 : true))

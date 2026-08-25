@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     config.worldFile,
     createNarrator(model, config.apiKey),
     compiled,
-    createModelInterpreter(model),
+    createModelInterpreter(model, config.apiKey),
     createNpcVoice(model, config.apiKey),
   );
   const rl = createInterface({ input, output });

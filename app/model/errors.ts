@@ -1,4 +1,5 @@
 import { APICallError, RetryError } from "ai";
+import { isZodLike } from "./diagnostics.js";
 import type { ErrorCategory } from "./types.js";
 
 export class TransportError extends Error {
@@ -34,11 +35,20 @@ export function classifyError(error: unknown): {
     if (status === 408 || status === 504) {
       return { category: "timeout", retryable: true, message: truncate(error.message) };
     }
+    if (
+      status === 400 &&
+      /json_schema|response_format|structured output|output\.object|unsupported/i.test(error.message)
+    ) {
+      return { category: "unsupported", retryable: false, message: truncate(error.message) };
+    }
     return {
       category: "transport",
       retryable: error.isRetryable || (status !== undefined && status >= 500),
       message: truncate(error.message),
     };
+  }
+  if (isZodLike(error) || (error instanceof Error && error.name === "ZodError")) {
+    return { category: "schema", retryable: false, message: truncate(error instanceof Error ? error.message : "zod") };
   }
   const name = error instanceof Error ? error.name : "";
   const raw = error instanceof Error ? error.message : String(error);

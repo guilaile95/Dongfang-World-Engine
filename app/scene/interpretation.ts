@@ -35,7 +35,7 @@ const proposalSchema = z.discriminatedUnion("type", [
 
 export const interpretationSchema = z.object({
   contributions: z.array(contributionKindSchema).min(1),
-  futureCausal: z.boolean(),
+  futureCausal: z.boolean().optional().default(false),
   outcome: z.enum(["ephemeral", "clarify", "fail", "candidate"]),
   proposals: z.array(proposalSchema).max(3),
 });
@@ -47,8 +47,11 @@ export interface BoundInterpretation {
   futureCausal: boolean;
   outcome: SceneInterpretation["outcome"];
   submitted: boolean;
+  parsed: boolean;
   result: SubmitResult;
 }
+
+const SPEECH = new Set<ContributionKind>(["speak", "ask", "mixed", "durable_attempt"]);
 
 export function normalizeInterpretation(raw: unknown): SceneInterpretation {
   const parsed = interpretationSchema.safeParse(raw);
@@ -76,20 +79,25 @@ export function applyInterpretation(
   input: {
     worldId: string;
     playerId: string;
+    addresseeId?: string | null;
+    parsed?: boolean;
     interpretation: SceneInterpretation;
   },
 ): BoundInterpretation {
   const interpretation = normalizeInterpretation(input.interpretation);
+  const parsed = input.parsed ?? true;
   if (interpretation.outcome !== "candidate" || interpretation.proposals.length === 0) {
     return {
       contributions: interpretation.contributions,
       futureCausal: false,
       outcome: interpretation.outcome,
       submitted: false,
+      parsed,
       result: submitEmptyProposal(store, input.worldId),
     };
   }
   const snapshot = store.snapshot(input.worldId);
+  const spoken = interpretation.contributions.some((kind) => SPEECH.has(kind));
   const candidates: Candidate[] = interpretation.proposals.map((proposal, index) => {
     if (proposal.type === "claim_record") {
       return {
@@ -102,12 +110,13 @@ export function applyInterpretation(
         object: proposal.object,
       };
     }
+    const bindToAddressee = Boolean(spoken && input.addresseeId && !proposal.characterId);
     return {
       type: "memory_note",
       worldId: input.worldId,
       expectedRevision: snapshot.world.revision + index,
       memoryId: `mem-${randomUUID()}`,
-      characterId: proposal.characterId ?? input.playerId,
+      characterId: proposal.characterId ?? (bindToAddressee ? input.addresseeId as string : input.playerId),
       text: proposal.text,
     };
   });
@@ -117,6 +126,7 @@ export function applyInterpretation(
     futureCausal: interpretation.futureCausal,
     outcome: result.accepted ? "candidate" : "fail",
     submitted: result.accepted,
+    parsed,
     result,
   };
 }

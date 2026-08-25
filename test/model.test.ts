@@ -28,7 +28,7 @@ class FakeDriver implements ModelDriver {
   public textCalls = 0;
   public streamFailRemaining = 0;
   public failPrimary = false;
-  public objectMode: "native" | "unsupported" = "native";
+  public objectMode: "native" | "unsupported" | "transport" | "auth" = "native";
   public textBodies: string[] = ['{"note":"ok"}'];
   public streamText = "堂屋很安静。";
 
@@ -54,6 +54,12 @@ class FakeDriver implements ModelDriver {
     this.objectCalls += 1;
     if (this.objectMode === "unsupported") {
       throw new TransportError("no json schema", "unsupported", false);
+    }
+    if (this.objectMode === "transport") {
+      throw new TransportError("native structured failed", "transport", false);
+    }
+    if (this.objectMode === "auth") {
+      throw new TransportError("bad key", "auth", false);
     }
     return { object: { note: "native" }, usage };
   }
@@ -172,6 +178,59 @@ describe("model access", () => {
     expect(repaired.object).toEqual({ note: "repaired" });
     expect(repaired.record.structuredMode).toBe("json_repair");
     expect(repair.textCalls).toBe(2);
+
+    const transport = new FakeDriver();
+    transport.objectMode = "transport";
+    transport.textBodies = ['{"note":"after-transport"}'];
+    const transportClient = createModelClient(config(`unit-${Date.now()}-credential-f`), transport);
+    const recovered = await transportClient.generateStructured({
+      role: "proposal",
+      purpose: "scene-interpretation",
+      system: "json",
+      prompt: "propose",
+      schema: noteSchema,
+    });
+    expect(recovered.object).toEqual({ note: "after-transport" });
+    expect(recovered.record.structuredMode).toBe("json_text");
+    expect(transport.textCalls).toBe(1);
+
+    const auth = new FakeDriver();
+    auth.objectMode = "auth";
+    const authClient = createModelClient(config(`unit-${Date.now()}-credential-g`), auth);
+    const denied = await authClient.generateStructured({
+      role: "proposal",
+      purpose: "scene-interpretation",
+      system: "json",
+      prompt: "propose",
+      schema: noteSchema,
+    });
+    expect(denied.object).toBeNull();
+    expect(denied.record.errorCategory).toBe("auth");
+    expect(auth.textCalls).toBe(0);
+  });
+
+  it("keeps Zod field paths, truncated raw text, stage, and usage on structured failure", async () => {
+    const driver = new FakeDriver();
+    driver.objectMode = "transport";
+    driver.textBodies = ['not json {"note":1}', '{"note":1}'];
+    const client = createModelClient(config(`unit-${Date.now()}-credential-h`), driver);
+    const failed = await client.generateStructured({
+      role: "proposal",
+      purpose: "scene-interpretation",
+      system: "json",
+      prompt: "propose",
+      schema: noteSchema,
+    });
+    expect(failed.object).toBeNull();
+    expect(failed.record.attempts.length).toBeGreaterThanOrEqual(2);
+    expect(failed.record.attempts[0]?.stage).toBe("native");
+    const textAttempt = failed.record.attempts.find((row) => row.stage === "json_text");
+    expect(textAttempt?.rawText).toContain("not json");
+    expect(textAttempt?.extractError || (textAttempt?.zodIssues.length ?? 0) > 0).toBeTruthy();
+    const repair = failed.record.attempts.find((row) => row.stage === "json_repair");
+    expect(repair?.zodIssues.some((issue) => issue.path.includes("note"))).toBe(true);
+    expect(repair?.inputTokens).toBe(10);
+    expect(failed.record.inputTokens).toBeGreaterThan(0);
   });
 
   it("classifies transport errors without using request bodies as the category", () => {
@@ -181,5 +240,6 @@ describe("model access", () => {
 
   it("extracts JSON from fenced text", () => {
     expect(extractJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(extractJson('here\n{"a":2}\ntrailing')).toEqual({ a: 2 });
   });
 });

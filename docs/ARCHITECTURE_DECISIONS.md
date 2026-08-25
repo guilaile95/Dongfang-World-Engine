@@ -59,9 +59,17 @@ Interaction detail is persisted only when it has future causal value; persistenc
 
 ## ADR-011 — Context Continuity Is Core but Non-authoritative
 
-Long-form roleplay requires layered continuity beyond current Materialized State. The runtime may use recent resolved scene history, stable story essentials, relevant episodic memories and rolling summaries after the deterministic Visibility Gate.
+Long-form roleplay requires layered continuity beyond current Materialized State. Observer prompt packing uses this order, always after the Visibility Gate:
+
+1. Authoritative current state (time / place / present / observer-legal claims / impressions)
+2. Recent resolved scenes (window = 3)
+3. Stable world / character essentials (identity, public rules)
+4. Visibility-safe relevant episodic recall (legal namespaces only; lore, not a full-world index)
+5. Rolling summary — **off until real play proves the recent window is not enough**
 
 Memory, summaries and retrieval are context aids, not Truth. They must remain inspectable, correctable or rebuildable and cannot overwrite Fact, Claim, CharacterKnowledge or committed Event history.
+
+**Expansion gate:** only a Step 14+ *real play* receipt that shows Recent Scene Window failure may turn on layer 5. Experiment-1 (`experiment-1-product-play`, 10 turns) did **not** prove insufficiency: Q→A→follow-up held; the blocker was scene-interpretation transport. Hypothetical “we might play hundreds of turns” is not evidence. OpenViking / Mem0 / Vector DB stay REJECT/DEFER. They may only ever be recall aids, never Truth.
 
 ## ADR-012 — Frozen Scene Turn Contract (M0)
 
@@ -72,3 +80,18 @@ Player input is interpreted as a non-authoritative `SceneTurnPlan` with five lan
 World time and NPC continuation are functions of the resolved scene, not of raw input-line count. Target NPCs receive only an authorized stimulus plus their own Context.
 
 This ADR does not change Production Runtime. M1 implements the ephemeral / intent-fidelity vertical slice from the frozen contract. Kernel, Validator, Event types and Visibility Gate remain the Authority core.
+
+## ADR-013 — Multi-resolution autonomy, not always-on NPC ticks
+
+Background world evolution stays **off** until real play shows “the world stops when the player is not participating” as a perceptible product problem. Experiment-1 did **not**: the player was present every turn; the blocker was scene-interpretation transport.
+
+When a turn does run (once per in-world player line, not on a wall-clock timer):
+
+1. **High** — current player scene
+2. **Medium** — off-screen theme / soon-relevant NPC (no durable write until the gate opens)
+3. **Macro** — far locations as aggregates, not per-NPC LLM
+4. **Dormant** — ordinary NPCs do nothing
+
+Each band has an attention cap, token/cost budget (`maxLlmCalls` defaults to 0), frequency floor, world inertia (no invented facts), causal damping (identical theme memory is not rewritten), and a deterministic shortcut (authored theme text). Over budget: drop resolution or defer. Never pulse every NPC on a 60s interval.
+
+WorldX, AI Town, and Emergence World are pattern/eval references. Do not copy their schedulers, action menus, or always-on agent loops.

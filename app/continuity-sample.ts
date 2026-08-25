@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     ":memory:",
     createNarrator(model, config.apiKey),
     SYNTHETIC,
-    createModelInterpreter(model),
+    createModelInterpreter(model, config.apiKey),
     createNpcVoice(model, config.apiKey),
   );
   const markers: string[] = [];

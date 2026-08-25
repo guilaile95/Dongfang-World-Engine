@@ -7,7 +7,12 @@ import { stubNarrator } from "./narrator/client.js";
 import { committedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
 import { continueAddressee } from "./scene/address.js";
-import { applyInterpretation, ephemeralInterpretation, type BoundInterpretation } from "./scene/interpretation.js";
+import {
+  applyInterpretation,
+  ephemeralInterpretation,
+  type BoundInterpretation,
+  type SceneInterpretation,
+} from "./scene/interpretation.js";
 import { fixedInterpreter, type SceneInterpreter } from "./scene/interpreter.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import type { ObserverContext } from "./visibility/context.js";
@@ -24,13 +29,17 @@ export interface DialogueTurn {
   npcPrompt: string;
 }
 
+export const UNPARSED_HINT = "这一句没有被可靠理解，请换一种说法。";
+
 export interface TurnView {
   text: string;
   observer: ObserverContext;
   prompt: string;
+  rawInterpretation: SceneInterpretation;
   interpretation: BoundInterpretation;
   dialogue: DialogueTurn | null;
   envelope: NarratorEnvelope;
+  parsed: boolean;
 }
 
 export class Session {
@@ -63,10 +72,6 @@ export class Session {
   ): Promise<TurnView> {
     const trimmed = playerLine.trim();
     const worldId = this.compiled.seed.world.id;
-    if (trimmed.length > 0) {
-      const tick = worldTick(this.store, this.compiled);
-      this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
-    }
     const recentForPlayer = recentSceneBodies(this.store, worldId, this.compiled.playerId);
     const pack = assemblePrompt({
       snapshot: this.store.snapshot(worldId),
@@ -75,20 +80,61 @@ export class Session {
       ambient: this.ambient,
       recentScenes: recentForPlayer,
     });
-    const raw = trimmed.length > 0
+    const interpreted = trimmed.length > 0
       ? await this.interpreter.interpret({
         playerLine: trimmed,
         observerPack: pack.prompt,
         worldId,
         playerId: this.compiled.playerId,
       })
-      : ephemeralInterpretation();
+      : { interpretation: ephemeralInterpretation(), parsed: true };
+    const raw = interpreted.interpretation;
+    if (trimmed.length > 0 && !interpreted.parsed) {
+      const empty = applyInterpretation(this.store, {
+        worldId,
+        playerId: this.compiled.playerId,
+        parsed: false,
+        interpretation: raw,
+      });
+      const observer = pack.observer;
+      return {
+        text: UNPARSED_HINT,
+        observer,
+        prompt: pack.prompt,
+        rawInterpretation: raw,
+        interpretation: empty,
+        dialogue: null,
+        envelope: {
+          playerContribution: trimmed,
+          observerContext: pack.prompt,
+          committed: [],
+          npcReply: null,
+          ephemeral: { recentScenes: recentForPlayer, ambient: this.ambient },
+        },
+        parsed: false,
+      };
+    }
+    if (trimmed.length > 0) {
+      const tick = worldTick(this.store, this.compiled);
+      this.ambient = tick.publicBeat ? [tick.publicBeat] : [];
+    }
+    const snapshotForAddress = this.store.snapshot(worldId);
+    const addressee = trimmed.length > 0
+      ? continueAddressee(
+        snapshotForAddress,
+        this.compiled.playerId,
+        trimmed,
+        lastAddresseeId(this.store, worldId, this.compiled.playerId),
+      )
+      : null;
     const interpretation = applyInterpretation(this.store, {
       worldId,
       playerId: this.compiled.playerId,
+      addresseeId: addressee?.id ?? null,
+      parsed: interpreted.parsed,
       interpretation: raw,
     });
-    const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed).map((hit) => ({
+    const loreHits = recall(this.store, worldId, this.compiled.playerId, trimmed, { kinds: ["lore"] }).map((hit) => ({
       title: hit.title,
       body: hit.body,
       score: hit.score,
@@ -104,17 +150,9 @@ export class Session {
       recentScenes: recentForPlayer,
     });
     const snapshot = this.store.snapshot(worldId);
-    const addressee = trimmed.length > 0
-      ? continueAddressee(
-        snapshot,
-        this.compiled.playerId,
-        trimmed,
-        lastAddresseeId(this.store, worldId, this.compiled.playerId),
-      )
-      : null;
     let dialogue: DialogueTurn | null = null;
     if (addressee) {
-      const npcLore = recall(this.store, worldId, addressee.id, trimmed).map((hit) => ({
+      const npcLore = recall(this.store, worldId, addressee.id, trimmed, { kinds: ["lore"] }).map((hit) => ({
         title: hit.title,
         body: hit.body,
         score: hit.score,
@@ -168,9 +206,11 @@ export class Session {
       text,
       observer: assembled.observer,
       prompt: assembled.prompt,
+      rawInterpretation: raw,
       interpretation,
       dialogue,
       envelope,
+      parsed: interpreted.parsed,
     };
   }
 

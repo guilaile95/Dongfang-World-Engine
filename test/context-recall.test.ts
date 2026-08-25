@@ -45,7 +45,11 @@ describe("context recall", () => {
     expect(store.snapshot(worldId).facts).toEqual(before.facts);
     expect(store.snapshot(worldId).facts.some((row) => row.id === FACT_BAG)).toBe(true);
 
-    const polluted = recall(store, worldId, playerId, "客栈");
+    const playRecall = recall(store, worldId, playerId, "客栈");
+    expect(playRecall.every((hit) => hit.kind === "lore")).toBe(true);
+    expect(playRecall.some((hit) => hit.body.includes("客栈已烧毁"))).toBe(false);
+
+    const polluted = recall(store, worldId, playerId, "客栈", { kinds: ["summary"] });
     expect(polluted.some((hit) => hit.kind === "summary" && hit.body.includes("客栈已烧毁"))).toBe(true);
 
     rebuildObserverArtifacts(store, worldId, playerId);

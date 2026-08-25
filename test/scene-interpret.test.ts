@@ -3,14 +3,44 @@ import { submitCandidates } from "../app/authority/commit.js";
 import { stubNarrator } from "../app/narrator/client.js";
 import {
   applyInterpretation,
+  interpretationSchema,
   normalizeInterpretation,
 } from "../app/scene/interpretation.js";
-import { fixedInterpreter } from "../app/scene/interpreter.js";
+import { INTERPRETER_SYSTEM, fixedInterpreter } from "../app/scene/interpreter.js";
 import { openWorld } from "../app/session.js";
-import { CHAR_PLAYER, TIME0, WORLD_ID } from "../app/world/seed.js";
+import { CHAR_COOK, CHAR_KEEPER, CHAR_PLAYER, TIME0, WORLD_ID } from "../app/world/seed.js";
 import { memoryWorld } from "./helpers.js";
 
 describe("scene interpretation", () => {
+  it("states the proposal JSON field contract without content aliases", () => {
+    expect(INTERPRETER_SYSTEM).toContain("只输出 JSON");
+    expect(INTERPRETER_SYSTEM).toContain("type, text");
+    expect(INTERPRETER_SYSTEM).toContain("type, subject, predicate, object");
+    expect(INTERPRETER_SYSTEM).toContain("禁止 content");
+  });
+
+  it("defaults omitted futureCausal to false and still parses a legal ephemeral object", () => {
+    const parsed = interpretationSchema.safeParse({
+      contributions: ["low_causal", "observe"],
+      outcome: "ephemeral",
+      proposals: [],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data.futureCausal).toBe(false);
+    expect(parsed.data.outcome).toBe("ephemeral");
+
+    const explicit = interpretationSchema.parse({
+      contributions: ["durable_attempt"],
+      futureCausal: true,
+      outcome: "candidate",
+      proposals: [{ type: "memory_note", text: "记下这句话。" }],
+    });
+    expect(explicit.futureCausal).toBe(true);
+  });
+
   it("treats eating and refusing as ephemeral and never substitutes another write", () => {
     const eat = normalizeInterpretation({
       contributions: ["low_causal"],
@@ -118,6 +148,27 @@ describe("scene interpretation", () => {
     expect(snap.knowledge.some((row) => row.characterId === CHAR_PLAYER && row.claimId === "claim-bag-in-cellar")).toBe(
       false,
     );
+    store.close();
+  });
+
+  it("binds an unaddressed spoken memory_note to the resolved addressee, not the player or a bystander", () => {
+    const store = memoryWorld();
+    const applied = applyInterpretation(store, {
+      worldId: WORLD_ID,
+      playerId: CHAR_PLAYER,
+      addresseeId: CHAR_KEEPER,
+      interpretation: {
+        contributions: ["speak", "durable_attempt"],
+        futureCausal: true,
+        outcome: "candidate",
+        proposals: [{ type: "memory_note", text: "旅人说从今天起不住这儿了。" }],
+      },
+    });
+    expect(applied.submitted).toBe(true);
+    const snap = store.snapshot(WORLD_ID);
+    expect(snap.memories.some((row) => row.characterId === CHAR_KEEPER && row.text.includes("不住这儿"))).toBe(true);
+    expect(snap.memories.some((row) => row.characterId === CHAR_PLAYER)).toBe(false);
+    expect(snap.memories.some((row) => row.characterId === CHAR_COOK)).toBe(false);
     store.close();
   });
 

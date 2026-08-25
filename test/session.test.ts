@@ -1,9 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { stubNarrator } from "../app/narrator/client.js";
-import { openWorld } from "../app/session.js";
+import { fixedInterpreter } from "../app/scene/interpreter.js";
+import { openWorld, UNPARSED_HINT } from "../app/session.js";
 import { TIME0, WORLD_ID } from "../app/world/seed.js";
 
 describe("session", () => {
+  it("fail-closes a parse failure without ticking, narrating, or recording a scene", async () => {
+    let narrated = 0;
+    const narrator = {
+      async project() {
+        narrated += 1;
+        return "should-not-run";
+      },
+    };
+    const session = openWorld(
+      ":memory:",
+      narrator,
+      undefined,
+      fixedInterpreter(
+        {
+          contributions: ["uncertain_attempt"],
+          futureCausal: false,
+          outcome: "fail",
+          proposals: [],
+        },
+        false,
+      ),
+    );
+    const before = session.store.snapshot(WORLD_ID);
+    const turn = await session.playTurn("同学，你记住：从今天起我不住这间宿舍了。这是我们说定的事。");
+    const after = session.store.snapshot(WORLD_ID);
+    expect(turn.parsed).toBe(false);
+    expect(turn.text).toBe(UNPARSED_HINT);
+    expect(turn.dialogue).toBeNull();
+    expect(turn.envelope.committed).toEqual([]);
+    expect(narrated).toBe(0);
+    expect(after.world.time).toBe(before.world.time);
+    expect(after.world.revision).toBe(before.world.revision);
+    expect(after.memories).toEqual(before.memories);
+    expect(after.claims).toEqual(before.claims);
+    expect(session.store.listEvents(WORLD_ID)).toEqual([]);
+    session.close();
+  });
+
   it("resumes the same world file and does not tick on a blank line", async () => {
     const first = openWorld(":memory:", stubNarrator());
     const idle = await first.playTurn("   ");

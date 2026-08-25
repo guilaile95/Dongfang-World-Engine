@@ -70,5 +70,6 @@ Verified in real play and owner intent:
 
 ## Source roles
 
-- **GitHub** = Engineering Reality (`main`, Issues, PRs, CI, tags).
+- **GitHub** = Engineering Reality (`main`, Issues, PRs, CI, tags). Agent execution: [`OPERATING_RULES.md`](OPERATING_RULES.md).
 - **Notion** = long-term Product Intent, invariants, architecture reasons, cross-stage lessons. Do not copy the GitHub timeline into Notion.
+- Current explicit user instruction outranks old GitHub/Notion routes. Old code has no sunk-cost authority; keep git history as evidence.

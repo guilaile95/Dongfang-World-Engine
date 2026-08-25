@@ -20,8 +20,12 @@ export function committedProjection(bound: BoundInterpretation, observerId: stri
   const lines: string[] = [];
   for (const event of bound.result.events) {
     const payload = event.payload;
-    if (event.type === "memory_note" && payload["characterId"] === observerId && typeof payload["text"] === "string") {
-      lines.push(`已记下你的印象：${payload["text"]}`);
+    if (event.type === "memory_note" && typeof payload["text"] === "string") {
+      if (payload["characterId"] === observerId) {
+        lines.push(`已记下你的印象：${payload["text"]}`);
+      } else if (typeof payload["characterId"] === "string") {
+        lines.push(`对方记下了你说的话（印象，不是客观事实）：${payload["text"]}`);
+      }
     }
     if (
       event.type === "claim_record" &&

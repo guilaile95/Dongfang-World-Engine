@@ -7,10 +7,22 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('app/world/fixtures','dist/world/fixtures',{recursive:true})\"",
     "lint": "tsc --noEmit",
     "play": "npm run build && node dist/cli.js",
     "continuity": "npm run build && node dist/continuity-sample.js",
+    "experiment:1": "npm run build && node dist/experiment-1.js",
+    "experiment:2": "npm run build && node dist/experiment-2.js",
+    "interpret:precheck": "npm run build && node dist/interpret-precheck.js",
+    "experiment:3": "npm run build && node dist/experiment-3.js",
+    "experiment:smoke": "npm run build && node dist/experiment-smoke.js",
+    "experiment:4": "npm run build && node dist/experiment-4-e2e.js",
+    "experiment:4b": "npm run build && node dist/experiment-4b-e2e.js",
+    "experiment:4c": "npm run build && node dist/experiment-4c-e2e.js",
+    "experiment:5": "npm run build && node dist/experiment-5-failclosed.js",
+    "experiment:6": "npm run build && node dist/experiment-6-narrator.js",
+    "experiment:7": "npm run build && node dist/experiment-7-cost.js",
+    "experiment:8": "npm run build && node dist/experiment-8-longrun.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

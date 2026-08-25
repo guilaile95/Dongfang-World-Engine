@@ -12,4 +12,6 @@
 - 本地单文件世界
 - 前景场景不写世界
 
-跨会话恢复从 [`AGENTS.md`](AGENTS.md) 开始。交接文本不得保存 API Key、凭证、Raw Prompt、Raw Provider Response 或 hidden reasoning。
+跨会话恢复从 [`AGENTS.md`](AGENTS.md) 开始。执行纪律见 [`docs/OPERATING_RULES.md`](docs/OPERATING_RULES.md)。交接文本不得保存 API Key、凭证、Raw Prompt、Raw Provider Response 或 hidden reasoning。
+
+一次实验一个变量。失败实验不重抽成同一次。LLM 调用必须记下 usage。当前最大阻塞未解除时，不要做不能解除它的工作。

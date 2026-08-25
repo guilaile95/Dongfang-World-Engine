@@ -17,6 +17,25 @@ export interface TokenUsage {
   outputTokens: number | null;
 }
 
+export interface ZodIssuePath {
+  path: string;
+  message: string;
+  code: string | null;
+}
+
+/** One structured-output attempt. Safe to persist. No API key, no full prompt. */
+export interface StructuredAttempt {
+  stage: Exclude<StructuredMode, "none">;
+  latencyMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  rawText: string | null;
+  extractError: string | null;
+  zodIssues: ZodIssuePath[];
+  errorCategory: ErrorCategory;
+  errorMessage: string | null;
+}
+
 /** Safe to log. No prompt body, no API key, no hidden reasoning, no world snapshot. */
 export interface CallRecord {
   role: CallRole;
@@ -34,6 +53,7 @@ export interface CallRecord {
   errorMessage: string | null;
   promptChars: number;
   outputChars: number;
+  attempts: StructuredAttempt[];
 }
 
 export interface StreamRequest {

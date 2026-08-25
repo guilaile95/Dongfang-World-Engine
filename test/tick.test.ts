@@ -9,6 +9,7 @@ describe("world tick", () => {
     const store = memoryWorld();
     const result = worldTick(store);
     expect(result.accepted).toBe(true);
+    expect(result.llmCalls).toBe(0);
     const snap = store.snapshot(WORLD_ID);
     expect(snap.world.time).not.toBe(TIME0);
     expect(snap.world.revision).toBe(2);

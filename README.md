@@ -19,6 +19,7 @@ Step 3 组合结论之后才选了运行时，见 [`docs/RUNTIME_CHOICE.md`](doc
 - 没有 Pydantic、LiteLLM、第二套 Schema framework
 
 产品规格：[`docs/PRODUCT.md`](docs/PRODUCT.md)  
+执行守则：[`docs/OPERATING_RULES.md`](docs/OPERATING_RULES.md)  
 组合架构：[`docs/MINIMAL_COMPOSITION.md`](docs/MINIMAL_COMPOSITION.md)  
 恢复入口：[`AGENTS.md`](AGENTS.md)、[`docs/CURRENT_STAGE.md`](docs/CURRENT_STAGE.md)
 
@@ -67,10 +68,10 @@ app/
   secrets.ts             脱敏；禁止把 key 打进日志
   authority/             提交门：candidate → 校验 → 事务 → 事件 → 投影
   persist/               一个本地 SQLite 文件
-  world/                 World Source 解析/编译 + 每回合一次独立推进
+  world/                 World Source 解析/编译 + 每回合一次多分辨率推进（无 60s 全员 LLM）
   world/fixtures/        仅供单测的最小 synthetic fixture
   visibility/            先可见性，再打包给模型
-  context/               非权威召回（世界资料 / scene / summary）；OpenViking 不接入
+  context/               非权威连续性：当前状态 → 最近场景 → 稳定设定 → 可见回忆；滚动摘要默认关闭；OpenViking 不接入
   scene/                 Chat-first 场景解释与 NPC 寻址
   narrator/              纯投影；正文不能写回权威状态
   chat/                  NPC 开口；不写世界

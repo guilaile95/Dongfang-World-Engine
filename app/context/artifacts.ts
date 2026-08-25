@@ -4,7 +4,11 @@ import { packObserverContext } from "../visibility/context.js";
 import { visibilityGate } from "../visibility/gate.js";
 import { observerNamespace } from "../visibility/pool.js";
 
-/** Summaries are rebuildable artifacts. They are not Fact / Knowledge / Event authority. */
+/**
+ * Summaries are rebuildable artifacts. They are not Fact / Knowledge / Event authority.
+ * The play loop does not write these. Rolling summary stays off until real play
+ * proves the recent scene window is not enough.
+ */
 export function writeSummary(
   store: WorldStore,
   worldId: string,
