@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "world": {
+    "id": "longzu",
+    "title": "龙族·2009 第一小时",
+    "publicName": "2009 年的南方小城",
+    "protocolRef": "dragon-owner-protocol-v1"
+  },
+  "chronology": {
+    "snapshotId": "dragon-2009-05-15-evening",
+    "canonicalDateOrRange": "2009-05-15 evening/night",
+    "startTime": "2009-05-15T18:30:00+08:00",
+    "playerFacingEra": "仕兰中学时期",
+    "playerFacingTimeLabel": "2009年5月15日 · 星期五 · 傍晚",
+    "publicPremise": "周五傍晚，南方小城照常放学；对普通学生而言，这仍是一个没有超自然解释的日常世界。",
+    "sourceRefs": ["ref-date-helicopter", "ref-slice-clock"]
+  },
+  "rules": [
+    "普通人不知道龙族、混血种或卡塞尔学院的真实性质。",
+    "世界事件不会因为玩家忽略它就停止。",
+    "玩家没有被预设为特殊血统、命定人物或组织目标。"
+  ],
+  "locations": [
+    { "id": "loc-shilan-classroom", "name": "仕兰中学教学楼", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-shilan-school"] },
+    { "id": "loc-school-gate", "name": "仕兰中学校门", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-shilan-school"] },
+    { "id": "loc-old-pier-road", "name": "老码头沿江路", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-slice-route"] },
+    { "id": "loc-old-street", "name": "老街远路", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-slice-route"] },
+    { "id": "loc-pharmacy", "name": "24小时药店外的小街", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-pharmacy-stop"] },
+    { "id": "loc-home", "name": "家", "visibility": "public", "parentLocationId": null, "sourceRefs": ["ref-slice-route"] }
+  ],
+  "routes": [
+    { "id": "route-short-home", "name": "经老码头回家的近路", "fromLocationId": "loc-shilan-classroom", "toLocationId": "loc-home", "viaLocationIds": ["loc-school-gate", "loc-old-pier-road"], "travelMinutes": 23, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route"] },
+    { "id": "route-long-home", "name": "经老街和24小时药店回家的远路", "fromLocationId": "loc-shilan-classroom", "toLocationId": "loc-home", "viaLocationIds": ["loc-school-gate", "loc-old-street", "loc-pharmacy"], "travelMinutes": 37, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route", "ref-pharmacy-stop"] },
+    { "id": "route-classroom-gate", "name": "教学楼到校门", "fromLocationId": "loc-shilan-classroom", "toLocationId": "loc-school-gate", "viaLocationIds": [], "travelMinutes": 3, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route"] },
+    { "id": "route-gate-pier", "name": "校门到老码头沿江路", "fromLocationId": "loc-school-gate", "toLocationId": "loc-old-pier-road", "viaLocationIds": [], "travelMinutes": 8, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route"] },
+    { "id": "route-gate-oldstreet", "name": "校门到老街", "fromLocationId": "loc-school-gate", "toLocationId": "loc-old-street", "viaLocationIds": [], "travelMinutes": 12, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route"] },
+    { "id": "route-oldstreet-pharmacy", "name": "老街到24小时药店", "fromLocationId": "loc-old-street", "toLocationId": "loc-pharmacy", "viaLocationIds": [], "travelMinutes": 10, "bidirectional": true, "visibility": "public", "conditions": [], "sourceRefs": ["ref-slice-route", "ref-pharmacy-stop"] }
+  ],
+  "characters": [
+    { "id": "char-player", "name": "普通学生", "kind": "player_template", "locationId": "loc-shilan-classroom", "alive": true, "visibility": "public", "publicDescription": "仕兰中学的一名普通学生。", "privateAnchor": "没有特殊血统、能力或命定身份。", "organizationIds": [], "sourceRefs": ["ref-slice-player"] },
+    { "id": "char-guard", "name": "门卫大爷", "kind": "npc", "locationId": "loc-school-gate", "alive": true, "visibility": "public", "publicDescription": "值守校门的普通工作人员。", "privateAnchor": "只知道公开路况。", "organizationIds": [], "sourceRefs": ["ref-slice-player"] },
+    { "id": "char-nono", "name": "诺诺", "kind": "npc", "locationId": "loc-pharmacy", "alive": true, "visibility": "hidden", "publicDescription": "一名在小街等待接驳的年轻女性。", "privateAnchor": "正在陪同路明非等待学院派来的交通工具。", "organizationIds": ["org-cassell"], "sourceRefs": ["ref-pharmacy-stop", "ref-date-helicopter"] },
+    { "id": "char-lumingfei", "name": "路明非", "kind": "npc", "locationId": "loc-pharmacy", "alive": true, "visibility": "hidden", "publicDescription": "一名在小街等待接驳的少年。", "privateAnchor": "刚确认接受卡塞尔学院的录取。", "organizationIds": ["org-cassell"], "sourceRefs": ["ref-pharmacy-stop", "ref-date-helicopter"] }
+  ],
+  "facts": [
+    { "id": "fact-cassell-pickup-dispatched", "subject": "cassell-pickup", "predicate": "status", "object": "dispatched-for-lumingfei", "visibility": "hidden", "validFrom": "2009-05-15T18:30:00+08:00", "validTo": null, "sourceRefs": ["ref-date-helicopter"] }
+  ],
+  "claims": [
+    { "id": "claim-school-route-control", "subject": "riverfront-road", "predicate": "status", "object": "temporary-control-rumor", "sourceRefs": ["ref-slice-thread"] }
+  ],
+  "knowledge": [
+    { "characterId": "char-guard", "claimId": "claim-school-route-control", "state": "rumor", "sourceKind": "seed", "sourceRefId": "ref-slice-thread" }
+  ],
+  "items": [
+    { "id": "item-schoolbag", "name": "书包", "locationId": null, "carrierId": "char-player", "sourceRefs": ["ref-slice-player"] }
+  ],
+  "backgroundThreads": [
+    {
+      "id": "thread-cassell-pickup",
+      "title": "当晚的学院接驳",
+      "actorIds": ["char-nono", "char-lumingfei"],
+      "objective": "在当晚完成对路明非的接驳。",
+      "initialStage": "waiting",
+      "locationScope": ["loc-pharmacy"],
+      "startsAt": "2009-05-15T18:30:00+08:00",
+      "sourceRefs": ["ref-pharmacy-stop", "ref-date-helicopter", "ref-slice-thread"],
+      "beats": [
+        {
+          "beatId": "pickup-approaching",
+          "stageFrom": "waiting",
+          "stageTo": "approaching",
+          "dueAt": "2009-05-15T18:30:00+08:00",
+          "afterMinutes": null,
+          "preconditions": ["thread_stage_is:waiting"],
+          "consequences": [],
+          "exposureRules": [
+            { "kind": "public_broadcast", "observerRequirements": [], "presentationDirective": "门卫转述临时路况：老码头沿江路可能拥堵，回家可走近路，也可绕行老街远路。", "stopReason": "direction_choice" }
+          ]
+        },
+        {
+          "beatId": "pickup-visible",
+          "stageFrom": "approaching",
+          "stageTo": "pickup_visible",
+          "dueAt": null,
+          "afterMinutes": 15,
+          "preconditions": ["thread_stage_is:approaching"],
+          "consequences": [
+            { "type": "fact_assert", "id": "fact-pickup-visible", "subject": "cassell-pickup", "predicate": "stage", "object": "helicopter-approaching-pharmacy", "visibility": "hidden" }
+          ],
+          "exposureRules": [
+            { "kind": "route_intersection", "observerRequirements": [], "presentationDirective": "远路经过24小时药店时，低空旋翼声压过街声；一辆熄火的红色跑车旁有两名年轻人在等待，黑色直升机正从夜空逼近。", "stopReason": "material_information" }
+          ]
+        },
+        {
+          "beatId": "pickup-departed",
+          "stageFrom": "pickup_visible",
+          "stageTo": "departed",
+          "dueAt": null,
+          "afterMinutes": 45,
+          "preconditions": ["thread_stage_is:pickup_visible"],
+          "consequences": [
+            { "type": "fact_assert", "id": "fact-pickup-departed", "subject": "cassell-pickup", "predicate": "stage", "object": "departed", "visibility": "hidden" }
+          ],
+          "exposureRules": []
+        }
+      ]
+    }
+  ],
+  "sourceRefs": [
+    { "id": "ref-date-helicopter", "sourceType": "official_novel", "workOrFile": "dragon-bundle-5books", "editionOrVersion": "《龙族Ⅰ·火之晨曦》收录版（浙版数媒；书内出版信息 2010.4）", "locator": "第一幕《卡塞尔之门》，本地 TXT 行 1781–1803", "paraphrase": "2009年5月15日星期五，学院接驳被派出，黑色直升机当晚掠过南方小城。", "status": "confirmed", "notes": "仅保存事实释义与本地 locator。" },
+    { "id": "ref-pharmacy-stop", "sourceType": "official_novel", "workOrFile": "dragon-bundle-5books", "editionOrVersion": "《龙族Ⅰ·火之晨曦》收录版（浙版数媒；书内出版信息 2010.4）", "locator": "第一幕《卡塞尔之门》，本地 TXT 行 1693–1701、1781–1801", "paraphrase": "诺诺与路明非在一间24小时药店外的小街等待学院后续接驳。", "status": "confirmed", "notes": "未提交原文摘录。" },
+    { "id": "ref-shilan-school", "sourceType": "official_novel", "workOrFile": "dragon-bundle-5books", "editionOrVersion": "《龙族Ⅱ·悼亡者之瞳》收录版（浙版数媒）", "locator": "第一幕《生日蛋糕就是青春的墓碑》，本地 TXT 行 10921–11007", "paraphrase": "仕兰中学具有教学楼、操场、校门和门卫岗亭等普通校园空间。", "status": "confirmed", "notes": "地点存在性来源；不把该段历史场景移植到 2009 当晚。" },
+    { "id": "ref-owner-protocol", "sourceType": "owner_protocol", "workOrFile": "dragon-owner-protocol-v1", "editionOrVersion": "V1.0", "locator": "第一章·最高原则", "paraphrase": "世界不围绕玩家，普通生活与隐秘世界同时持续。", "status": "confirmed", "notes": "运行协议，不作为人物或历史事实来源。" },
+    { "id": "ref-slice-clock", "sourceType": "slice_authored", "workOrFile": "dragon-2009-first-hour", "editionOrVersion": "1", "locator": "chronology/startTime", "paraphrase": "以18:30作为当晚第一小时的可运行起点；原著只确认日期与夜间顺序，不确认该分钟。", "status": "confirmed", "notes": "切片运行假设。" },
+    { "id": "ref-slice-route", "sourceType": "slice_authored", "workOrFile": "dragon-2009-first-hour", "editionOrVersion": "1", "locator": "locations/routes", "paraphrase": "老码头近路、老街远路和家庭目的地是普通城市切片地理，不宣称为原著地图。", "status": "confirmed", "notes": "用于验证路线、时长与决定交接。" },
+    { "id": "ref-slice-player", "sourceType": "slice_authored", "workOrFile": "dragon-2009-first-hour", "editionOrVersion": "1", "locator": "characters/items", "paraphrase": "玩家、门卫和书包是无特殊身份的普通切片要素。", "status": "confirmed", "notes": "不与 Canon 人物绑定。" },
+    { "id": "ref-slice-thread", "sourceType": "slice_authored", "workOrFile": "dragon-2009-first-hour", "editionOrVersion": "1", "locator": "backgroundThreads/thread-cassell-pickup", "paraphrase": "路况转述与路线交叉曝光是围绕原著当晚接驳事件构造的切片呈现，不宣称原著发生过道路管制。", "status": "confirmed", "notes": "原著锚点与切片呈现明确分离。" }
+  ]
+}

@@ -6,6 +6,7 @@ import type { AppConfig } from "../config.js";
 import { createModelClient } from "../model/client.js";
 import { createNarrator, stubNarrator } from "../narrator/client.js";
 import { createModelInterpreter, fixedInterpreter } from "../scene/interpreter.js";
+import { createModelStopDecider, fixedStopDecider } from "../scene/stop.js";
 import { ephemeralInterpretation } from "../scene/interpretation.js";
 import { openWorld, Session, UNPARSED_HINT } from "../session.js";
 import { loadWorldFile } from "../world/load.js";
@@ -66,6 +67,7 @@ export interface TurnResult {
   text: string;
   parsed: boolean;
   state: PlayerState;
+  receipt: import("../session.js").TurnReceipt;
 }
 
 interface CachedTurn {
@@ -77,7 +79,7 @@ export class PlayHost {
   private session: Session | null = null;
   private currentId: string | null = null;
   private readonly done = new Map<string, CachedTurn>();
-  private inflight = new Set<string>();
+  private inflight = new Map<string, AbortController>();
 
   public constructor(
     private readonly config: AppConfig,
@@ -208,6 +210,7 @@ export class PlayHost {
         compiled,
         fixedInterpreter(ephemeralInterpretation()),
         stubNpcVoice(),
+        fixedStopDecider(),
       );
     } else {
       const model = createModelClient(this.config);
@@ -217,6 +220,7 @@ export class PlayHost {
         compiled,
         createModelInterpreter(model, this.config.apiKey),
         createNpcVoice(model, this.config.apiKey),
+        createModelStopDecider(model),
       );
     }
     this.currentId = option.id;
@@ -259,13 +263,20 @@ export class PlayHost {
     if (!trimmed) {
       throw new Error("EMPTY_TURN");
     }
-    this.inflight.add(turnId);
+    const worldId = this.session.compiled.seed.world.id;
+    const persisted = this.session.store.getTurnReceipt<TurnResult>(worldId, turnId);
+    if (persisted) {
+      if (persisted.playerLine !== trimmed) throw new Error("TURN_ID_REUSED_WITH_DIFFERENT_INPUT");
+      onChunk(persisted.result.text);
+      return persisted.result;
+    }
+    const controller = new AbortController();
+    this.inflight.set(turnId, controller);
     const chunks: string[] = [];
     const session = this.session;
-    const worldId = session.compiled.seed.world.id;
     try {
       session.store.insertUiMessage({ worldId, role: "player", text: trimmed, parsed: true });
-      const turn = await session.playTurn(trimmed, (chunk) => {
+      const turn = await session.handlePlayerTurn(trimmed, turnId, controller.signal, (chunk) => {
         chunks.push(chunk);
         onChunk(chunk);
       });
@@ -281,40 +292,25 @@ export class PlayHost {
         parsed,
       });
 
-      const existingSituation = session.store.getPlayerSituation(worldId, session.compiled.playerId);
-      const decision = import("../narrator/project.js").then((m) =>
-        m.evaluateDecisionGate(
-          {
-            dialogue: turn.dialogue,
-            interpretation: turn.interpretation,
-            envelope: turn.envelope,
-            text: turn.text,
-            playerLine: trimmed,
-          },
-          existingSituation,
-        ),
-      );
-      const evaluated = await decision;
-      let finalSituation: string | null = existingSituation;
-      if (evaluated.situationAction === "clear") {
-        session.store.clearPlayerSituation(worldId, session.compiled.playerId);
-        finalSituation = null;
-      } else if (evaluated.situationAction === "update" && evaluated.situationText) {
-        session.store.setPlayerSituation(worldId, session.compiled.playerId, evaluated.situationText);
-        finalSituation = evaluated.situationText;
-      } else if (evaluated.situationAction === "preserve") {
-        finalSituation = existingSituation;
-      }
+      const finalSituation = turn.stopDecision?.shouldStop ? turn.stopDecision.decisionSummary : null;
+      if (finalSituation) session.store.setPlayerSituation(worldId, session.compiled.playerId, finalSituation);
+      else session.store.clearPlayerSituation(worldId, session.compiled.playerId);
+      const suggestions = turn.stopDecision?.options?.map((row) => ({ key: row.key, label: row.text, type: row.type }));
 
       const result: TurnResult = {
         text: turn.text,
         parsed,
         state: playerState(session, {
           currentSituation: finalSituation,
-          ...(evaluated.suggestions ? { suggestions: evaluated.suggestions } : {}),
+          ...(suggestions ? { suggestions } : {}),
+          terminalReason: turn.receipt.terminalReason,
+          autoSteps: turn.receipt.autoSteps,
+          elapsedMinutes: turn.receipt.elapsedMinutes,
         }),
+        receipt: turn.receipt,
       };
       this.done.set(turnId, { chunks, result });
+      session.store.insertTurnReceipt(worldId, turnId, trimmed, result);
       while (this.done.size > 32) {
         const first = this.done.keys().next().value;
         if (first) {
@@ -333,12 +329,21 @@ export class PlayHost {
         text: textOut,
         parsed: false,
         state: playerState(session),
+        receipt: { turnId, autoSteps: 0, elapsedMinutes: 0, terminalReason: "structured_failure", stopReason: "none", cancelled: false, capReached: false, backgroundBeatIds: [] },
       };
       this.done.set(turnId, { chunks: chunks.length > 0 ? chunks : [textOut], result });
+      session.store.insertTurnReceipt(worldId, turnId, trimmed, result);
       return result;
     } finally {
       this.inflight.delete(turnId);
     }
+  }
+
+  public cancelTurn(turnId: string): boolean {
+    const controller = this.inflight.get(turnId);
+    if (!controller) return false;
+    controller.abort();
+    return true;
   }
 
   public close(): void {

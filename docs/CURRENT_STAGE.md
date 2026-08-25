@@ -86,12 +86,9 @@ enter Dragon 2009
 
 The Owner-provided `龙族V1.0(1).txt` is a world-running protocol, not a complete Canon Corpus. It explicitly requires reliable original-source material for concrete history and named-character facts.
 
-Until an approved Canon Source Set is supplied:
+The Owner-provided local TXT directory has been inventoried. The narrow primary source is the supplied Book I–III bundle, with the First-Hour window anchored to Book I on 2009-05-15 evening/night. Repository records contain only short paraphrases and local source locators; raw paths/hashes remain in gitignored `data/local/`.
 
-- contracts, schema and compiler may proceed;
-- a Canon entry inventory may proceed;
-- do not populate named-character or historical Truth from model memory;
-- do not treat the protocol summary as a replacement for original canon.
+Do not populate any additional named-character or historical Truth from model memory, Wiki, adaptation material, or the protocol summary.
 
 ## Read first
 

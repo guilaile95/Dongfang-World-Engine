@@ -210,3 +210,12 @@ export async function playTurn(
   }
   return { text: finalText, parsed, state };
 }
+
+export async function cancelTurn(turnId: string): Promise<boolean> {
+  const res = await fetch("/api/turn/cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ turnId }),
+  });
+  return res.ok;
+}

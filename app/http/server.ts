@@ -155,6 +155,17 @@ async function handle(
       res.end();
       return;
     }
+    if (req.method === "POST" && url.pathname === "/api/turn/cancel") {
+      const body = JSON.parse(await readBody(req)) as { turnId?: string };
+      const turnId = body.turnId?.trim() ?? "";
+      if (!turnId) {
+        json(res, 400, { error: "turnId required" });
+        return;
+      }
+      const cancelled = host.cancelTurn(turnId);
+      json(res, cancelled ? 202 : 404, { cancelled });
+      return;
+    }
     if (staticDir && req.method === "GET") {
       serveStatic(res, staticDir, url.pathname);
       return;

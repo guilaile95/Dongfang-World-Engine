@@ -40,27 +40,25 @@ Therefore:
 
 ---
 
-## 2. Canon Source Set required from Owner
+## 2. Inventoried local Canon Source Set
 
-Before authoritative Dragon 2009 facts are populated, the Owner must define the accepted local Canon Source Set.
+The Owner-provided local directory was recursively inventoried on 2026-08-26. Raw relative-path mapping and hashes remain under gitignored `data/local/dragon-canon-manifest.json`; the public repository does not contain the absolute local path or novel text.
 
-Required decisions:
+Files found:
 
-1. Which published novel edition/version is primary?
-2. Are later official revisions included?
-3. Which official supplements or author-confirmed materials are included?
-4. Are adaptation-only facts excluded by default?
-5. When sources conflict, which source wins?
-6. What exact date/range is the Dragon 2009 snapshot?
+- `dragon-bundle-5books`: 《龙族Ⅰ·火之晨曦》《龙族Ⅱ·悼亡者之瞳》《龙族Ⅲ·黑月之潮》上/中/下. This is the primary source for the 2009 slice.
+- `dragon-prequel-mourning-wing`: a supplemental prequel text framed in 2010; not needed for the selected 2009 window.
+- `dragon-v5-return-of-the-mourner-serial`: a later, unfinished serial package; not needed for the selected 2009 window.
+- `dragon-owner-protocol-v1`: simulation protocol only, never a Canon fact source.
 
-Recommended default policy, pending Owner approval:
+Applied policy:
 
 ```text
 Primary:
-  official published novel text selected by Owner
+  dragon-bundle-5books / 《龙族Ⅰ·火之晨曦》
 
 Secondary:
-  official revision/supplement explicitly approved by Owner
+  none required for this first-hour window
 
 Excluded unless separately approved:
   fan wiki
@@ -70,7 +68,16 @@ Excluded unless separately approved:
   unsourced web summary
 ```
 
-This policy is a recommendation, not a claimed Owner decision.
+Snapshot window:
+
+```text
+2009-05-15 evening/night
+runtime start: 18:30 +08:00 (explicit slice-authored minute anchor)
+```
+
+The source directly confirms Friday 2009-05-15, the southern city, the pharmacy-side wait, the dispatched pickup, and the black helicopter crossing the city that night. It does not give an exact minute; `18:30` is therefore recorded as `slice_authored`, not Canon.
+
+No supplied-source conflict affects this window. Later serial/prequel material is not used to overwrite Book I's 2009 event ordering.
 
 ---
 
@@ -222,9 +229,9 @@ Until resolved, the record remains `unresolved` and cannot enter the authoritati
 
 ---
 
-## 8. Implementation sequence while Canon Source Set is pending
+## 8. Implementation sequence after inventory
 
-Work that may proceed immediately:
+Work implemented from the confirmed narrow source set:
 
 - Scene Lifecycle contract;
 - Time/Route contract;
@@ -235,22 +242,19 @@ Work that may proceed immediately:
 - synthetic fixture tests;
 - cancellation/cap/idempotency infrastructure.
 
-Work that must wait for approved source evidence:
+Still excluded from this slice:
 
-- authoritative named-character 2009 status;
-- authoritative organization status;
-- original-history event state;
-- canon-specific Background Thread facts;
-- final Dragon real-play snapshot acceptance.
+- named-character or organization facts beyond the two actors and one pickup process required by the selected passage;
+- facts from later revisions/supplements that were not required by the selected passage;
+- adaptation-only material;
+- final Owner product acceptance.
 
 This boundary prevents Canon uncertainty from blocking all engineering progress while also preventing model memory from silently becoming Truth.
 
 ---
 
-## 9. Owner decision required
+## 9. Remaining Owner decision
 
-The remaining Owner-only input is:
+No edition/date conflict currently blocks implementation. Owner input is needed again only if a later requested record requires a supplied source that materially conflicts with the primary Book I passage.
 
-> Provide or identify the exact local Dragon novel/revision files that constitute the accepted Canon Source Set, and choose the specific 2009 snapshot date/range.
-
-Until then, Issue #75 should continue through contract/compiler/lifecycle work but must label canon records unresolved rather than inventing them.
+The final Dragon real-play result remains Owner acceptance, not an engineering inference.

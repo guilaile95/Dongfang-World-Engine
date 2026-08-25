@@ -1,10 +1,13 @@
 import type {
+  BackgroundThreadRecord,
   CharacterRecord,
   ClaimRecord,
   FactRecord,
   ItemRecord,
   KnowledgeRecord,
   LocationRecord,
+  LocationRouteRecord,
+  SourceRefRecord,
   WorldRecord,
 } from "../authority/types.js";
 import type { ContextItemRecord } from "../persist/store.js";
@@ -26,6 +29,10 @@ export interface CompiledWorld {
   theme: WorldSource["theme"];
   chronology: import("./source.js").WorldChronology;
   materials: ContextItemRecord[];
+  routes: LocationRouteRecord[];
+  backgroundThreads: BackgroundThreadRecord[];
+  sourceRefs: SourceRefRecord[];
+  characterMetadata: Record<string, { alive: boolean; visibility: "public" | "hidden" }>;
 }
 
 export function compileWorld(source: WorldSource): CompiledWorld {
@@ -111,5 +118,9 @@ export function compileWorld(source: WorldSource): CompiledWorld {
     theme: source.theme,
     chronology,
     materials: [],
+    routes: [],
+    backgroundThreads: [],
+    sourceRefs: [],
+    characterMetadata: Object.fromEntries(characters.map((row) => [row.id, { alive: true, visibility: "public" as const }])),
   };
 }

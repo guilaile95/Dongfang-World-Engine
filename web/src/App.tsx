@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   loadBootstrap,
+  cancelTurn,
   playTurn,
   saveProfile,
   startLife,
@@ -43,6 +44,7 @@ export function App() {
   const sending = useRef(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const isComposing = useRef(false);
+  const activeTurnId = useRef<string | null>(null);
 
   /* Bootstrap */
   useEffect(() => {
@@ -89,6 +91,7 @@ export function App() {
     setError(null);
     setDraft("");
     const turnId = crypto.randomUUID();
+    activeTurnId.current = turnId;
     setMessages((rows) => [...rows, { role: "player", text, parsed: true }, { role: "world", text: "", parsed: true }]);
     pin.current = true;
     try {
@@ -126,6 +129,7 @@ export function App() {
         return next;
       });
     } finally {
+      activeTurnId.current = null;
       sending.current = false;
       setBusy(false);
       setTimeout(() => composerRef.current?.focus(), 0);
@@ -399,14 +403,15 @@ export function App() {
               }
             }}
           />
-          <button
-            type="button"
-            className="send"
-            disabled={busy || !draft.trim()}
-            onClick={() => void send()}
-          >
-            发送
-          </button>
+          {busy ? (
+            <button type="button" className="send" onClick={() => activeTurnId.current && void cancelTurn(activeTurnId.current)}>
+              停止
+            </button>
+          ) : (
+            <button type="button" className="send" disabled={!draft.trim()} onClick={() => void send()}>
+              发送
+            </button>
+          )}
         </div>
       </footer>
 
@@ -619,7 +624,7 @@ function WorldSelectScreen({
 /* ─── Onboard Screen ────────────────────────────────────────────────────── */
 
 const LONGZU_LOCATIONS = [
-  "普通城市", "教学楼", "宿舍", "家", "食堂", "便利店", "普通大学校园",
+  "仕兰中学教学楼",
 ];
 
 const RIVERSIDE_LOCATIONS = [

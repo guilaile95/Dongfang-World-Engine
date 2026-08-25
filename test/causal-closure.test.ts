@@ -3,11 +3,10 @@ import { stubNpcVoice } from "../app/chat/npc.js";
 import { stubNarrator } from "../app/narrator/client.js";
 import { uncommittedProjection } from "../app/narrator/envelope.js";
 import { NARRATOR_SYSTEM, renderNarratorPrompt } from "../app/narrator/project.js";
-import { applyInterpretation, withObviousMove, withSpokenMemory } from "../app/scene/interpretation.js";
+import { applyInterpretation } from "../app/scene/interpretation.js";
 import { fixedInterpreter } from "../app/scene/interpreter.js";
 import { openWorld } from "../app/session.js";
 import { visibilityGate } from "../app/visibility/gate.js";
-import { dampPublicBeat } from "../app/world/autonomy.js";
 import {
   CHAR_COOK,
   CHAR_KEEPER,
@@ -70,12 +69,9 @@ describe("post-step17 causal closure", () => {
       ":memory:",
       stubNarrator(),
       undefined,
-      fixedInterpreter({
-        contributions: ["speak"],
-        futureCausal: false,
-        outcome: "ephemeral",
-        proposals: [],
-      }),
+      { async interpret(request) { return request.playerLine.includes("记住")
+        ? { parsed: true, interpretation: { contributions: ["speak" as const], futureCausal: true, outcome: "candidate" as const, proposals: [{ type: "memory_note" as const, text: request.playerLine, characterId: CHAR_KEEPER }] } }
+        : { parsed: true, interpretation: { contributions: ["speak" as const], futureCausal: false, outcome: "ephemeral" as const, proposals: [] } }; } },
       stubNpcVoice(),
     );
     const remember = await session.playTurn("掌柜，你记住：晚上我可能不回宿舍。");
@@ -154,37 +150,4 @@ describe("post-step17 causal closure", () => {
     session.close();
   });
 
-  it("does not re-inject the same public beat without a supporting tick event", () => {
-    const beat = "街头新闻仍在报一桩没有结案的失踪。";
-    expect(dampPublicBeat(beat, null, [])).toEqual([beat]);
-    expect(dampPublicBeat(beat, beat, [{ type: "time_advance", producer: "world_tick" }])).toEqual([]);
-    expect(dampPublicBeat(beat, beat, [{ type: "memory_note", producer: "world_tick" }])).toEqual([beat]);
-  });
-
-  it("does not turn weather into Memory or remember-speech into Fact", () => {
-    const weather = withSpokenMemory(
-      { contributions: ["speak"], futureCausal: false, outcome: "ephemeral", proposals: [] },
-      { addresseeId: CHAR_KEEPER, playerLine: "今天天气不错。" },
-    );
-    expect(weather.outcome).toBe("ephemeral");
-    expect(weather.proposals).toEqual([]);
-
-    const remember = withSpokenMemory(
-      { contributions: ["speak"], futureCausal: false, outcome: "ephemeral", proposals: [] },
-      { addresseeId: CHAR_KEEPER, playerLine: "掌柜，你记住：晚上我可能不回宿舍。" },
-    );
-    expect(remember.outcome).toBe("candidate");
-    expect(remember.proposals[0]).toMatchObject({ type: "memory_note", characterId: CHAR_KEEPER });
-
-    const stay = withObviousMove(
-      { contributions: ["low_causal"], futureCausal: false, outcome: "ephemeral", proposals: [] },
-      { playerLine: "我数了数路边停的车。", locationId: "loc-city", currentLocationId: "loc-city" },
-    );
-    expect(stay.proposals).toEqual([]);
-    const go = withObviousMove(
-      { contributions: ["low_causal"], futureCausal: false, outcome: "ephemeral", proposals: [] },
-      { playerLine: "我回到街上。", locationId: "loc-city", currentLocationId: "loc-dorm" },
-    );
-    expect(go.proposals).toEqual([{ type: "character_move", location: "loc-city" }]);
-  });
 });

@@ -14,6 +14,7 @@ export function submitCandidates(
     producer: Producer;
     candidates: Candidate[];
     causeEventIds?: string[];
+    idempotencyKey?: string;
   },
 ): SubmitResult {
   const worldId = input.candidates[0]?.worldId;
@@ -21,6 +22,13 @@ export function submitCandidates(
     throw new Error("submitCandidates requires a world");
   }
   const original = store.snapshot(worldId);
+  if (input.idempotencyKey) {
+    const prior = store.getAuthorityCommit(worldId, input.idempotencyKey);
+    if (prior) {
+      const ids = new Set(prior);
+      return { accepted: true, events: store.listEvents(worldId).filter((event) => ids.has(event.id)), snapshot: original, reasons: [] };
+    }
+  }
   if (input.candidates.length === 0) {
     return { accepted: true, events: [], snapshot: original, reasons: [] };
   }
@@ -84,6 +92,7 @@ export function submitCandidates(
       projectToStore(store, event, item.candidate);
       written.push(event);
     }
+    if (input.idempotencyKey) store.insertAuthorityCommit(worldId, input.idempotencyKey, written.map((event) => event.id));
     return written;
   });
 

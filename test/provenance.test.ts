@@ -10,7 +10,6 @@ import {
   TIME0,
   WORLD_ID,
 } from "../app/world/seed.js";
-import { worldTick } from "../app/world/tick.js";
 import { memoryWorld } from "./helpers.js";
 
 describe("provenance", () => {
@@ -42,7 +41,10 @@ describe("provenance", () => {
 
   it("records the committing event and its causes for later explanation", () => {
     const store = memoryWorld();
-    const tick = worldTick(store);
+    const tick = submitCandidates(store, { producer: "system", candidates: [
+      { type: "time_advance", worldId: WORLD_ID, expectedRevision: 0, toTime: "day-1-noon" },
+      { type: "memory_note", worldId: WORLD_ID, expectedRevision: 1, memoryId: "mem-system-beat", characterId: CHAR_KEEPER, text: "掌柜继续追查失踪客人的下落。" },
+    ] });
     expect(tick.accepted).toBe(true);
     const memories = store.snapshot(WORLD_ID).memories.filter((row) => row.characterId === CHAR_KEEPER);
     const latest = memories[memories.length - 1];
@@ -52,7 +54,7 @@ describe("provenance", () => {
     }
     const origin = explain(store, WORLD_ID, { layer: "memory", id: latest.id });
     expect(origin.via).toBe("event");
-    expect(origin.producer).toBe("world_tick");
+    expect(origin.producer).toBe("system");
     expect(origin.events).toHaveLength(2);
     expect(origin.events[0]?.type).toBe("time_advance");
     expect(origin.events[1]?.type).toBe("memory_note");

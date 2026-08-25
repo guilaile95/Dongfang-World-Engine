@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import type {
+  BackgroundThreadRecord,
   CharacterRecord,
   ClaimRecord,
   EventRecord,
@@ -9,9 +10,11 @@ import type {
   KnowledgeRecord,
   ItemRecord,
   LocationRecord,
+  LocationRouteRecord,
   MemoryRecord,
   WorldRecord,
   WorldSnapshot,
+  SourceRefRecord,
 } from "../authority/types.js";
 
 const SCHEMA = `
@@ -118,6 +121,61 @@ CREATE TABLE IF NOT EXISTS player_profiles (
   background TEXT NOT NULL DEFAULT '',
   starting_location TEXT NOT NULL DEFAULT '',
   personality TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS routes (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  name TEXT NOT NULL,
+  from_location_id TEXT NOT NULL REFERENCES locations(id),
+  to_location_id TEXT NOT NULL REFERENCES locations(id),
+  via_json TEXT NOT NULL,
+  travel_minutes INTEGER NOT NULL,
+  bidirectional INTEGER NOT NULL,
+  visibility TEXT NOT NULL,
+  conditions_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS background_threads (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  actor_ids_json TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  current_stage TEXT NOT NULL,
+  location_scope_json TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  beats_json TEXT NOT NULL,
+  executed_beat_ids_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS source_refs (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  source_type TEXT NOT NULL,
+  work_or_file TEXT NOT NULL,
+  edition_or_version TEXT NOT NULL,
+  locator TEXT NOT NULL,
+  paraphrase TEXT NOT NULL,
+  status TEXT NOT NULL,
+  notes TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS authority_commits (
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  idempotency_key TEXT NOT NULL,
+  event_ids_json TEXT NOT NULL,
+  PRIMARY KEY (world_id, idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS turn_receipts (
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  turn_id TEXT NOT NULL,
+  player_line TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (world_id, turn_id)
+);
+CREATE TABLE IF NOT EXISTS lifecycle_state (
+  world_id TEXT PRIMARY KEY REFERENCES worlds(id),
+  turn_id TEXT NOT NULL,
+  strategy_json TEXT,
+  next_step_index INTEGER NOT NULL,
+  elapsed_minutes INTEGER NOT NULL,
+  terminal_reason TEXT
 );
 `;
 
@@ -240,6 +298,9 @@ export class WorldStore {
       location_id: string | null;
       carrier_id: string | null;
     }>;
+    const routes = this.listRoutes(worldId);
+    const backgroundThreads = this.listBackgroundThreads(worldId);
+    const sourceRefs = this.listSourceRefs(worldId);
     return {
       world,
       locations: locations.map((row) => ({ id: row.id, worldId: row.world_id, name: row.name }) satisfies LocationRecord),
@@ -298,7 +359,96 @@ export class WorldStore {
         recordedAt: row.recorded_at,
         sourceEventId: row.source_event_id,
       }) satisfies MemoryRecord),
+      routes,
+      backgroundThreads,
+      sourceRefs,
     };
+  }
+
+  public insertCompiledMetadata(
+    routes: LocationRouteRecord[],
+    threads: BackgroundThreadRecord[],
+    sourceRefs: SourceRefRecord[],
+  ): void {
+    const route = this.sqlite.prepare(
+      `INSERT INTO routes (id, world_id, name, from_location_id, to_location_id, via_json, travel_minutes, bidirectional, visibility, conditions_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const row of routes) route.run(row.id, row.worldId, row.name, row.fromLocationId, row.toLocationId, JSON.stringify(row.viaLocationIds), row.travelMinutes, row.bidirectional ? 1 : 0, row.visibility, JSON.stringify(row.conditions));
+    const thread = this.sqlite.prepare(
+      `INSERT INTO background_threads (id, world_id, actor_ids_json, objective, current_stage, location_scope_json, starts_at, beats_json, executed_beat_ids_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const row of threads) thread.run(row.id, row.worldId, JSON.stringify(row.actorIds), row.objective, row.currentStage, JSON.stringify(row.locationScope), row.startsAt, JSON.stringify(row.beats), JSON.stringify(row.executedBeatIds));
+    const ref = this.sqlite.prepare(
+      `INSERT INTO source_refs (id, world_id, source_type, work_or_file, edition_or_version, locator, paraphrase, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const row of sourceRefs) ref.run(row.id, row.worldId, row.sourceType, row.workOrFile, row.editionOrVersion, row.locator, row.paraphrase, row.status, row.notes);
+  }
+
+  public listRoutes(worldId: string): LocationRouteRecord[] {
+    const rows = this.sqlite.prepare("SELECT * FROM routes WHERE world_id = ? ORDER BY id").all(worldId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id), worldId: String(row.world_id), name: String(row.name), fromLocationId: String(row.from_location_id), toLocationId: String(row.to_location_id),
+      viaLocationIds: JSON.parse(String(row.via_json)) as string[], travelMinutes: Number(row.travel_minutes), bidirectional: Number(row.bidirectional) === 1,
+      visibility: row.visibility === "hidden" ? "hidden" : "public", conditions: JSON.parse(String(row.conditions_json)) as string[],
+    }));
+  }
+
+  public listBackgroundThreads(worldId: string): BackgroundThreadRecord[] {
+    const rows = this.sqlite.prepare("SELECT * FROM background_threads WHERE world_id = ? ORDER BY id").all(worldId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id), worldId: String(row.world_id), actorIds: JSON.parse(String(row.actor_ids_json)) as string[], objective: String(row.objective),
+      currentStage: String(row.current_stage), locationScope: JSON.parse(String(row.location_scope_json)) as string[], startsAt: String(row.starts_at),
+      beats: JSON.parse(String(row.beats_json)) as BackgroundThreadRecord["beats"], executedBeatIds: JSON.parse(String(row.executed_beat_ids_json)) as string[],
+    }));
+  }
+
+  public listSourceRefs(worldId: string): SourceRefRecord[] {
+    const rows = this.sqlite.prepare("SELECT * FROM source_refs WHERE world_id = ? ORDER BY id").all(worldId) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id), worldId: String(row.world_id), sourceType: row.source_type as SourceRefRecord["sourceType"], workOrFile: String(row.work_or_file),
+      editionOrVersion: String(row.edition_or_version), locator: String(row.locator), paraphrase: String(row.paraphrase), status: row.status as SourceRefRecord["status"], notes: String(row.notes),
+    }));
+  }
+
+  public advanceBackgroundThread(threadId: string, beatId: string, stageTo: string): void {
+    const row = this.sqlite.prepare("SELECT executed_beat_ids_json FROM background_threads WHERE id = ?").get(threadId) as { executed_beat_ids_json: string } | undefined;
+    if (!row) throw new Error(`BACKGROUND_THREAD_NOT_FOUND:${threadId}`);
+    const executed = JSON.parse(row.executed_beat_ids_json) as string[];
+    this.sqlite.prepare("UPDATE background_threads SET current_stage = ?, executed_beat_ids_json = ? WHERE id = ?").run(stageTo, JSON.stringify([...executed, beatId]), threadId);
+  }
+
+  public getAuthorityCommit(worldId: string, key: string): string[] | null {
+    const row = this.sqlite.prepare("SELECT event_ids_json FROM authority_commits WHERE world_id = ? AND idempotency_key = ?").get(worldId, key) as { event_ids_json: string } | undefined;
+    return row ? JSON.parse(row.event_ids_json) as string[] : null;
+  }
+
+  public insertAuthorityCommit(worldId: string, key: string, eventIds: string[]): void {
+    this.sqlite.prepare("INSERT INTO authority_commits (world_id, idempotency_key, event_ids_json) VALUES (?, ?, ?)").run(worldId, key, JSON.stringify(eventIds));
+  }
+
+  public getTurnReceipt<T>(worldId: string, turnId: string): { playerLine: string; result: T } | null {
+    const row = this.sqlite.prepare("SELECT player_line, result_json FROM turn_receipts WHERE world_id = ? AND turn_id = ?").get(worldId, turnId) as { player_line: string; result_json: string } | undefined;
+    return row ? { playerLine: row.player_line, result: JSON.parse(row.result_json) as T } : null;
+  }
+
+  public insertTurnReceipt(worldId: string, turnId: string, playerLine: string, result: unknown): void {
+    this.sqlite.prepare("INSERT OR IGNORE INTO turn_receipts (world_id, turn_id, player_line, result_json) VALUES (?, ?, ?, ?)").run(worldId, turnId, playerLine, JSON.stringify(result));
+  }
+
+  public setLifecycleState(input: { worldId: string; turnId: string; strategy: unknown | null; nextStepIndex: number; elapsedMinutes: number; terminalReason: string | null }): void {
+    this.sqlite.prepare(
+      `INSERT INTO lifecycle_state (world_id, turn_id, strategy_json, next_step_index, elapsed_minutes, terminal_reason)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(world_id) DO UPDATE SET turn_id=excluded.turn_id, strategy_json=excluded.strategy_json, next_step_index=excluded.next_step_index, elapsed_minutes=excluded.elapsed_minutes, terminal_reason=excluded.terminal_reason`,
+    ).run(input.worldId, input.turnId, input.strategy === null ? null : JSON.stringify(input.strategy), input.nextStepIndex, input.elapsedMinutes, input.terminalReason);
+  }
+
+  public getLifecycleState(worldId: string): { turnId: string; strategy: unknown | null; nextStepIndex: number; elapsedMinutes: number; terminalReason: string | null } | null {
+    const row = this.sqlite.prepare("SELECT * FROM lifecycle_state WHERE world_id = ?").get(worldId) as Record<string, unknown> | undefined;
+    return row ? { turnId: String(row.turn_id), strategy: row.strategy_json ? JSON.parse(String(row.strategy_json)) : null, nextStepIndex: Number(row.next_step_index), elapsedMinutes: Number(row.elapsed_minutes), terminalReason: row.terminal_reason === null ? null : String(row.terminal_reason) } : null;
   }
 
   public listEvents(worldId: string): EventRecord[] {

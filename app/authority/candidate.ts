@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Producer } from "./types.js";
 
-const producerSchema = z.enum(["system", "world_tick", "llm"]);
+const producerSchema = z.enum(["system", "llm"]);
 
 const knowledgeSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("event"), eventId: z.string().min(1) }),
@@ -69,6 +69,14 @@ export const candidateSchema = z.discriminatedUnion("type", [
     type: z.literal("item_carry"),
     itemId: z.string().min(1),
     characterId: z.string().min(1),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal("background_thread_advance"),
+    threadId: z.string().min(1),
+    beatId: z.string().min(1),
+    stageFrom: z.string().min(1),
+    stageTo: z.string().min(1),
   }),
 ]);
 

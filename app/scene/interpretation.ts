@@ -3,6 +3,7 @@ import { z } from "zod";
 import { submitCandidates, submitEmptyProposal, type SubmitResult } from "../authority/commit.js";
 import type { Candidate } from "../authority/candidate.js";
 import type { WorldStore } from "../persist/store.js";
+import type { LocationRouteRecord } from "../authority/types.js";
 import { resolveItemId, resolveLocationId } from "../world/resolve.js";
 
 /** What the player was doing in the scene — labels, not an action menu. */
@@ -48,10 +49,24 @@ const proposalSchema = z.discriminatedUnion("type", [
 ]);
 
 export const interpretationSchema = z.object({
+  channel: z.enum(["in_world", "ooc_meta"]).optional(),
   contributions: z.array(contributionKindSchema).min(1),
   futureCausal: z.boolean().optional().default(false),
   outcome: z.enum(["ephemeral", "clarify", "fail", "candidate"]),
   proposals: z.array(proposalSchema).max(4),
+  timePolicy: z.object({
+    kind: z.enum(["none", "bounded_action", "route_travel", "explicit_wait"]),
+    minutes: z.number().int().nonnegative().nullable(),
+    routeId: z.string().nullable(),
+    untilTime: z.string().nullable(),
+  }).optional(),
+  strategyIntent: z.object({
+    kind: z.enum(["follow_route", "wait", "leave_area", "continue_current_task"]),
+    targetLocationId: z.string().nullable(),
+    routeId: z.string().nullable(),
+    untilTime: z.string().nullable(),
+    completionCondition: z.string().min(1),
+  }).nullable().optional(),
 });
 
 export type SceneInterpretation = z.infer<typeof interpretationSchema>;
@@ -67,59 +82,6 @@ export interface BoundInterpretation {
 
 const SPEECH = new Set<ContributionKind>(["speak", "ask"]);
 const DIARY = /日记|写进日记|写下来|记在本子|写进本子/;
-const REMEMBER_SPEECH = /记住|别忘|不要忘|记着|牢记|说定/;
-
-export function isRememberSpeech(playerLine: string): boolean {
-  return REMEMBER_SPEECH.test(playerLine) && !DIARY.test(playerLine);
-}
-
-const MOVE_SPEECH = /回家|走进|进入|回到|前往|来到|去/;
-
-export function withObviousMove(
-  interpretation: SceneInterpretation,
-  input: { playerLine: string; locationId: string | null; currentLocationId: string },
-): SceneInterpretation {
-  if (!input.locationId || input.locationId === input.currentLocationId || !MOVE_SPEECH.test(input.playerLine)) {
-    return interpretation;
-  }
-  if (interpretation.proposals.some((row) => row.type === "character_move")) {
-    return interpretation;
-  }
-  return {
-    ...interpretation,
-    contributions: [...new Set([...interpretation.contributions, "world_attempt" as const])],
-    futureCausal: true,
-    outcome: "candidate",
-    proposals: [
-      ...interpretation.proposals,
-      { type: "character_move", location: input.locationId },
-    ],
-  };
-}
-
-/** Engine-side: explicit “remember this” to a present addressee is durable Memory, not Fact. */
-export function withSpokenMemory(
-  interpretation: SceneInterpretation,
-  input: { addresseeId: string; playerLine: string },
-): SceneInterpretation {
-  if (!isRememberSpeech(input.playerLine)) {
-    return interpretation;
-  }
-  const existing = interpretation.proposals.find((row) => row.type === "memory_note");
-  const text = existing && existing.type === "memory_note" ? existing.text : `玩家让你记住：${input.playerLine.trim()}`;
-  const proposals: SceneInterpretation["proposals"] = [
-    ...interpretation.proposals.filter((row) => row.type !== "memory_note"),
-    { type: "memory_note", text, characterId: input.addresseeId },
-  ];
-  const contributions = [...new Set([...interpretation.contributions, "speak" as const, "durable_attempt" as const])];
-  return {
-    ...interpretation,
-    contributions,
-    futureCausal: true,
-    outcome: "candidate",
-    proposals,
-  };
-}
 
 export function normalizeInterpretation(raw: unknown): SceneInterpretation {
   const parsed = interpretationSchema.safeParse(raw);
@@ -150,6 +112,8 @@ export function applyInterpretation(
     addresseeId?: string | null;
     parsed?: boolean;
     interpretation: SceneInterpretation;
+    routes?: LocationRouteRecord[];
+    idempotencyKey?: string;
   },
 ): BoundInterpretation {
   const interpretation = normalizeInterpretation(input.interpretation);
@@ -205,6 +169,12 @@ export function applyInterpretation(
       }
       if (playerLoc === locationId) {
         continue;
+      }
+      if (input.routes && input.routes.length > 0 && !input.routes.some((route) =>
+        (route.fromLocationId === playerLoc && route.toLocationId === locationId)
+        || (route.bidirectional && route.toLocationId === playerLoc && route.fromLocationId === locationId))) {
+        unresolved = true;
+        break;
       }
       built.push({
         type: "character_move",
@@ -283,7 +253,7 @@ export function applyInterpretation(
       result: submitEmptyProposal(store, input.worldId),
     };
   }
-  const result = submitCandidates(store, { producer: "llm", candidates: built });
+  const result = submitCandidates(store, { producer: "llm", candidates: built, ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}) });
   return {
     contributions: interpretation.contributions,
     futureCausal: interpretation.futureCausal,
@@ -292,100 +262,6 @@ export function applyInterpretation(
     parsed,
     result,
   };
-}
-
-export function ensureSpokenMemory(
-  store: WorldStore,
-  input: { worldId: string; addresseeId: string; playerLine: string },
-): SubmitResult | null {
-  if (!isRememberSpeech(input.playerLine)) {
-    return null;
-  }
-  const snapshot = store.snapshot(input.worldId);
-  const already = snapshot.memories.some(
-    (row) =>
-      row.characterId === input.addresseeId
-      && (row.text.includes(input.playerLine.trim()) || row.text.startsWith("玩家让你记住")),
-  );
-  if (already) {
-    return null;
-  }
-  const result = submitCandidates(store, {
-    producer: "llm",
-    candidates: [
-      {
-        type: "memory_note",
-        worldId: input.worldId,
-        expectedRevision: snapshot.world.revision,
-        memoryId: `mem-${randomUUID()}`,
-        characterId: input.addresseeId,
-        text: `玩家让你记住：${input.playerLine.trim()}`,
-      },
-    ],
-  });
-  return result.accepted ? result : null;
-}
-
-const CARRY_SPEECH = /背上|拿起|捡起|拾起|收好|收进|放进书包|放入书包|装进书包|带上|取走/;
-
-export function ensureObviousCarry(
-  store: WorldStore,
-  input: { worldId: string; playerId: string; playerLine: string },
-): SubmitResult | null {
-  if (!CARRY_SPEECH.test(input.playerLine)) {
-    return null;
-  }
-  const snapshot = store.snapshot(input.worldId);
-  const player = snapshot.characters.find((row) => row.id === input.playerId);
-  const itemId = resolveItemId(snapshot, input.playerLine);
-  const item = itemId ? snapshot.items.find((row) => row.id === itemId) : null;
-  if (!player || !item || item.carrierId === input.playerId) {
-    return null;
-  }
-  if (item.locationId !== player.locationId) {
-    return null;
-  }
-  const result = submitCandidates(store, {
-    producer: "llm",
-    candidates: [
-      {
-        type: "item_carry",
-        worldId: input.worldId,
-        expectedRevision: snapshot.world.revision,
-        itemId: item.id,
-        characterId: input.playerId,
-      },
-    ],
-  });
-  return result.accepted ? result : null;
-}
-
-export function ensureObviousMove(
-  store: WorldStore,
-  input: { worldId: string; playerId: string; playerLine: string },
-): SubmitResult | null {
-  if (!MOVE_SPEECH.test(input.playerLine)) {
-    return null;
-  }
-  const snapshot = store.snapshot(input.worldId);
-  const player = snapshot.characters.find((row) => row.id === input.playerId);
-  const dest = resolveLocationId(snapshot, input.playerLine);
-  if (!player || !dest || dest === player.locationId) {
-    return null;
-  }
-  const result = submitCandidates(store, {
-    producer: "llm",
-    candidates: [
-      {
-        type: "character_move",
-        worldId: input.worldId,
-        expectedRevision: snapshot.world.revision,
-        characterId: input.playerId,
-        locationId: dest,
-      },
-    ],
-  });
-  return result.accepted ? result : null;
 }
 
 export function ephemeralInterpretation(): SceneInterpretation {
