@@ -1,0 +1,37 @@
+export { loadConfig, configForLog } from "./config.js";
+export { openWorld, Session } from "./session.js";
+export { submitCandidates, submitLlmProposal, submitEmptyProposal } from "./authority/commit.js";
+export { parseLlmCandidate } from "./authority/candidate.js";
+export { explain } from "./authority/explain.js";
+export { rebuildWorld } from "./authority/restore.js";
+export { contextFor } from "./visibility/context.js";
+export { visibilityGate } from "./visibility/gate.js";
+export { assemblePrompt } from "./visibility/assemble.js";
+export { searchWithinPool, rankWithinPool } from "./visibility/retrieve.js";
+export { createModelClient, formatCallLine } from "./model/client.js";
+export { WORLD_ID, CHAR_PLAYER, seedWorld } from "./world/seed.js";
+export { parseWorldSource } from "./world/parse.js";
+export { compileWorld } from "./world/compile.js";
+export { loadWorldFile } from "./world/load.js";
+export {
+  EXPERIMENT_1_AUTONOMY,
+  NPC_ALWAYS_ON_INTERVAL_MS,
+  backgroundWorldEvolutionEnabled,
+  enableBackgroundEvolutionBecause,
+  planTurnAutonomy,
+} from "./world/autonomy.js";
+export { recall } from "./context/recall.js";
+export { rebuildObserverArtifacts, wipeContextArtifacts } from "./context/artifacts.js";
+export { recentSceneBodies, RECENT_WINDOW } from "./context/recent.js";
+export {
+  CONTINUITY_ORDER,
+  EXPERIMENT_1_EVIDENCE,
+  expandContinuityFor,
+  rollingSummaryEnabled,
+} from "./context/continuity.js";
+export { applyInterpretation, normalizeInterpretation } from "./scene/interpretation.js";
+export { createModelInterpreter } from "./scene/interpreter.js";
+export { resolveAddressee } from "./scene/address.js";
+export { createNpcVoice } from "./chat/npc.js";
+export { createNarrator, stubNarrator } from "./narrator/client.js";
+export { ignoreNarratorForAuthority } from "./narrator/envelope.js";

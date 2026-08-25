@@ -1,6 +1,6 @@
 # Current Stage — Recovery Coordinates
 
-Last reviewed: 2026-08-24
+Last reviewed: 2026-08-25
 
 This file is a **recovery pointer**, not a second task database. Always verify live GitHub before acting.
 
@@ -12,7 +12,7 @@ Active owner Issue: **[#68 — Owner Greenfield Reset](https://github.com/guilai
 
 This Owner decision **outranks** previous GitHub Issues, PRs, ADRs, and Notion current-route pages.
 
-Product spec: [`PRODUCT.md`](PRODUCT.md). Compose survey: [`COMPOSE_FIRST_SURVEY.md`](COMPOSE_FIRST_SURVEY.md). Minimal architecture: [`MINIMAL_COMPOSITION.md`](MINIMAL_COMPOSITION.md). Governance: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
+Product spec: [`PRODUCT.md`](PRODUCT.md). Operating rules: [`OPERATING_RULES.md`](OPERATING_RULES.md). Compose survey: [`COMPOSE_FIRST_SURVEY.md`](COMPOSE_FIRST_SURVEY.md). Minimal architecture: [`MINIMAL_COMPOSITION.md`](MINIMAL_COMPOSITION.md). Runtime choice: [`RUNTIME_CHOICE.md`](RUNTIME_CHOICE.md). Governance: [`GREENFIELD_RESET.md`](GREENFIELD_RESET.md).
 
 ### What this means
 
@@ -38,12 +38,14 @@ Product spec: [`PRODUCT.md`](PRODUCT.md). Compose survey: [`COMPOSE_FIRST_SURVEY
 
 1. `AGENTS.md`
 2. `docs/PRODUCT.md` — North Star, invariants, non-goals, v1 success
-3. `docs/COMPOSE_FIRST_SURVEY.md` — compose-first research (no runtime)
-4. `docs/MINIMAL_COMPOSITION.md` — ADOPT/ADAPT/BORROW/OWN/DEFER slice
-5. `docs/GREENFIELD_RESET.md` — archive / do-not-restore
-6. this file
-7. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
-8. Notion pages listed below (intent only; same product spec)
+3. `docs/OPERATING_RULES.md` — 执行守则（当前指令、实验、成本、空转）
+4. `docs/COMPOSE_FIRST_SURVEY.md` — compose-first research (no runtime)
+5. `docs/MINIMAL_COMPOSITION.md` — ADOPT/ADAPT/BORROW/OWN/DEFER slice
+6. `docs/RUNTIME_CHOICE.md` — language/runtime after Step 3
+7. `docs/GREENFIELD_RESET.md` — archive / do-not-restore
+8. this file
+9. live GitHub: `main`, Open Issues, Open PRs, tags `archive/*`
+10. Notion pages listed below (intent only; same product spec)
 
 Do **not** treat `docs/CHAT_FIRST_PRODUCT_RESET.md`, `docs/SCENE_TURN_CONTRACT.md`, `docs/ROADMAP.md`, `docs/COMPOSITION_REUSE_AUDIT.md`, or `WORLD_ENGINE.md` as live implementation requirements. They are historical evidence.
 
@@ -55,6 +57,7 @@ Start with:
 
 - `东方狂想｜Dongfang World Engine` (root; Greenfield banner)
 - Product spec page (same content as `docs/PRODUCT.md`) — https://app.notion.com/p/3c655152dfe881bb8e06edd007391884
+- Operating doctrine (durable method only) — https://app.notion.com/p/3c655152dfe881e9b74ac1c6e36f9d10
 - Historical / Superseded: Chat-first 纠偏、Owner 解冻、Build-vs-Borrow 审计、项目复盘、Vertical Slice 策略、旧 Authority 实现页
 
 ## Recovery Output
@@ -66,5 +69,5 @@ EXACT_MAIN:
 PROJECT_STATUS: OWNER_GREENFIELD_RESET
 ACTIVE_ISSUE: #68
 OPEN_PRS: do not merge #65/#67
-NEXT_ACTION: governance already switched; implement only on greenfield/owner-reset
+NEXT_ACTION: Items 4–8 of the real-play gate completed on this worktree (4c/5/6c/7/8 PASS). Next: Owner review of receipts; do not merge without authorization.
 ```

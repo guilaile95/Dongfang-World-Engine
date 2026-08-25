@@ -27,7 +27,7 @@ GitHub live state
 When sources conflict, use this order:
 
 1. current explicit user instruction;
-2. Owner Greenfield Reset (`docs/GREENFIELD_RESET.md` + live owner Issue) and `docs/CURRENT_STAGE.md`;
+2. Owner Greenfield Reset (`docs/GREENFIELD_RESET.md` + live owner Issue), `docs/OPERATING_RULES.md`, and `docs/CURRENT_STAGE.md`;
 3. GitHub current code / `main` / CI / **current** open Issue / open PR (not archived #65/#66/#67);
 4. Notion long-term **current** intent pages (Greenfield North Star). Pre-reset Notion pages are Historical / Superseded;
 5. archived git tags / historical GitHub documents (evidence only);

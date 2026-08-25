@@ -1,48 +1,17 @@
 # Contributing
 
-当前项目仍处于 World Engine MVP 阶段。
+当前工作在 `greenfield/owner-reset` 上，服从 [#68 Owner Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)。
 
-在核心 authority chain 稳定之前，贡献应优先围绕：
+不要恢复旧 Production Runtime、Closed Inn Proposal-menu、或 #65/#66/#67。不要为旧测试或 CI 保留兼容层。
 
-- Candidate Event；
-- Hard Validator；
-- transactional Commit；
-- Event Log；
-- Materialized State；
-- Character Knowledge；
-- deterministic tests。
+优先围绕当前 slice：
 
-暂不接受以扩大范围为主的改动，例如复杂 UI、多 Agent、插件市场、大规模经济模拟或与某个具体第三方 IP 深度绑定的核心逻辑。
+- 提交门（candidate → authorize → 事务 → event → projection）
+- Fact / Claim / Knowledge / Memory 分层
+- Visibility-before-Relevance
+- 本地单文件世界
+- 前景场景不写世界
 
-所有新增核心模块都应能回答：
+跨会话恢复从 [`AGENTS.md`](AGENTS.md) 开始。执行纪律见 [`docs/OPERATING_RULES.md`](docs/OPERATING_RULES.md)。交接文本不得保存 API Key、凭证、Raw Prompt、Raw Provider Response 或 hidden reasoning。
 
-1. 它读取哪一层数据；
-2. 它是否提出状态变化；
-3. 它经过哪个 Validator；
-4. 它由哪个 Event 解释；
-5. 它是否扩大某个角色的知识边界；
-6. 它是否可能绕过 Database is Truth。
-
-核心改动应通过 PR 进入 `main`，并附带对应自动化测试。
-
-## 项目交接与恢复
-
-跨 Chat / Codex / Grok / 其他开发 Agent 接管时，统一从仓库根目录 [`AGENTS.md`](AGENTS.md) 开始。
-
-快速恢复路径：
-
-```text
-AGENTS.md
-→ docs/CURRENT_STAGE.md
-→ live GitHub main / Issues / PRs / reviews / CI
-→ 当前 Stage 相关代码与测试
-→ CURRENT_STAGE 指定的 Notion 长期页面（按需）
-→ CURRENT ENGINEERING STATE
-→ 继续当前最高优先级工作
-```
-
-不要依赖聊天历史，也不要要求用户重新解释项目。
-
-`docs/CURRENT_STAGE.md` 只保存恢复坐标；当前工程事实始终以 live GitHub 为准。详细治理、交接和 Stop / Escalation 规则见 [`docs/PROJECT_HANDOVER_PROTOCOL.md`](docs/PROJECT_HANDOVER_PROTOCOL.md)。
-
-交接文本不得保存 API Key、凭证、Raw Prompt、Raw Provider Response 或 hidden reasoning。
+一次实验一个变量。失败实验不重抽成同一次。LLM 调用必须记下 usage。当前最大阻塞未解除时，不要做不能解除它的工作。

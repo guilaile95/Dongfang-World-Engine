@@ -24,7 +24,7 @@ Before significant work:
 
 Owner decision: **[#68 Greenfield Reset](https://github.com/guilaile95/Dongfang-World-Engine/issues/68)**. It outranks previous Issues, PRs, ADRs, and Notion “current route” pages.
 
-Read `docs/PRODUCT.md` for product intent. Read `docs/COMPOSE_FIRST_SURVEY.md` before picking libraries. Read `docs/MINIMAL_COMPOSITION.md` for the v1 slice. Read `docs/GREENFIELD_RESET.md` for archive / do-not-restore.
+Read `docs/PRODUCT.md` for product intent. Read `docs/OPERATING_RULES.md` before taking a next step. Read `docs/COMPOSE_FIRST_SURVEY.md` before picking libraries. Read `docs/MINIMAL_COMPOSITION.md` for the v1 slice. Read `docs/GREENFIELD_RESET.md` for archive / do-not-restore.
 
 Hard rules:
 
@@ -75,11 +75,13 @@ Do not vendor SillyTavern (AGPL) or RisuAI (GPL) into this MIT repository.
 
 ## Source roles
 
-**GitHub** is Engineering Reality: code, `main`, Issues, PRs, reviews, CI, tags.
+**GitHub** is Engineering Reality: code, `main`, Issues, PRs, reviews, CI, tags. Agent execution rules live in [`docs/OPERATING_RULES.md`](docs/OPERATING_RULES.md).
 
 **Notion** is long-term product intent: North Star, invariants, architecture reasons, cross-stage lessons. Do not duplicate the GitHub timeline there.
 
-If GitHub implementation and Notion intent disagree, report Intent-vs-Reality. After this Reset, Notion “current route” pages that predate Greenfield are **Historical / Superseded**.
+Current explicit user instruction outranks old GitHub Issues/PRs and pre-Greenfield Notion “current route” pages. If GitHub implementation and Notion intent disagree, report Intent-vs-Reality. After this Reset, Notion “current route” pages that predate Greenfield are **Historical / Superseded**.
+
+Do not idle: if the largest real blocker is scene interpretation, work that does not unblock it has no product value. One real-model experiment, one variable. Failed experiments are not rerolled under the same name.
 
 ## Handover rule
 

@@ -99,7 +99,7 @@ Only product-core gaps. Names below are **capabilities**, not a promise to keep 
 - **Checked:** Mem0/OV/ST retrieve by similarity or triggers; Letta pages its own memory; WorldX perception is location-based but then dumps an action menu.
 - **Why not enough:** Relevance ≠ permission. A high-score secret is still a leak.
 - **Why irreplaceable:** PRODUCT.md §12; “NPC 知道不该知道的” is a stated Chat failure.
-- **Maintenance:** A filter **before** any ranking or prompt packing. Cheap. Ranking/RAG **DEFER**.
+- **Maintenance:** A filter **before** any ranking or prompt packing. Cheap. Ranking/RAG **DEFER**. Continuity pack order after the gate: current state → recent scenes → essentials → legal episodic recall. Rolling summary is not in the slice.
 
 ### OWN-3 LLM 无直接持久写权（提交门）
 
@@ -127,7 +127,7 @@ Only product-core gaps. Names below are **capabilities**, not a promise to keep 
 - **Checked:** WorldX tick; AI Town scheduler; Emergence 120+ tools; Openovel resident team; ST extensions.
 - **Why not enough:** Those are either menu-driven autonomy, cloud towns, research societies, or agent swarms. v1 forbids 复杂 Scheduler / 大规模 Agent 网络.
 - **Why irreplaceable:** “World does not orbit the player” *and* “world does not lose its theme.” Pure Chat and player-verb engines both fail this.
-- **Maintenance:** **Once per player turn**, independent of the sentence: advance a little world time + one authored or NPC-visible step that was *not* parsed from the player. No Redis, no job queue, no always-on sim.
+- **Maintenance:** **Once per player turn**, independent of the sentence: advance a little world time + one authored or NPC-visible step that was *not* parsed from the player. Multi-resolution (high scene / medium theme / macro place / dormant rest). No Redis, no job queue, no 60s all-NPC LLM pulse. Background evolution stays off until real play proves the world perceptibly stops without the player; Experiment-1 did not. Over budget: damp or defer, deterministic shortcut.
 
 If a later extractor proposes durable effects *from the player’s line*, it is background-only, goes through OWN-3, and **must allow empty**. It must never become the player API (that was the Proposal-menu failure).
 
@@ -138,13 +138,15 @@ If a later extractor proposes durable effects *from the player’s line*, it is 
 | Item | Why not this slice |
 |---|---|
 | UI / Tauri / ST sidecar | CLI is enough to prove the loop |
-| Mem0 / OpenViking / Vector DB | Recall after Visibility; v1 world is small enough to pack in full *after* the filter |
+| Mem0 / OpenViking / Vector DB | **OpenViking REJECT in-process (AGPLv3; Memory ≠ Truth).** Mem0 not adopted. Thin OWN recall after Visibility indexes public lore + observer namespace only. |
 | LiteLLM proxy | One OpenAI-compatible endpoint |
 | CCv3 importer, World Pack, MOD | One hand-authored slice world |
 | Letta, KAL, Funloom, Emergence runtime | REJECT or unlocated / NC |
 | Inventory, dialogue framework, time-branch, multi-world slots | PRODUCT 非目标 |
 | Redis, microservices, agent mesh, complex scheduler | Explicitly out |
+| Always-on NPC LLM ticks (WorldX / AI Town / Emergence copies) | Not a product problem in experiment-1. OWN-6 is one deterministic turn tick with resolution bands. |
 | Ranking / RAG | Visibility first; nothing to rank yet |
+| Rolling summary / Vector DB / long-term Memory platform | Recent Scene Window (3) is the continuity product. Layer 5 stays off until Step 14+ real play proves the window is not enough. Experiment-1 did not. OpenViking REJECT in-process. |
 
 ---
 
