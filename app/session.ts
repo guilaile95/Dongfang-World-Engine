@@ -216,7 +216,7 @@ export class Session {
     const hardStopReason = chooseHardStop(background.exposures, routeComplete, interpretation);
     const visible = assemblePrompt({ snapshot: after, observerId: this.compiled.playerId, query: trimmed, ambient: this.ambient, recentScenes: recentForPlayer, playerProfile: profile });
     let stopDecision: SceneStopDecision | null = checkpointStopDecision;
-    if (!parseFailed && !stopDecision && terminalReason !== "cancelled" && terminalReason !== "budget_cap" && terminalReason !== "structured_failure") {
+    if (hardStopReason && !parseFailed && !stopDecision && terminalReason !== "cancelled" && terminalReason !== "budget_cap" && terminalReason !== "structured_failure") {
       const decided = await this.stopDecider.decide({ visibleContext: visible.prompt, hardStopReason, evidence: [...this.ambient, ...uncommittedProjection(rawForCommit, interpretation)], strategyComplete: routeComplete });
       if (!decided || (hardStopReason && (!decided.shouldStop || decided.stopReason !== hardStopReason))) terminalReason = "structured_failure";
       else stopDecision = groundStopDecision(decided, after, this.compiled, this.compiled.playerId);

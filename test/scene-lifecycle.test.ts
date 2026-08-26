@@ -142,12 +142,14 @@ describe("Issue #75 bounded scene lifecycle", () => {
   });
 
   it("does not stop mundane observation and fail-closes a structured stop failure after preserving committed time", async () => {
-    const noStop = openWorld(":memory:", stubNarrator(), compiled(), fixedInterpreter({ contributions: ["observe"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: null }));
+    let ordinaryStopCalls = 0;
+    const noStop = openWorld(":memory:", stubNarrator(), compiled(), fixedInterpreter({ contributions: ["observe"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: null }), stubNpcVoice(), { async decide() { ordinaryStopCalls += 1; return fixedStopDecider().decide({ visibleContext: "", hardStopReason: null, evidence: [], strategyComplete: false }); } });
     noStop.store.initializePlayerProfile(profile());
     await noStop.projectOpening(profile());
     const t0 = noStop.store.snapshot("longzu").world.time;
     const ordinary = await noStop.handlePlayerTurn("我看看窗外。", "turn-observe");
-    expect(ordinary.stopDecision?.shouldStop).toBe(false);
+    expect(ordinary.stopDecision).toBeNull();
+    expect(ordinaryStopCalls).toBe(0);
     expect(noStop.store.snapshot("longzu").world.time).toBe(t0);
     noStop.close();
 
