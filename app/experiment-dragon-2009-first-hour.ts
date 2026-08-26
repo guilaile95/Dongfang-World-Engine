@@ -14,6 +14,7 @@ import { loadWorldFile } from "./world/load.js";
 const SOURCE = resolve("app/world/fixtures/dragon-2009-first-hour.json");
 const outDir = resolve("data/local");
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+const experimentId = process.env.DWE_EXPERIMENT_ID?.trim() || `dragon-2009-first-hour-${stamp}`;
 const config = { ...loadConfig(), maxRetries: 0, fallbackModel: null };
 
 interface PathResult {
@@ -89,7 +90,7 @@ mkdirSync(outDir, { recursive: true });
 const selected: Array<"A" | "B"> = process.env.DWE_EXPERIMENT_PATH === "A" || process.env.DWE_EXPERIMENT_PATH === "B" ? [process.env.DWE_EXPERIMENT_PATH] : ["A", "B"];
 const paths: PathResult[] = [];
 for (const path of selected) paths.push(await runPath(path));
-const result = { experiment: "dragon-2009-first-hour", noReroll: true, source: "app/world/fixtures/dragon-2009-first-hour.json", startedAt: new Date().toISOString(), paths };
+const result = { experiment: experimentId, noReroll: true, source: "app/world/fixtures/dragon-2009-first-hour.json", startedAt: new Date().toISOString(), paths };
 const outputPath = join(outDir, `dragon-2009-real-model-${stamp}.json`);
 writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
 process.stdout.write(`${JSON.stringify({ output: outputPath, paths: result.paths.map((path) => ({ path: path.path, status: path.status, error: path.error, turns: path.turns.map((turn) => turn.receipt), inputTokens: path.inputTokens, outputTokens: path.outputTokens, costUsd: path.costUsd, wallTimeMs: path.wallTimeMs, restartDigest: path.restartDigest })) }, null, 2)}\n`);
