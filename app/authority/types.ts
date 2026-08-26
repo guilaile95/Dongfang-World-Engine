@@ -1,4 +1,4 @@
-export type Producer = "system" | "world_tick" | "llm";
+export type Producer = "system" | "llm";
 
 export type KnowledgeState = "rumor" | "believed" | "confirmed";
 
@@ -19,6 +19,68 @@ export interface LocationRecord {
   id: string;
   worldId: string;
   name: string;
+}
+
+export interface LocationRouteRecord {
+  id: string;
+  worldId: string;
+  name: string;
+  fromLocationId: string;
+  toLocationId: string;
+  viaLocationIds: string[];
+  travelMinutes: number;
+  bidirectional: boolean;
+  visibility: "public" | "hidden";
+  conditions: string[];
+}
+
+export interface BackgroundExposureRecord {
+  kind: "same_location" | "route_intersection" | "public_broadcast" | "visible_result";
+  observerRequirements: string[];
+  presentationDirective: string;
+  stopReason: "new_risk" | "direction_choice" | "material_information" | "meaningful_npc_request" | "obstacle" | "destination_reached";
+}
+
+export interface BackgroundBeatRecord {
+  beatId: string;
+  stageFrom: string;
+  stageTo: string;
+  dueAt: string | null;
+  afterMinutes: number | null;
+  preconditions: string[];
+  consequences: Array<{
+    type: "fact_assert" | "claim_record";
+    id: string;
+    subject: string;
+    predicate: string;
+    object: string;
+    visibility?: "public" | "hidden" | undefined;
+  }>;
+  exposureRules: BackgroundExposureRecord[];
+}
+
+export interface BackgroundThreadRecord {
+  id: string;
+  worldId: string;
+  actorIds: string[];
+  objective: string;
+  currentStage: string;
+  locationScope: string[];
+  startsAt: string;
+  beats: BackgroundBeatRecord[];
+  executedBeatIds: string[];
+}
+
+export interface SourceRefRecord {
+  id: string;
+  worldId: string;
+  sourceType: "official_novel" | "official_revision" | "official_supplement" | "owner_protocol" | "slice_authored";
+  workOrFile: string;
+  editionOrVersion: string;
+  locator: string;
+  paraphrase: string;
+  status: "confirmed" | "provisional" | "unresolved";
+  notes: string;
 }
 
 export interface CharacterRecord {
@@ -104,4 +166,7 @@ export interface WorldSnapshot {
   claims: ClaimRecord[];
   knowledge: KnowledgeRecord[];
   memories: MemoryRecord[];
+  routes: LocationRouteRecord[];
+  backgroundThreads: BackgroundThreadRecord[];
+  sourceRefs: SourceRefRecord[];
 }

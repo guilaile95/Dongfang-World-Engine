@@ -41,6 +41,7 @@ export const NARRATOR_SYSTEM = [
   "不要用「当前状态」「最近场景」等内部结构标题开头。直接写叙事正文。",
   "使用 Markdown 格式提高可读性：段落分明、关键动作或对话可用 **粗体**，场景转换可用 ---，引用 NPC 对话用「」。",
   "你写的是文学化叙事，不是报告。不要每轮汇报世界数据库状态。",
+  "Opening 是第一幕和风格样板：示范第二人称、信息密度、描写长度、NPC 对话味道和一次推进的尺度；遇到真正决定点才把行动权交还玩家。",
 ].join("\n");
 
 export const OPENING_SYSTEM = [
@@ -79,50 +80,6 @@ export interface OpeningHookPlan {
   narrativeDirective: string;
 }
 
-export function planOpeningHook(worldId: string, _locationName?: string): OpeningHookPlan {
-  if (worldId === "riverside-inn") {
-    return {
-      kind: "durable_item",
-      itemName: "警告纸条",
-      itemContent: "别去后院地窖，今晚掌柜在提防生人。",
-      situationSummary: "堂屋留有一张提醒别去地窖的警告纸条，掌柜神色有些异样。",
-      narrativeDirective: "堂屋桌角或脚边出现一张【警告纸条】，上面写着『别去后院地窖，今晚掌柜在提防生人。』",
-    };
-  }
-  if (worldId === "longzu") {
-    return {
-      kind: "durable_item",
-      itemName: "警告信",
-      itemContent: "别走老码头那条路，今晚雨夜有人在等。",
-      situationSummary: "门缝滑入了一封未具名的警告信，外头汽车与电话声交织。",
-      narrativeDirective: "门缝滑入一封【警告信】，上面写着『别走老码头那条路，今晚雨夜有人在等。』",
-    };
-  }
-  if (worldId === "shenmi-fusu") {
-    return {
-      kind: "durable_item",
-      itemName: "奇怪的便签",
-      itemContent: "晚上听到敲门声千万别开，直接下楼。",
-      situationSummary: "门把手上贴着一张警告不要开门的便签，楼道有些阴冷。",
-      narrativeDirective: "门把手或门缝处贴着一张【奇怪的便签】，写着『晚上听到敲门声千万别开，直接下楼。』",
-    };
-  }
-  if (worldId === "xiuxian") {
-    return {
-      kind: "durable_item",
-      itemName: "传音符纸",
-      itemContent: "后山有异动，巡夜弟子速至大殿集合。",
-      situationSummary: "山门石阶旁落着一张闪烁微光的传音符纸，远处钟声回荡。",
-      narrativeDirective: "石阶旁拾得一张【传音符纸】，上面留有字迹『后山有异动，巡夜弟子速至大殿集合。』",
-    };
-  }
-  return {
-    kind: "ephemeral_event",
-    situationSummary: "周围的环境有些不同寻常的动向。",
-    narrativeDirective: "远处传来一阵异样的声响与动静，打破了四周的平静。",
-  };
-}
-
 export function hasPerspectiveViolation(text: string, playerName?: string): boolean {
   if (!playerName || playerName.trim().length < 2) {
     return false;
@@ -149,29 +106,34 @@ export interface OpeningPromptInput {
   publicBeat: string;
   profile: import("../persist/store.js").PlayerProfile;
   plannedHook?: OpeningHookPlan;
+  characterization?: string;
+  styleAnchors?: string[];
+  recentHistory?: string[];
 }
 
 export function renderOpeningPrompt(input: OpeningPromptInput): string {
-  const parts: string[] = [
-    `【世界】${input.worldTitle}　【时期】${input.era}　【时间】${input.timeLabel}`,
-    `【公开背景】${input.publicPremise}`,
-    `【起始地点】${input.locationName}　【在场人物】${input.presentCharacters.join("、") || "（无）"}`,
-    `【世界氛围与公共事件】${input.publicBeat || "（无）"}`,
+  const styleAnchors = input.styleAnchors ?? [
+    "全程第二人称；每段都有新信息；只推进一个可感知变化。",
+    "NPC 对话使用自然短句，不替 NPC 透露不可见秘密。",
+    "出现真正决定点时，把行动权交还给玩家。",
   ];
-  if (input.publicRules.length > 0) {
-    parts.push(`【已知规则】${input.publicRules.join("；")}`);
-  }
-  if (input.publicLore.length > 0) {
-    parts.push(`【公开资料与传闻】\n${input.publicLore.join("\n")}`);
-  }
+  const recentHistory = input.recentHistory?.join("\n---\n") || "（无）";
+  const parts: string[] = [
+    "【世界/作品长期设定】" + input.worldTitle,
+    "【当前时期 Scenario】" + input.era + "；" + input.timeLabel + "；" + input.publicPremise,
+    "【当前角色 Characterization】" + ((input.characterization ?? input.profile.background) || "普通学生，保持普通人的知识边界。"),
+    "【玩家 Persona】名字=" + (input.profile.name || "玩家") + "；年龄=" + (input.profile.age || "18") + "；性别=" + (input.profile.gender || "未知") + "；背景=" + (input.profile.background || "普通学生") + "；性格=" + (input.profile.personality || "务实"),
+    "【Example Dialogue / Style Anchor】\n" + styleAnchors.map((line) => "- " + line).join("\n") + "\n- NPC 示例：「先别急，先看看眼前发生了什么。」",
+    "【当前场景近端强化】地点=" + input.locationName + "；在场=" + (input.presentCharacters.join("、") || "（无）") + "；公共动静=" + (input.publicBeat || "（无）"),
+    "【Visibility Gate 后合法的 World/Lore Context】\n已知规则=" + (input.publicRules.join("；") || "（无）") + "\n公开资料与传闻=" + (input.publicLore.join("\n") || "（无）"),
+    "【Recent History】\n" + recentHistory,
+  ];
   const p = input.profile;
-  parts.push(
-    `【玩家身份】名字=${p.name}；年龄=${p.age ? p.age + "岁" : "18岁"}；性别=${p.gender || "未知"}；身世经历=${p.background || "普通人"}；性格=${p.personality || "务实"}；起始位置=${p.startingLocation || input.locationName}`,
-  );
+  parts.push("【起始位置】" + (p.startingLocation || input.locationName));
   if (input.plannedHook) {
     parts.push(`【本局开场既定事件（必须遵从描写）】${input.plannedHook.narrativeDirective}`);
   }
-  parts.push("【要求】请严格以第二人称「你」写出富有特异性、忠实体现既定开场事件的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。");
+  parts.push("【最终 Narration Instructions】请严格以第二人称「你」写出约250–450字的第一幕；示范可感知信息密度、NPC对话味道、一次推进的尺度；若出现真正决定点，用自然语言把行动权交还玩家，并给出 A–F 六个行动选项。");
   return parts.join("\n");
 }
 
@@ -237,119 +199,6 @@ export function parseOpeningOutput(raw: string, defaultLoc: string = "这里", p
   };
 }
 
-export interface DecisionGateInput {
-  dialogue: { addresseeName: string; npcReply: string } | null;
-  interpretation: { contributions: string[]; outcome: string };
-  envelope: { committed: string[]; uncommitted: string[] };
-  text: string;
-  playerLine?: string;
-}
-
-export function isMeaningfulDecisionNode(input: DecisionGateInput): boolean {
-  // 1. Action barrier / Refusal / Hazard / Failure / Physical Obstacle
-  if (
-    input.envelope.uncommitted.length > 0 ||
-    input.interpretation.outcome === "fail" ||
-    input.interpretation.contributions.includes("refuse") ||
-    (input.interpretation.contributions.includes("durable_attempt") && input.interpretation.outcome !== "candidate") ||
-    /(受阻|锁死|打不开|纹丝未动|纹丝不动|无法进入|无法打开|被锁|撞不开)/.test(input.text)
-  ) {
-    return true;
-  }
-  // 2. Dialogue node: check if NPC speech represents a true decision fork vs mundane chitchat / questions
-  if (input.dialogue) {
-    const text = input.dialogue.npcReply.trim();
-    // Everyday social greetings, chitchat, and common non-critical questions (NO suggestions)
-    const isEverydayChitchat =
-      /^(是啊|嗯|哦|好|好的|慢走|知道了|天气|随便看|欢迎光临|没什么|没事的|再见|我也觉得|挺好|行吧|早啊|明天见)[，。！\s]*$/.test(text) ||
-      /(吃饭|吃过|作业|写完|去哪|回家|放学|下课|打球|天气|挺凉快|凉快|挺热|喝水|慢点走|早点回|怎么了|没事|你好|早啊|明天见|路上小心|随便看|欢迎光临|慢走|知道了|行吧|好的|没事的|叫什么)/.test(text);
-
-    // Urgent / danger / crucial branching signals
-    const isCrisis =
-      /(别走|别去|快跑|快走|出事了|小心|危险|警告|失踪|凶手|死人|怪物|有鬼|逃命|秘密|紧急|求你救|救救我|陷阱|杀了|尸体|不能留|跟我来|交出)/.test(
-        text,
-      );
-
-    if (isEverydayChitchat && !isCrisis) {
-      return false;
-    }
-    return isCrisis;
-  }
-  return false;
-}
-
-export interface DecisionGateOutput {
-  suggestions?: import("../http/view.js").ActionSuggestion[];
-  situationAction: "preserve" | "update" | "clear";
-  situationText: string | null;
-  currentSituation: string | null;
-}
-
-const DISMISS_SITUATION = /不管了|不理会|不看了|撕了|扔了|扔进垃圾桶|扔掉|烧了|随它去|算了|不再管|丢掉|丢弃|不理这封信|不理这纸条|当没看见/;
-
-export function evaluateDecisionGate(
-  input: DecisionGateInput,
-  activeSituation?: string | null,
-): DecisionGateOutput {
-  // Check if player explicitly dismissed or discarded the unresolved situation
-  const playerLine = input.playerLine || "";
-  if (DISMISS_SITUATION.test(playerLine)) {
-    return {
-      situationAction: "clear",
-      situationText: null,
-      currentSituation: null,
-    };
-  }
-
-  // If not a meaningful decision node, preserve the active situation without suggestions
-  if (!isMeaningfulDecisionNode(input)) {
-    return {
-      situationAction: "preserve",
-      situationText: activeSituation ?? null,
-      currentSituation: activeSituation ?? null,
-    };
-  }
-
-  // Case 1: NPC Dialogue Node
-  if (input.dialogue) {
-    const npc = input.dialogue.addresseeName;
-    const replySnippet = input.dialogue.npcReply.replace(/\s+/g, " ").slice(0, 30);
-    const suggestions: import("../http/view.js").ActionSuggestion[] = [
-      { key: "A", label: `如实回应${npc}，说明自己的情况`, type: "constructive" },
-      { key: "B", label: `反问${npc}，打听更多内情与细节`, type: "constructive" },
-      { key: "C", label: `含糊应付过去，转移话题`, type: "constructive" },
-      { key: "D", label: `不予理会，自顾自做自己的事`, type: "constructive" },
-      { key: "E", label: `直接挑明疑点，严肃质问${npc}`, type: "extreme" },
-      { key: "F", label: `一本正经地开个玩笑逗逗${npc}`, type: "absurd" },
-    ];
-    const sit = `眼下：${npc}正在对你说：「${replySnippet}…」`;
-    return {
-      suggestions,
-      situationAction: "update",
-      situationText: sit,
-      currentSituation: sit,
-    };
-  }
-
-  // Case 2: Action Refusal / Danger / Obstacle Node
-  const reason = input.envelope.uncommitted[0] ?? "当前行动受阻或无法继续";
-  const suggestions: import("../http/view.js").ActionSuggestion[] = [
-    { key: "A", label: "另寻其他途径或替代方案", type: "constructive" },
-    { key: "B", label: "退回安全位置，仔细观察周围动静", type: "constructive" },
-    { key: "C", label: "向在场的人询问刚才的情况", type: "constructive" },
-    { key: "D", label: "暂时放弃该意图，先处理日常事务", type: "constructive" },
-    { key: "E", label: "不顾阻碍，强行再次尝试", type: "extreme" },
-    { key: "F", label: "对着阻碍大声吐槽两句缓解气氛", type: "absurd" },
-  ];
-  const sit = `眼下：你的行动受到阻碍（${reason}）。`;
-  return {
-    suggestions,
-    situationAction: "update",
-    situationText: sit,
-    currentSituation: sit,
-  };
-}
-
 export function renderNarratorPrompt(envelope: NarratorEnvelope): string {
   const committed = envelope.committed.length > 0 ? envelope.committed.join("；") : "（本轮没有新的已提交后果）";
   const uncommitted = envelope.uncommitted.length > 0
@@ -359,12 +208,30 @@ export function renderNarratorPrompt(envelope: NarratorEnvelope): string {
     ? `${envelope.npcReply.name}已经说出口：「${envelope.npcReply.line}」`
     : "（没有合法 NPC 开口）";
   const ambient = envelope.ephemeral.ambient.join(" ") || "（无）";
-  return [
-    envelope.observerContext,
-    `【玩家行动】${envelope.playerContribution || "（沉默）"}`,
-    `【已发生】${committed}`,
-    `【未发生】${uncommitted}`,
-    `【NPC】${npc}`,
-    `【氛围】${ambient}`,
-  ].join("\n");
+  const composition = envelope.promptComposition;
+  const context = composition
+    ? [
+      "【世界/作品长期设定】" + composition.longTermSetting,
+      "【当前时期 Scenario】" + composition.scenario,
+      "【当前角色 Characterization】" + composition.characterization,
+      "【玩家 Persona】" + composition.playerPersona,
+      "【Example Dialogue / Style Anchor】\n" + composition.styleAnchors.map((line) => "- " + line).join("\n"),
+      "【当前场景近端强化】" + (composition.sceneReinforcement || "（无）"),
+      "【Visibility Gate 后合法的 World/Lore Context】\n" + composition.visibleWorld,
+      "【Recent History】\n" + (composition.recentHistory.join("\n---\n") || "（无）"),
+      "【当前玩家输入】" + (composition.currentInput || "（沉默）"),
+      "【已提交后果】" + committed,
+      "【未提交持久企图】" + uncommitted,
+      "【NPC】" + npc,
+      "【氛围】" + ambient,
+    ].join("\n")
+    : [
+      envelope.observerContext,
+      `【玩家行动】${envelope.playerContribution || "（沉默）"}`,
+      `【已发生】${committed}`,
+      `【未发生】${uncommitted}`,
+      `【NPC】${npc}`,
+      `【氛围】${ambient}`,
+    ].join("\n");
+  return [context, "【最终 Narration Instructions】只描述经过 Visibility Gate 的信息和已提交后果；未确认的持久后果不得写成已经发生；保持第二人称和自然对话，不输出内部结构或 schema。"].join("\n");
 }

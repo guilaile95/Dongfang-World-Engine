@@ -26,6 +26,10 @@ class FakeDriver implements ModelDriver {
   public streamCalls = 0;
   public objectCalls = 0;
   public textCalls = 0;
+  public objectSystems: string[] = [];
+  public objectPrompts: string[] = [];
+  public textSystems: string[] = [];
+  public textPrompts: string[] = [];
   public streamFailRemaining = 0;
   public failPrimary = false;
   public objectMode: "native" | "unsupported" | "transport" | "auth" = "native";
@@ -50,8 +54,10 @@ class FakeDriver implements ModelDriver {
     return { text: this.streamText, usage };
   }
 
-  public async generateObject(): Promise<{ object: unknown; usage: TokenUsage }> {
+  public async generateObject(input: { system: string; prompt: string; model: string; schema: import("zod").ZodType<unknown> }): Promise<{ object: unknown; usage: TokenUsage }> {
     this.objectCalls += 1;
+    this.objectSystems.push(input.system);
+    this.objectPrompts.push(input.prompt);
     if (this.objectMode === "unsupported") {
       throw new TransportError("no json schema", "unsupported", false);
     }
@@ -64,8 +70,10 @@ class FakeDriver implements ModelDriver {
     return { object: { note: "native" }, usage };
   }
 
-  public async generateText(): Promise<{ text: string; usage: TokenUsage }> {
+  public async generateText(input: { system: string; prompt: string; model: string }): Promise<{ text: string; usage: TokenUsage }> {
     this.textCalls += 1;
+    this.textSystems.push(input.system);
+    this.textPrompts.push(input.prompt);
     const body = this.textBodies.shift() ?? "{}";
     return { text: body, usage };
   }
@@ -149,6 +157,8 @@ describe("model access", () => {
     expect(nativeResult.object).toEqual({ note: "native" });
     expect(nativeResult.record.structuredMode).toBe("native");
     expect(nativeResult.record.role).toBe("proposal");
+    expect(native.objectSystems[0]).toContain("machine-readable json");
+    expect(native.objectPrompts[0]).toContain("machine-readable json");
 
     const json = new FakeDriver();
     json.objectMode = "unsupported";
@@ -163,6 +173,8 @@ describe("model access", () => {
     });
     expect(jsonResult.object).toEqual({ note: "from-text" });
     expect(jsonResult.record.structuredMode).toBe("json_text");
+    expect(json.textSystems[0]).toContain('"properties"');
+    expect(json.textSystems[0]).toContain('"note"');
 
     const repair = new FakeDriver();
     repair.objectMode = "unsupported";
@@ -178,6 +190,9 @@ describe("model access", () => {
     expect(repaired.object).toEqual({ note: "repaired" });
     expect(repaired.record.structuredMode).toBe("json_repair");
     expect(repair.textCalls).toBe(2);
+    expect(repair.textSystems[1]).toContain("(json):");
+    expect(repair.textSystems[1]).toContain('"note"');
+    expect(repair.textSystems[1]).toContain("Previous response");
 
     const transport = new FakeDriver();
     transport.objectMode = "transport";

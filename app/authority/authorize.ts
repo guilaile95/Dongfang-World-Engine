@@ -146,6 +146,18 @@ export function authorize(
       }
       break;
     }
+    case "background_thread_advance": {
+      if (producer === "llm") reasons.push("LLM_CANNOT_ADVANCE_BACKGROUND_THREAD");
+      const thread = snapshot.backgroundThreads.find((row) => row.id === candidate.threadId);
+      if (!thread) {
+        reasons.push("BACKGROUND_THREAD_NOT_FOUND");
+      } else {
+        if (thread.currentStage !== candidate.stageFrom) reasons.push("BACKGROUND_STAGE_MISMATCH");
+        if (thread.executedBeatIds.includes(candidate.beatId)) reasons.push("BACKGROUND_BEAT_ALREADY_EXECUTED");
+        if (!thread.beats.some((row) => row.beatId === candidate.beatId && row.stageFrom === candidate.stageFrom && row.stageTo === candidate.stageTo)) reasons.push("BACKGROUND_BEAT_NOT_FOUND");
+      }
+      break;
+    }
   }
 
   return { ok: reasons.length === 0, reasons };

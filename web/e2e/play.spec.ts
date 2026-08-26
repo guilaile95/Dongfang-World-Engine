@@ -32,8 +32,9 @@ async function send(page: Page, text: string): Promise<void> {
 /** Navigate from world-select through onboarding into chat. */
 async function startFreshSession(page: Page): Promise<void> {
   await page.goto("/");
+  await expect(page.locator(".top").or(page.locator(".brand"))).toBeVisible({ timeout: 10_000 });
   // If we land on Chat screen (e.g. from previous test), open world sheet and start new
-  if (await page.locator(".top").isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await page.locator(".top").isVisible()) {
     await page.getByTitle("世界").click();
     await expect(page.locator(".sheet")).toBeVisible();
     const activeRow = page.locator(".world-row").filter({ hasText: "当前" });

@@ -8,6 +8,8 @@ export function createAiSdkDriver(config: AppConfig): ModelDriver {
     name: "dwe",
     baseURL: config.baseUrl,
     apiKey: config.apiKey,
+    supportsStructuredOutputs: true,
+    includeUsage: true,
   });
 
   return {

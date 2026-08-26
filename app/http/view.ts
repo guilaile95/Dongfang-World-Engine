@@ -1,4 +1,5 @@
 import type { Session } from "../session.js";
+import { playerTimeLabel } from "../scene/time.js";
 
 export interface ActionSuggestion {
   key: "A" | "B" | "C" | "D" | "E" | "F";
@@ -20,6 +21,9 @@ export interface PlayerState {
   publicPremise?: string;
   currentSituation?: string | null;
   suggestions?: ActionSuggestion[];
+  terminalReason?: import("../session.js").TerminalReason;
+  autoSteps?: number;
+  elapsedMinutes?: number;
 }
 
 export interface ChatMessage {
@@ -44,6 +48,9 @@ export function playerState(
   extra?: {
     currentSituation?: string | null;
     suggestions?: ActionSuggestion[];
+    terminalReason?: import("../session.js").TerminalReason;
+    autoSteps?: number;
+    elapsedMinutes?: number;
   },
 ): PlayerState {
   const compiled = session.compiled;
@@ -56,17 +63,20 @@ export function playerState(
     worldTitle: compiled.packageTitle,
     worldName: snap.world.name,
     characterName: player?.name ?? "",
-    time: snap.world.time,
+    time: playerTimeLabel(snap.world.time, snap.world.time),
     locationName: location?.name ?? "",
     carried: snap.items.filter((row) => row.carrierId === compiled.playerId).map((row) => row.name),
     nearby: snap.characters
       .filter((row) => row.id !== compiled.playerId && row.locationId === player?.locationId)
       .map((row) => row.name),
     era: compiled.chronology?.era,
-    timeLabel: compiled.chronology?.timeLabel,
+    timeLabel: playerTimeLabel(snap.world.time, compiled.chronology?.timeLabel),
     publicPremise: compiled.chronology?.publicPremise,
     currentSituation: activeSituation ?? null,
     ...(extra?.suggestions ? { suggestions: extra.suggestions } : {}),
+    ...(extra?.terminalReason !== undefined ? { terminalReason: extra.terminalReason } : {}),
+    ...(extra?.autoSteps !== undefined ? { autoSteps: extra.autoSteps } : {}),
+    ...(extra?.elapsedMinutes !== undefined ? { elapsedMinutes: extra.elapsedMinutes } : {}),
   };
 }
 

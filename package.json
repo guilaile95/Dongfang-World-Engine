@@ -29,6 +29,7 @@
     "experiment:17-preflight": "npm run build && node dist/experiment-step17-preflight.js",
     "experiment:17-longrun": "npm run build && node dist/experiment-step17-longrun.js",
     "experiment:causal-closure": "npm run build && node dist/experiment-causal-closure.js",
+    "experiment:dragon-2009": "npm run build && node dist/experiment-dragon-2009-first-hour.js",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit && tsc -p web/tsconfig.json --noEmit"

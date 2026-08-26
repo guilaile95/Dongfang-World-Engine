@@ -108,6 +108,12 @@ export function applyCandidateToSnapshot(
       );
       return { ...snapshot, world, items };
     }
+    case "background_thread_advance": {
+      const backgroundThreads = snapshot.backgroundThreads.map((row) => row.id === candidate.threadId
+        ? { ...row, currentStage: candidate.stageTo, executedBeatIds: [...row.executedBeatIds, candidate.beatId] }
+        : row);
+      return { ...snapshot, world, backgroundThreads };
+    }
   }
 }
 
@@ -174,6 +180,9 @@ export function projectToStore(store: WorldStore, event: EventRecord, candidate:
       break;
     case "item_carry":
       store.updateItem(candidate.itemId, { locationId: null, carrierId: candidate.characterId });
+      break;
+    case "background_thread_advance":
+      store.advanceBackgroundThread(candidate.threadId, candidate.beatId, candidate.stageTo);
       break;
   }
 }

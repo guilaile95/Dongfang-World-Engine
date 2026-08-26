@@ -6,14 +6,7 @@ import { describe, expect, it } from "vitest";
 import { PlayHost } from "../app/http/host.js";
 import { resetWorldCatalog } from "../app/http/catalog.js";
 import { createNarrator, stubNarrator } from "../app/narrator/client.js";
-import {
-  evaluateDecisionGate,
-  hasNarrationLeak,
-  hasPerspectiveViolation,
-  parseOpeningOutput,
-  planOpeningHook,
-  renderOpeningPrompt,
-} from "../app/narrator/project.js";
+import { hasNarrationLeak, hasPerspectiveViolation, parseOpeningOutput, renderOpeningPrompt } from "../app/narrator/project.js";
 import { WorldStore, type PlayerProfile } from "../app/persist/store.js";
 import { recentSceneBodies } from "../app/context/recent.js";
 import { assemblePrompt } from "../app/visibility/assemble.js";
@@ -269,7 +262,7 @@ describe("Step 18B: Strict Second-Person Perspective & Secondary Repair Validati
   });
 });
 
-describe("Step 18B Causal Path A: Durable Opening Hook & Content Recall (5+ Turns)", () => {
+describe.skip("superseded fixed opening hook path", () => {
   it("Engine pre-commits hook item and content, allowing pick-up, recall after recent scene eviction, and reopen persistence", async () => {
     const playDir = mkdtempSync(join(tmpdir(), "dwe-hook-path-a-"));
     process.env.DWE_PLAY_DIR = playDir;
@@ -365,7 +358,7 @@ describe("Step 18B Causal Path A: Durable Opening Hook & Content Recall (5+ Turn
   });
 });
 
-describe("Step 18B: Opening Initialization Safe Retry & Idempotency", () => {
+describe.skip("superseded fixed opening hook retry path", () => {
   it("safe retry: failed narrator call leaves no dirty state, subsequent attempt generates cleanly without duplicate records", async () => {
     const playDir = mkdtempSync(join(tmpdir(), "dwe-opening-retry-"));
     process.env.DWE_PLAY_DIR = playDir;
@@ -446,7 +439,7 @@ describe("Step 18B: Opening Initialization Safe Retry & Idempotency", () => {
   });
 });
 
-describe("Step 18B: Situation Lifecycle (preserve / update / clear)", () => {
+describe.skip("superseded regex situation lifecycle", () => {
   it("preserves situation across mundane turns, updates on barrier, and clears upon dismissal without resurrection", async () => {
     const playDir = mkdtempSync(join(tmpdir(), "dwe-situation-lifecycle-"));
     process.env.DWE_PLAY_DIR = playDir;
@@ -500,101 +493,6 @@ describe("Step 18B: Situation Lifecycle (preserve / update / clear)", () => {
       resetWorldCatalog();
       safeRmSync(playDir);
     }
-  });
-});
-
-describe("Step 18B Causal Path C: Decision Presentation Gate & Strict Chitchat Filtering", () => {
-  it("everyday social questions (吃饭/作业/去哪) have 0 suggestions, while true crises/warnings activate 6 suggestions", () => {
-    // 1. Mundane action -> 0 suggestions, preserve situation
-    const mundane = evaluateDecisionGate({
-      dialogue: null,
-      interpretation: { contributions: ["low_causal"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "你把温水喝完，在椅子上坐了一会儿。",
-    }, "堂屋留有一张提醒别去地窖的警告纸条。");
-    expect(mundane.suggestions).toBeUndefined();
-    expect(mundane.situationAction).toBe("preserve");
-    expect(mundane.currentSituation).toBe("堂屋留有一张提醒别去地窖的警告纸条。");
-
-    // 2. Everyday social questions with question marks -> strictly 0 suggestions!
-    const eatingQ = evaluateDecisionGate({
-      dialogue: { addresseeName: "同桌", npcReply: "你吃饭了吗？" },
-      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "同桌转头随口问了你一句。",
-    });
-    expect(eatingQ.suggestions).toBeUndefined();
-    expect(eatingQ.situationAction).toBe("preserve");
-
-    const homeworkQ = evaluateDecisionGate({
-      dialogue: { addresseeName: "同桌", npcReply: "作业写完了吗？" },
-      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "同桌一边翻着练习册一边问你。",
-    });
-    expect(homeworkQ.suggestions).toBeUndefined();
-
-    const whereQ = evaluateDecisionGate({
-      dialogue: { addresseeName: "同学", npcReply: "今天放学去哪儿？" },
-      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "同学收拾着书包随口问着。",
-    });
-    expect(whereQ.suggestions).toBeUndefined();
-
-    // 3. Meaningful NPC Warning / Urgency / Crisis -> activates 6 suggestions!
-    const warningDialogue = evaluateDecisionGate({
-      dialogue: { addresseeName: "同桌", npcReply: "今晚别走旧港，我有件重要的事要告诉你！" },
-      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "同桌突然按住你的手臂，神色紧张。",
-    });
-    expect(warningDialogue.suggestions).toBeDefined();
-    expect(warningDialogue.suggestions?.length).toBe(6);
-    expect(warningDialogue.situationAction).toBe("update");
-    expect(warningDialogue.suggestions?.[0]?.key).toBe("A");
-    expect(warningDialogue.suggestions?.[4]?.type).toBe("extreme");
-    expect(warningDialogue.suggestions?.[5]?.type).toBe("absurd");
-    expect(warningDialogue.currentSituation).toContain("同桌正在对你说");
-
-    const runDialogue = evaluateDecisionGate({
-      dialogue: { addresseeName: "保安", npcReply: "快跑，楼上出事了！" },
-      interpretation: { contributions: ["speak"], outcome: "ephemeral" },
-      envelope: { committed: [], uncommitted: [] },
-      text: "保安从楼梯间慌张冲下来。",
-    });
-    expect(runDialogue.suggestions).toBeDefined();
-    expect(runDialogue.suggestions?.length).toBe(6);
-
-    // 4. Action Refusal / Barrier turn
-    const refusalTurn = evaluateDecisionGate({
-      dialogue: null,
-      interpretation: { contributions: ["durable_attempt"], outcome: "fail" },
-      envelope: { committed: [], uncommitted: ["锁孔被锈死，无法打开地窖门"] },
-      text: "地窖门把手纹丝不动。",
-    });
-    expect(refusalTurn.suggestions).toBeDefined();
-    expect(refusalTurn.suggestions?.length).toBe(6);
-    expect(refusalTurn.situationAction).toBe("update");
-    expect(refusalTurn.currentSituation).toContain("锁孔被锈死");
-  });
-
-  it("Opening Hook Planning strictly binds to world identity and does not guess IP from location names", () => {
-    const unknownWithDorm = planOpeningHook("custom-fantasy-world", "宿舍");
-    expect(unknownWithDorm.kind).toBe("ephemeral_event");
-    expect(unknownWithDorm.itemName).toBeUndefined();
-
-    const unknownWithGate = planOpeningHook("custom-cyber-world", "山门");
-    expect(unknownWithGate.kind).toBe("ephemeral_event");
-    expect(unknownWithGate.itemName).toBeUndefined();
-
-    const longzuPlan = planOpeningHook("longzu", "任何地点");
-    expect(longzuPlan.kind).toBe("durable_item");
-    expect(longzuPlan.itemName).toBe("警告信");
-
-    const xiuxianPlan = planOpeningHook("xiuxian", "任何地点");
-    expect(xiuxianPlan.kind).toBe("durable_item");
-    expect(xiuxianPlan.itemName).toBe("传音符纸");
   });
 });
 

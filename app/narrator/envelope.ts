@@ -2,6 +2,18 @@ import type { WorldSnapshot } from "../authority/types.js";
 import type { BoundInterpretation } from "../scene/interpretation.js";
 import { ephemeralInterpretation, type SceneInterpretation } from "../scene/interpretation.js";
 
+export interface PromptComposition {
+  longTermSetting: string;
+  scenario: string;
+  characterization: string;
+  playerPersona: string;
+  styleAnchors: string[];
+  sceneReinforcement: string;
+  visibleWorld: string;
+  recentHistory: string[];
+  currentInput: string;
+}
+
 /** The only payload the Narrator may see. Not a WorldSnapshot. */
 export interface NarratorEnvelope {
   playerContribution: string;
@@ -13,6 +25,7 @@ export interface NarratorEnvelope {
     recentScenes: string[];
     ambient: string[];
   };
+  promptComposition?: PromptComposition;
 }
 
 export function committedProjection(

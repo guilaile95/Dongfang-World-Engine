@@ -25,6 +25,33 @@ describe("narrator projection", () => {
     session.close();
   });
 
+  it("composes long-term setting, scenario, persona, gated context, history, and input in order", () => {
+    const prompt = renderNarratorPrompt({
+      playerContribution: "我先观察。",
+      observerContext: "fallback",
+      committed: [],
+      uncommitted: [],
+      npcReply: null,
+      ephemeral: { recentScenes: [], ambient: [] },
+      promptComposition: {
+        longTermSetting: "龙族",
+        scenario: "2009傍晚",
+        characterization: "普通学生",
+        playerPersona: "谨慎",
+        styleAnchors: ["第二人称"],
+        sceneReinforcement: "远处有雨声",
+        visibleWorld: "校门口",
+        recentHistory: ["刚刚放学"],
+        currentInput: "我先观察。",
+      },
+    });
+    const labels = ["世界/作品长期设定", "当前时期 Scenario", "当前角色 Characterization", "玩家 Persona", "Example Dialogue / Style Anchor", "当前场景近端强化", "Visibility Gate 后合法的 World/Lore Context", "Recent History", "当前玩家输入", "最终 Narration Instructions"];
+    expect(labels.every((label) => prompt.includes(label))).toBe(true);
+    expect(prompt.indexOf("世界/作品长期设定")).toBeLessThan(prompt.indexOf("当前时期 Scenario"));
+    expect(prompt.indexOf("当前时期 Scenario")).toBeLessThan(prompt.indexOf("当前玩家输入"));
+    expect(prompt.indexOf("当前玩家输入")).toBeLessThan(prompt.indexOf("最终 Narration Instructions"));
+  });
+
   it("never turns narrator prose into authority, even if it invents death, items, or JSON", async () => {
     const narrator = {
       async project() {

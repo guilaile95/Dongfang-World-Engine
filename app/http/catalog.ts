@@ -6,6 +6,7 @@ import { loadWorldFile } from "../world/load.js";
 import type { WorldOption } from "./view.js";
 
 const FIXTURE = resolve(dirname(fileURLToPath(import.meta.url)), "../world/fixtures/riverside-inn.md");
+const DRAGON_2009 = resolve(dirname(fileURLToPath(import.meta.url)), "../world/fixtures/dragon-2009-first-hour.json");
 
 let cached: WorldOption[] | null = null;
 
@@ -30,6 +31,19 @@ export function worldCatalog(config: AppConfig): WorldOption[] {
       era: compiled.chronology?.era,
       timeLabel: compiled.chronology?.timeLabel,
       publicPremise: compiled.chronology?.publicPremise,
+    });
+  }
+  if (existsSync(DRAGON_2009) && !worlds.some((row) => row.id === "longzu")) {
+    const compiled = loadWorldFile(DRAGON_2009);
+    worlds.push({
+      id: "longzu",
+      title: compiled.packageTitle,
+      description: "2009 年 5 月 15 日。普通校园生活与隐秘世界的一次真实交叉。",
+      sourcePath: DRAGON_2009,
+      savePath: resolve(playDir, "play-longzu.sqlite"),
+      era: compiled.chronology.era,
+      timeLabel: compiled.chronology.timeLabel,
+      publicPremise: compiled.chronology.publicPremise,
     });
   }
   if (existsSync(FIXTURE) && !worlds.some((row) => row.id === "riverside-inn")) {

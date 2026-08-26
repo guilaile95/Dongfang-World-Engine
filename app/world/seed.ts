@@ -33,30 +33,6 @@ export const FACT_GUEST_MISSING = "fact-guest-missing";
 export const CLAIM_BAG = "claim-bag-in-cellar";
 export const CLAIM_GUEST_FLED = "claim-guest-fled";
 
-export const BEATS = [
-  "day-1-morning",
-  "day-1-noon",
-  "day-1-evening",
-  "day-2-morning",
-  "day-2-noon",
-  "day-2-evening",
-  "day-3-morning",
-] as const;
-
-export function nextBeat(time: string): string {
-  const index = BEATS.indexOf(time as (typeof BEATS)[number]);
-  if (index >= 0 && index < BEATS.length - 1) {
-    const next = BEATS[index + 1];
-    if (next) {
-      return next;
-    }
-  }
-  const stamped = /^(.*?)(?:·(\d+))?$/.exec(time);
-  const base = stamped?.[1] || time;
-  const n = Number(stamped?.[2] || "0") + 1;
-  return `${base}·${n}`;
-}
-
 export function seedInput(): CompiledWorld["seed"] {
   return SYNTHETIC.seed;
 }

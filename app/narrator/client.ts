@@ -90,7 +90,7 @@ export function createNarrator(client: ModelClient, apiKey: string): Narrator {
         }
       }
 
-      const parsed = parseOpeningOutput(text, input.locationName);
+      const parsed = parseOpeningOutput(text, input.locationName, input.plannedHook);
 
       if (onChunk && parsed.narrative) {
         emitChunked(parsed.narrative, onChunk);

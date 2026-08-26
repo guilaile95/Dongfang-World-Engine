@@ -1,0 +1,86 @@
+import { z } from "zod";
+import type { ModelClient } from "../model/client.js";
+import type { WorldSnapshot } from "../authority/types.js";
+import type { CompiledWorld } from "../world/compile.js";
+
+export const stopReasonSchema = z.enum(["new_risk", "direction_choice", "material_information", "meaningful_npc_request", "obstacle", "destination_reached", "none"]);
+export type StopReason = z.infer<typeof stopReasonSchema>;
+const optionSchema = z.object({ key: z.enum(["A", "B", "C", "D", "E", "F"]), text: z.string().min(1), type: z.enum(["constructive", "extreme", "absurd"]) });
+export const sceneStopDecisionSchema = z.object({
+  shouldStop: z.boolean(), stopReason: stopReasonSchema, decisionSummary: z.string().nullable(), options: z.array(optionSchema).length(6).nullable(),
+}).superRefine((row, ctx) => {
+  if (!row.shouldStop && (row.stopReason !== "none" || row.options !== null)) ctx.addIssue({ code: "custom", message: "continue requires none/null" });
+  if (row.shouldStop && (row.stopReason === "none" || !row.decisionSummary)) ctx.addIssue({ code: "custom", message: "stop requires reason and summary" });
+});
+export type SceneStopDecision = z.infer<typeof sceneStopDecisionSchema>;
+
+export interface StopRequest {
+  visibleContext: string;
+  hardStopReason: Exclude<StopReason, "none"> | null;
+  evidence: string[];
+  strategyComplete: boolean;
+}
+
+export interface SceneStopDecider { decide(request: StopRequest): Promise<SceneStopDecision | null>; }
+
+export function createModelStopDecider(client: ModelClient): SceneStopDecider {
+  return {
+    async decide(request) {
+      const baseRequest = {
+        role: "proposal", purpose: "scene-stop-decision", schema: sceneStopDecisionSchema,
+        system: [
+          "判断当前场景是否出现了新的、真正属于玩家的决定。只输出 JSON。",
+          "普通走路、下楼、收拾、等待、已选路线的继续执行不是新决定。",
+          "只有新风险、方向选择、重要信息、重要请求、障碍或抵达目的地才能停止。",
+          "停止时给 A-F 六个普通自然语言意图；A-D 有实质差异，E 高风险，F 可执行但荒诞。不得承诺尚未发生的结果。",
+          "A-F 每项只能写玩家此刻可执行的意图；不得出现角色 ID、地点 ID、不可见人物姓名、内部字段、未来承诺或‘已经到达/得到/说服/击败’等完成态。",
+          request.hardStopReason ? `代码已确定必须停止，shouldStop 必须为 true，stopReason 必须为 ${request.hardStopReason}，options 必须有 A-F 六项。` : "没有代码硬停；若无新决定则 shouldStop=false。",
+        ].join("\n"),
+        prompt: [request.visibleContext, `证据：${request.evidence.join("；") || "无"}`, `既有策略完成：${request.strategyComplete}`, request.hardStopReason ? `硬停代码：${request.hardStopReason}。不得返回 shouldStop=false。` : ""].filter(Boolean).join("\n"),
+      } as const;
+      const result = await client.generateStructured(baseRequest);
+      if (!request.hardStopReason || isHardStopDecision(result.object, request.hardStopReason)) return result.object;
+      const repair = await client.generateStructured({
+        ...baseRequest,
+        purpose: "scene-stop-decision-repair",
+        system: `${baseRequest.system}\n上一份决定没有满足硬停合同。只修正 shouldStop、stopReason 和 A-F options；不要改变可见事实。`,
+        prompt: `${baseRequest.prompt}\n上一份结构化决定不合规：${JSON.stringify(result.object)}。请重新输出完整合法 JSON。`,
+      });
+      return repair.object;
+    },
+  };
+}
+
+function isHardStopDecision(decision: SceneStopDecision | null, reason: Exclude<StopReason, "none">): decision is SceneStopDecision {
+  return Boolean(decision?.shouldStop && decision.stopReason === reason && decision.options?.map((option) => option.key).join("") === "ABCDEF");
+}
+
+export function fixedStopDecider(): SceneStopDecider {
+  return {
+    async decide(request) {
+      if (!request.hardStopReason) return { shouldStop: false, stopReason: "none", decisionSummary: null, options: null };
+      const options: SceneStopDecision["options"] = [
+        { key: "A", text: "先停下来观察眼前的变化", type: "constructive" },
+        { key: "B", text: "向附近的人询问发生了什么", type: "constructive" },
+        { key: "C", text: "保持距离，继续原本的日常安排", type: "constructive" },
+        { key: "D", text: "换一个安全方向离开现场", type: "constructive" },
+        { key: "E", text: "直接靠近异常动静追查到底", type: "extreme" },
+        { key: "F", text: "假装自己是记者并现场采访路人", type: "absurd" },
+      ];
+      return { shouldStop: true, stopReason: request.hardStopReason, decisionSummary: request.evidence[0] ?? "眼前出现了新的变化。", options };
+    },
+  };
+}
+
+export function groundStopDecision(decision: SceneStopDecision, snapshot: WorldSnapshot, compiled: CompiledWorld, playerId: string): SceneStopDecision {
+  if (!decision.shouldStop || !decision.options) return decision;
+  const player = snapshot.characters.find((row) => row.id === playerId);
+  const visible = new Set(snapshot.characters.filter((row) => row.locationId === player?.locationId).map((row) => row.name));
+  const invalidNames = snapshot.characters.filter((row) => !visible.has(row.name) || !compiled.characterMetadata[row.id]?.alive || compiled.characterMetadata[row.id]?.visibility === "hidden").map((row) => row.name);
+  const safe = decision.options.filter((option) => {
+    if (/\b(?:char|loc|route|fact|claim|thread)-[\w-]+\b|expectedRevision|Authority|Candidate/i.test(option.text)) return false;
+    if (/保证|必然|一定会|确保.*成功|已经(?:到达|得到|说服|击败)/.test(option.text)) return false;
+    return !invalidNames.some((name) => name.length > 1 && option.text.includes(name));
+  });
+  return safe.length === 6 ? decision : { ...decision, options: null };
+}

@@ -1,4 +1,5 @@
 import type { AppConfig } from "../config.js";
+import { z } from "zod";
 import { assertNoSecret, redactSecret } from "../secrets.js";
 import { createAiSdkDriver } from "./ai-sdk-driver.js";
 import { attempt, sumUsage, truncateRaw, zodIssuePaths } from "./diagnostics.js";
@@ -13,6 +14,7 @@ import type {
   StructuredRequest,
   StructuredResult,
   TokenUsage,
+  ZodIssuePath,
 } from "./types.js";
 
 export function createModelClient(config: AppConfig, driver: ModelDriver = createAiSdkDriver(config)): ModelClient {
@@ -67,6 +69,7 @@ export class ModelClient {
   }
 
   public async generateStructured<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>> {
+    request = withStructuredJsonContract(request);
     const started = Date.now();
     const attempts: StructuredAttempt[] = [];
     try {
@@ -140,6 +143,7 @@ export class ModelClient {
 
   /** One plain-text JSON call. No native Output.object, no repair. For precheck only. */
   public async generateJsonOnce<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>> {
+    request = withStructuredJsonContract(request);
     const started = Date.now();
     const textPath = await this.tryJsonText(request, this.config.model, 0);
     if (textPath.ok) {
@@ -190,7 +194,7 @@ export class ModelClient {
         }),
       };
     }
-    const repaired = await this.tryJsonText(request, model, 1, textPath.issues);
+    const repaired = await this.tryJsonText(request, model, 1, textPath.issues, textPath.attempt.rawText);
     attempts.push(repaired.attempt);
     if (repaired.ok) {
       return {
@@ -218,17 +222,20 @@ export class ModelClient {
     request: StructuredRequest<T>,
     model: string,
     repair: 0 | 1,
-    issues: string[] = [],
+    issues: ZodIssuePath[] = [],
+    previousOutput: string | null = null,
   ): Promise<
-    | { ok: true; object: T; usage: TokenUsage; attempt: StructuredAttempt; issues: string[] }
-    | { ok: false; error: unknown; issues: string[]; attempt: StructuredAttempt }
+    | { ok: true; object: T; usage: TokenUsage; attempt: StructuredAttempt; issues: ZodIssuePath[] }
+    | { ok: false; error: unknown; issues: ZodIssuePath[]; attempt: StructuredAttempt }
   > {
     const stage = repair === 1 ? "json_repair" : "json_text";
     const started = Date.now();
     const system = [
       request.system,
-      "Reply with JSON only. No markdown.",
-      repair === 1 ? `Previous JSON failed: ${issues.join("; ")}` : "",
+      "Reply with one machine-readable json value only. No markdown and no prose.",
+      "The value must validate exactly against this JSON Schema. Do not coerce, infer, rename, or omit fields.",
+      `JSON Schema:\n${schemaJson(request.schema)}`,
+      repair === 1 ? `Previous JSON failed at exact field paths:\n${formatIssues(issues)}\nPrevious response:\n${previousOutput ?? "(unavailable)"}` : "",
     ]
       .filter((line) => line.length > 0)
       .join("\n");
@@ -241,7 +248,7 @@ export class ModelClient {
           return {
             ok: false,
             error: parsed.error,
-            issues: parsed.error.issues.map((issue) => issue.message),
+            issues: zodIssuePaths(parsed.error),
             attempt: attempt({
               stage,
               started,
@@ -271,7 +278,7 @@ export class ModelClient {
         return {
           ok: false,
           error: extractError,
-          issues: [classified.message],
+          issues: [{ path: "(json)", message: classified.message, code: classified.category }],
           attempt: attempt({
             stage,
             started,
@@ -288,7 +295,7 @@ export class ModelClient {
       return {
         ok: false,
         error,
-        issues: [classified.message],
+        issues: [{ path: "(transport)", message: classified.message, code: classified.category }],
         attempt: attempt({
           stage,
           started,
@@ -489,6 +496,32 @@ function safeJson(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function withStructuredJsonContract<T>(request: StructuredRequest<T>): StructuredRequest<T> {
+  return {
+    ...request,
+    system: [
+      request.system,
+      "Return one machine-readable json value matching the requested schema. Do not return prose or markdown.",
+    ].join("\n"),
+    prompt: [
+      "Respond with a machine-readable json value only.",
+      request.prompt,
+    ].join("\n"),
+  };
+}
+
+function schemaJson<T>(schema: StructuredRequest<T>["schema"]): string {
+  try {
+    return JSON.stringify(z.toJSONSchema(schema));
+  } catch (error) {
+    return JSON.stringify({ type: "object", description: `Schema unavailable: ${error instanceof Error ? error.message : "unknown error"}` });
+  }
+}
+
+function formatIssues(issues: ZodIssuePath[]): string {
+  return issues.map((issue) => `${issue.path}: ${issue.message}${issue.code ? ` [${issue.code}]` : ""}`).join("\n") || "(unknown validation failure)";
 }
 
 function estimateCost(usage: TokenUsage, config: AppConfig): number | null {
