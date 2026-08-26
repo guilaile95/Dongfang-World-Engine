@@ -6,7 +6,7 @@ import { stubNpcVoice } from "./chat/npc.js";
 import { lastAddresseeId, recentSceneBodies, recordOpeningScene, recordResolvedScene } from "./context/recent.js";
 import { recall } from "./context/recall.js";
 import type { Narrator } from "./narrator/client.js";
-import { committedProjection, uncommittedProjection, type NarratorEnvelope } from "./narrator/envelope.js";
+import { committedProjection, uncommittedProjection, type NarratorEnvelope, type PromptComposition } from "./narrator/envelope.js";
 import { WorldStore } from "./persist/store.js";
 import { continueAddressee, reachableAddressee } from "./scene/address.js";
 import { advanceDueBackgroundThreads, type DeliveredExposure } from "./scene/background.js";
@@ -103,11 +103,14 @@ export class Session {
       ? await this.interpreter.interpret({ playerLine: trimmed, observerPack: prompt, worldId, playerId: this.compiled.playerId })
       : { interpretation: ephemeralInterpretation(), parsed: true };
     const raw = interpreted.interpretation;
-    if (trimmed && !interpreted.parsed) return this.failedInterpretation(trimmed, turnId, raw, prompt, initialPack.observer, recentForPlayer);
+    const parseFailed = Boolean(trimmed && !interpreted.parsed);
+    const safeInterpretation = parseFailed
+      ? { ...ephemeralInterpretation(), timePolicy: { kind: "none" as const, minutes: null, routeId: null, untilTime: null } }
+      : raw;
 
     const recovered = this.store.getLifecycleState(worldId);
     const resume = recovered?.turnId === turnId ? recovered : null;
-    const declaredStrategy = resolveStrategy(raw, before);
+    const declaredStrategy = resolveStrategy(safeInterpretation, before);
     const pendingRoute = routeProgressFrom(recovered?.strategy);
     let routeProgress = routeProgressFrom(resume?.strategy)
       ?? (declaredStrategy?.kind === "follow_route" ? startRouteProgress(declaredStrategy, before, this.compiled.playerId) : null)
@@ -115,7 +118,7 @@ export class Session {
     const strategy = routeProgress ?? declaredStrategy;
     if (!resume) this.store.setLifecycleState({ worldId, turnId, strategy, nextStepIndex: 0, elapsedMinutes: 0, terminalReason: null });
     const intended = trimmed ? continueAddressee(before, this.compiled.playerId, trimmed, lastAddresseeId(this.store, worldId, this.compiled.playerId)) : null;
-    const rawForCommit = strategy?.kind === "follow_route" ? { ...raw, proposals: raw.proposals.filter((row) => row.type !== "character_move") } : raw;
+    const rawForCommit = strategy?.kind === "follow_route" ? { ...safeInterpretation, proposals: safeInterpretation.proposals.filter((row) => row.type !== "character_move") } : safeInterpretation;
     const interpretation = applyInterpretation(this.store, { worldId, playerId: this.compiled.playerId, addresseeId: intended?.id ?? null, parsed: interpreted.parsed, interpretation: rawForCommit, routes: before.routes, idempotencyKey: `turn:${turnId}:player` });
 
     const stepResults: SubmitResult[] = [];
@@ -153,6 +156,7 @@ export class Session {
           background.exposures.push(...advanced.exposures);
           background.executedBeatIds.push(...advanced.executedBeatIds);
           const completeAtCheckpoint = routeProgress.nextSegmentIndex === segments.length;
+          if (!shouldEvaluateCheckpointStop(advanced.exposures, completeAtCheckpoint, interpretation)) continue;
           const checkpointHardStop = chooseHardStop(advanced.exposures, completeAtCheckpoint, interpretation);
           const checkpointAmbient = advanced.exposures.map((row) => row.presentationDirective);
           const checkpointVisible = assemblePrompt({ snapshot: this.store.snapshot(worldId), observerId: this.compiled.playerId, query: trimmed, ambient: checkpointAmbient, recentScenes: recentForPlayer, playerProfile: profile });
@@ -164,7 +168,7 @@ export class Session {
         if (!routeComplete && !terminalReason && autoSteps >= MAX_AUTO_STEPS && background.exposures.length === 0) terminalReason = "budget_cap";
       }
     } else if (!abortSignal?.aborted) {
-      const duration = trimmed ? resolveDuration(raw, interpretation, before) : 0;
+      const duration = trimmed ? resolveDuration(safeInterpretation, interpretation, before) : 0;
       if (duration > 0) {
         const snap = this.store.snapshot(worldId);
         const result = submitCandidates(this.store, { producer: "system", idempotencyKey: `turn:${turnId}:step:0:time`, candidates: [{ type: "time_advance", worldId, expectedRevision: snap.world.revision, toTime: addMinutes(snap.world.time, duration) }] });
@@ -204,7 +208,7 @@ export class Session {
     const hardStopReason = chooseHardStop(background.exposures, routeComplete, interpretation);
     const visible = assemblePrompt({ snapshot: after, observerId: this.compiled.playerId, query: trimmed, ambient: this.ambient, recentScenes: recentForPlayer, playerProfile: profile });
     let stopDecision: SceneStopDecision | null = checkpointStopDecision;
-    if (!stopDecision && terminalReason !== "cancelled" && terminalReason !== "budget_cap" && terminalReason !== "structured_failure") {
+    if (!parseFailed && !stopDecision && terminalReason !== "cancelled" && terminalReason !== "budget_cap" && terminalReason !== "structured_failure") {
       const decided = await this.stopDecider.decide({ visibleContext: visible.prompt, hardStopReason, evidence: [...this.ambient, ...uncommittedProjection(rawForCommit, interpretation)], strategyComplete: routeComplete });
       if (!decided || (hardStopReason && (!decided.shouldStop || decided.stopReason !== hardStopReason))) terminalReason = "structured_failure";
       else stopDecision = groundStopDecision(decided, after, this.compiled, this.compiled.playerId);
@@ -213,7 +217,7 @@ export class Session {
 
     const committed = committedProjection(interpretation, this.compiled.playerId, after);
     if (selectedRoute && routeId) committed.push(`你沿已选择的「${selectedRoute.name}」行进 ${elapsedMinutes} 分钟，并到达${after.locations.find((row) => row.id === player?.locationId)?.name ?? "路线节点"}。`);
-    const envelope: NarratorEnvelope = { playerContribution: trimmed, observerContext: visible.prompt, committed, uncommitted: uncommittedProjection(rawForCommit, interpretation), npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null, ephemeral: { recentScenes: recentForPlayer, ambient: this.ambient } };
+    const envelope: NarratorEnvelope = { playerContribution: trimmed, observerContext: visible.prompt, committed, uncommitted: uncommittedProjection(rawForCommit, interpretation), npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null, ephemeral: { recentScenes: recentForPlayer, ambient: this.ambient }, promptComposition: composePromptComposition(this.compiled, profile, visible.prompt, recentForPlayer, this.ambient, trimmed) };
     let text = terminalReason === "cancelled" ? "已在安全边界停止；先前已经完成的行动仍然保留。" : "";
     if (!text) {
       try { text = await this.narrator.project(envelope, onChunk); }
@@ -244,6 +248,9 @@ export class Session {
       worldTitle: this.compiled.packageTitle, era: this.compiled.chronology.era, timeLabel: this.compiled.chronology.timeLabel, publicPremise: this.compiled.chronology.publicPremise,
       locationName: location?.name || profile.startingLocation || "普通城市", presentCharacters: snapshot.characters.filter((row) => row.id !== this.compiled.playerId && row.locationId === player?.locationId).map((row) => row.name),
       publicRules: snapshot.world.rules, publicLore: loreHits.map((hit) => hit.body), publicBeat: exposure?.presentationDirective ?? "", profile, ...(plan ? { plannedHook: plan } : {}),
+      characterization: `${profile.background || "普通学生"}；${profile.personality || "务实"}。`,
+      styleAnchors: ["第二人称、每段有新信息、一次只推进一个可感知变化。", "NPC 使用自然短句，不透露不可见秘密。", "真正出现决定点时把行动权交还玩家。"],
+      recentHistory: recentSceneBodies(this.store, worldId, this.compiled.playerId),
     };
     let parsed: import("./narrator/project.js").ParsedOpening;
     if (this.narrator.projectOpening) parsed = await this.narrator.projectOpening(input, onChunk);
@@ -274,11 +281,6 @@ export class Session {
     return { text, observer, prompt, rawInterpretation: raw, interpretation, dialogue: null, envelope, parsed: true, stopDecision: null, receipt: { turnId, autoSteps: 0, elapsedMinutes: 0, terminalReason: "no_safe_progress", stopReason: "none", cancelled: false, capReached: false, backgroundBeatIds: [] } };
   }
 
-  private failedInterpretation(line: string, turnId: string, raw: SceneInterpretation, prompt: string, observer: ObserverContext, recentScenes: string[]): TurnView {
-    const interpretation = applyInterpretation(this.store, { worldId: this.compiled.seed.world.id, playerId: this.compiled.playerId, parsed: false, interpretation: raw });
-    const envelope: NarratorEnvelope = { playerContribution: line, observerContext: prompt, committed: [], uncommitted: [], npcReply: null, ephemeral: { recentScenes, ambient: [] } };
-    return { text: UNPARSED_HINT, observer, prompt, rawInterpretation: raw, interpretation, dialogue: null, envelope, parsed: false, stopDecision: null, receipt: { turnId, autoSteps: 0, elapsedMinutes: 0, terminalReason: "structured_failure", stopReason: "none", cancelled: false, capReached: false, backgroundBeatIds: [] } };
-  }
 }
 
 function resolveStrategy(raw: SceneInterpretation, snapshot: ReturnType<WorldStore["snapshot"]>): NonNullable<SceneInterpretation["strategyIntent"]> | null {
@@ -338,6 +340,32 @@ function chooseHardStop(exposures: DeliveredExposure[], routeComplete: boolean, 
   if (exposure) return exposure.stopReason;
   if (interpretation.result.reasons.length > 0 || interpretation.outcome === "clarify" || interpretation.outcome === "fail") return "obstacle";
   return routeComplete ? "destination_reached" : null;
+}
+
+function shouldEvaluateCheckpointStop(exposures: DeliveredExposure[], routeComplete: boolean, interpretation: BoundInterpretation): boolean {
+  return exposures.length > 0 || routeComplete || interpretation.result.reasons.length > 0 || interpretation.outcome === "clarify" || interpretation.outcome === "fail";
+}
+
+function composePromptComposition(compiled: CompiledWorld, profile: import("./persist/store.js").PlayerProfile | null, visibleWorld: string, recentHistory: string[], ambient: string[], currentInput: string): PromptComposition {
+  const persona = profile
+    ? [profile.name && `名字=${profile.name}`, profile.age && `年龄=${profile.age}岁`, profile.gender && `性别=${profile.gender}`, profile.background && `背景=${profile.background}`, profile.personality && `性格=${profile.personality}`].filter(Boolean).join("；")
+    : "普通玩家。";
+  return {
+    longTermSetting: compiled.packageTitle,
+    scenario: `${compiled.chronology.era}；${compiled.chronology.timeLabel}；${compiled.chronology.publicPremise}`,
+    characterization: profile?.background || "普通人，保持当前世界的知识边界。",
+    playerPersona: persona,
+    styleAnchors: [
+      "第二人称；每段有新信息；一次只推进一个可感知变化。",
+      "NPC 使用自然短句，不替 NPC 透露不可见秘密。",
+      "示例 NPC 语气：「先别急，先看看眼前发生了什么。」",
+      "真正出现新决定时，把行动权交还玩家。",
+    ],
+    sceneReinforcement: ambient.join(" "),
+    visibleWorld,
+    recentHistory,
+    currentInput,
+  };
 }
 
 export function openWorld(path: string, narrator: Narrator, compiled: CompiledWorld = SYNTHETIC, interpreter?: SceneInterpreter, npcVoice?: NpcVoice, stopDecider?: SceneStopDecider): Session {

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { stubNpcVoice } from "./chat/npc.js";
 import { configForLog, loadConfig } from "./config.js";
 import { fixedInterpreter } from "./scene/interpreter.js";
-import { openWorld, UNPARSED_HINT } from "./session.js";
+import { openWorld } from "./session.js";
 import { loadWorldFile } from "./world/load.js";
 import { assertNoSecret } from "./secrets.js";
 
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     {
       async project() {
         narrated += 1;
-        return "should-not-narrate";
+        return "这句话没有改变已确认的世界事实，但你仍然可以继续描述或观察眼前的场景。";
       },
     },
     compiled,
@@ -46,9 +46,9 @@ async function main(): Promise<void> {
   const eventsAfter = session.store.listEvents(worldId);
   const passed = Boolean(
     turn.parsed === false
-      && turn.text === UNPARSED_HINT
+      && turn.text !== ""
       && turn.dialogue === null
-      && narrated === 0
+      && narrated === 1
       && after.world.time === before.world.time
       && after.world.revision === before.world.revision
       && after.memories.length === before.memories.length
@@ -56,9 +56,9 @@ async function main(): Promise<void> {
       && eventsAfter.length === eventsBefore.length,
   );
   const receipt = {
-    protocol: "experiment-5-failclosed",
+    protocol: "experiment-5-persistent-failclosed-conversation-alive",
     follows: "experiment-4c-e2e-addressee-memory",
-    uniqueVariable: "session fail-closed on parsed=false: no tick, narrator, scene, or authority writes",
+    uniqueVariable: "parsed=false enters ephemeral conversation lane while durable authority writes stay fail-closed",
     model: configForLog(config).model,
     worldFile: config.worldFile,
     line: LINE,

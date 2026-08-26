@@ -55,7 +55,14 @@ async function opened(routeId: "route-long-home" | "route-short-home", path = ":
 
 describe("Issue #75 bounded scene lifecycle", () => {
   it("compiles the dated route graph and advances the long route to a second grounded decision", async () => {
-    const session = openWorld(":memory:", stubNarrator(), compiled(), routeThenContinueInterpreter("route-long-home"));
+    const stopCalls: string[] = [];
+    const fixedStop = fixedStopDecider();
+    const session = openWorld(":memory:", stubNarrator(), compiled(), routeThenContinueInterpreter("route-long-home"), stubNpcVoice(), {
+      async decide(request) {
+        stopCalls.push(request.hardStopReason ?? "none");
+        return fixedStop.decide(request);
+      },
+    });
     session.store.initializePlayerProfile(profile());
     await session.projectOpening(profile());
     const before = session.store.snapshot("longzu");
@@ -70,6 +77,7 @@ describe("Issue #75 bounded scene lifecycle", () => {
     expect(turn.receipt.stopReason).toBe("material_information");
     expect(turn.receipt.backgroundBeatIds).toContain("pickup-visible");
     expect(turn.stopDecision?.options).toHaveLength(6);
+    expect(stopCalls).toEqual(["material_information"]);
     expect(interrupted.backgroundThreads[0]?.currentStage).toBe("pickup_visible");
     expect(new Date(interrupted.world.time).getTime() - new Date(before.world.time).getTime()).toBe(25 * 60_000);
     expect(session.store.getLifecycleState("longzu")?.strategy).not.toBeNull();
@@ -80,6 +88,7 @@ describe("Issue #75 bounded scene lifecycle", () => {
     expect(continued.receipt.elapsedMinutes).toBe(12);
     expect(continued.receipt.autoSteps).toBe(1);
     expect(continued.receipt.stopReason).toBe("destination_reached");
+    expect(stopCalls).toEqual(["material_information", "destination_reached"]);
     expect(session.store.getLifecycleState("longzu")?.strategy).toBeNull();
     expect(new Date(completed.world.time).getTime() - new Date(before.world.time).getTime()).toBe(37 * 60_000);
     session.close();

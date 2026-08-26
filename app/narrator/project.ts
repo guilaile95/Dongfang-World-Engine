@@ -41,6 +41,7 @@ export const NARRATOR_SYSTEM = [
   "不要用「当前状态」「最近场景」等内部结构标题开头。直接写叙事正文。",
   "使用 Markdown 格式提高可读性：段落分明、关键动作或对话可用 **粗体**，场景转换可用 ---，引用 NPC 对话用「」。",
   "你写的是文学化叙事，不是报告。不要每轮汇报世界数据库状态。",
+  "Opening 是第一幕和风格样板：示范第二人称、信息密度、描写长度、NPC 对话味道和一次推进的尺度；遇到真正决定点才把行动权交还玩家。",
 ].join("\n");
 
 export const OPENING_SYSTEM = [
@@ -105,29 +106,34 @@ export interface OpeningPromptInput {
   publicBeat: string;
   profile: import("../persist/store.js").PlayerProfile;
   plannedHook?: OpeningHookPlan;
+  characterization?: string;
+  styleAnchors?: string[];
+  recentHistory?: string[];
 }
 
 export function renderOpeningPrompt(input: OpeningPromptInput): string {
-  const parts: string[] = [
-    `【世界】${input.worldTitle}　【时期】${input.era}　【时间】${input.timeLabel}`,
-    `【公开背景】${input.publicPremise}`,
-    `【起始地点】${input.locationName}　【在场人物】${input.presentCharacters.join("、") || "（无）"}`,
-    `【世界氛围与公共事件】${input.publicBeat || "（无）"}`,
+  const styleAnchors = input.styleAnchors ?? [
+    "全程第二人称；每段都有新信息；只推进一个可感知变化。",
+    "NPC 对话使用自然短句，不替 NPC 透露不可见秘密。",
+    "出现真正决定点时，把行动权交还给玩家。",
   ];
-  if (input.publicRules.length > 0) {
-    parts.push(`【已知规则】${input.publicRules.join("；")}`);
-  }
-  if (input.publicLore.length > 0) {
-    parts.push(`【公开资料与传闻】\n${input.publicLore.join("\n")}`);
-  }
+  const recentHistory = input.recentHistory?.join("\n---\n") || "（无）";
+  const parts: string[] = [
+    "【世界/作品长期设定】" + input.worldTitle,
+    "【当前时期 Scenario】" + input.era + "；" + input.timeLabel + "；" + input.publicPremise,
+    "【当前角色 Characterization】" + ((input.characterization ?? input.profile.background) || "普通学生，保持普通人的知识边界。"),
+    "【玩家 Persona】名字=" + (input.profile.name || "玩家") + "；年龄=" + (input.profile.age || "18") + "；性别=" + (input.profile.gender || "未知") + "；背景=" + (input.profile.background || "普通学生") + "；性格=" + (input.profile.personality || "务实"),
+    "【Example Dialogue / Style Anchor】\n" + styleAnchors.map((line) => "- " + line).join("\n") + "\n- NPC 示例：「先别急，先看看眼前发生了什么。」",
+    "【当前场景近端强化】地点=" + input.locationName + "；在场=" + (input.presentCharacters.join("、") || "（无）") + "；公共动静=" + (input.publicBeat || "（无）"),
+    "【Visibility Gate 后合法的 World/Lore Context】\n已知规则=" + (input.publicRules.join("；") || "（无）") + "\n公开资料与传闻=" + (input.publicLore.join("\n") || "（无）"),
+    "【Recent History】\n" + recentHistory,
+  ];
   const p = input.profile;
-  parts.push(
-    `【玩家身份】名字=${p.name}；年龄=${p.age ? p.age + "岁" : "18岁"}；性别=${p.gender || "未知"}；身世经历=${p.background || "普通人"}；性格=${p.personality || "务实"}；起始位置=${p.startingLocation || input.locationName}`,
-  );
+  parts.push("【起始位置】" + (p.startingLocation || input.locationName));
   if (input.plannedHook) {
     parts.push(`【本局开场既定事件（必须遵从描写）】${input.plannedHook.narrativeDirective}`);
   }
-  parts.push("【要求】请严格以第二人称「你」写出富有特异性、忠实体现既定开场事件的第一幕场景，并给出【眼下】局面总结与 A–F 六个行动选项。");
+  parts.push("【最终 Narration Instructions】请严格以第二人称「你」写出约250–450字的第一幕；示范可感知信息密度、NPC对话味道、一次推进的尺度；若出现真正决定点，用自然语言把行动权交还玩家，并给出 A–F 六个行动选项。");
   return parts.join("\n");
 }
 
@@ -202,12 +208,30 @@ export function renderNarratorPrompt(envelope: NarratorEnvelope): string {
     ? `${envelope.npcReply.name}已经说出口：「${envelope.npcReply.line}」`
     : "（没有合法 NPC 开口）";
   const ambient = envelope.ephemeral.ambient.join(" ") || "（无）";
-  return [
-    envelope.observerContext,
-    `【玩家行动】${envelope.playerContribution || "（沉默）"}`,
-    `【已发生】${committed}`,
-    `【未发生】${uncommitted}`,
-    `【NPC】${npc}`,
-    `【氛围】${ambient}`,
-  ].join("\n");
+  const composition = envelope.promptComposition;
+  const context = composition
+    ? [
+      "【世界/作品长期设定】" + composition.longTermSetting,
+      "【当前时期 Scenario】" + composition.scenario,
+      "【当前角色 Characterization】" + composition.characterization,
+      "【玩家 Persona】" + composition.playerPersona,
+      "【Example Dialogue / Style Anchor】\n" + composition.styleAnchors.map((line) => "- " + line).join("\n"),
+      "【当前场景近端强化】" + (composition.sceneReinforcement || "（无）"),
+      "【Visibility Gate 后合法的 World/Lore Context】\n" + composition.visibleWorld,
+      "【Recent History】\n" + (composition.recentHistory.join("\n---\n") || "（无）"),
+      "【当前玩家输入】" + (composition.currentInput || "（沉默）"),
+      "【已提交后果】" + committed,
+      "【未提交持久企图】" + uncommitted,
+      "【NPC】" + npc,
+      "【氛围】" + ambient,
+    ].join("\n")
+    : [
+      envelope.observerContext,
+      `【玩家行动】${envelope.playerContribution || "（沉默）"}`,
+      `【已发生】${committed}`,
+      `【未发生】${uncommitted}`,
+      `【NPC】${npc}`,
+      `【氛围】${ambient}`,
+    ].join("\n");
+  return [context, "【最终 Narration Instructions】只描述经过 Visibility Gate 的信息和已提交后果；未确认的持久后果不得写成已经发生；保持第二人称和自然对话，不输出内部结构或 schema。"].join("\n");
 }

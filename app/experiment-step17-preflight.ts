@@ -6,7 +6,7 @@ import { createModelClient, formatCallLine } from "./model/client.js";
 import { createNarrator } from "./narrator/client.js";
 import { WorldStore } from "./persist/store.js";
 import { createModelInterpreter, fixedInterpreter } from "./scene/interpreter.js";
-import { openWorld, UNPARSED_HINT } from "./session.js";
+import { openWorld } from "./session.js";
 import { loadWorldFile, seedCompiled } from "./world/load.js";
 import { assemblePrompt } from "./visibility/assemble.js";
 import { assertNoSecret } from "./secrets.js";
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
       {
         async project() {
           narrated += 1;
-          return "should-not-narrate";
+          return "这句话没有改变已确认的世界事实，但你仍然可以继续描述或观察眼前的场景。";
         },
       },
       compiled,
@@ -164,9 +164,9 @@ async function main(): Promise<void> {
     const failAfter = digest(failSession.store, worldId);
     const failClosedOk = Boolean(
       failTurn.parsed === false
-        && failTurn.text === UNPARSED_HINT
+        && failTurn.text !== ""
         && failTurn.dialogue === null
-        && narrated === 0
+        && narrated === 1
         && failAfter.time === failBefore.time
         && failAfter.revision === failBefore.revision
         && failAfter.events.length === failBefore.events.length
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     );
     failSession.close();
     cases.push({
-      id: "8-fail-closed",
+      id: "8-ephemeral-lane-fail-closed-persistence",
       parsed: failTurn.parsed,
       text: failTurn.text,
       narrated,

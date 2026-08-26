@@ -7,7 +7,7 @@ import { PlayHost } from "../app/http/host.js";
 import { playerState } from "../app/http/view.js";
 import { stubNarrator } from "../app/narrator/client.js";
 import { fixedInterpreter } from "../app/scene/interpreter.js";
-import { openWorld, UNPARSED_HINT } from "../app/session.js";
+import { openWorld } from "../app/session.js";
 import type { AppConfig } from "../app/config.js";
 import { CHAR_PLAYER, WORLD_ID } from "../app/world/seed.js";
 
@@ -236,8 +236,8 @@ describe("player-safe play view", () => {
   });
 });
 
-describe("fail-closed notice is player-facing", () => {
-  it("uses the public hint and no stack", async () => {
+describe("parse failure stays in the public conversation lane", () => {
+  it("does not expose parser internals or persist an untrusted result", async () => {
     const session = openWorld(
       ":memory:",
       stubNarrator(),
@@ -254,7 +254,7 @@ describe("fail-closed notice is player-facing", () => {
     );
     const turn = await session.playTurn("%%%NOT_A_SCENE%%% [[[");
     expect(turn.parsed).toBe(false);
-    expect(turn.text).toBe(UNPARSED_HINT);
+    expect(turn.text).toBe("%%%NOT_A_SCENE%%% [[[");
     expect(turn.text).not.toMatch(/Zod|stack|expectedRevision|claim-/);
     session.close();
   });
