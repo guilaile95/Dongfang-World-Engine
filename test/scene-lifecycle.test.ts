@@ -41,7 +41,7 @@ function routeThenContinueInterpreter(routeId: "route-long-home" | "route-short-
     async interpret(request) {
       return request.playerLine.includes("继续")
         ? { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: { kind: "continue_current_task", targetLocationId: "loc-home", routeId: null, untilTime: null, completionCondition: "到家" } } }
-        : { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "route_travel", minutes: null, routeId, untilTime: null }, strategyIntent: { kind: "follow_route", targetLocationId: "loc-home", routeId, untilTime: null, completionCondition: "到家" } } };
+        : { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: true, outcome: "candidate", proposals: [{ type: "character_move", location: "家" }], timePolicy: { kind: "route_travel", minutes: null, routeId, untilTime: null }, strategyIntent: { kind: "follow_route", targetLocationId: "loc-home", routeId, untilTime: null, completionCondition: "到家" } } };
     },
   };
 }

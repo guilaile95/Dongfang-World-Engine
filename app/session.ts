@@ -118,7 +118,12 @@ export class Session {
     const strategy = routeProgress ?? declaredStrategy;
     if (!resume) this.store.setLifecycleState({ worldId, turnId, strategy, nextStepIndex: 0, elapsedMinutes: 0, terminalReason: null });
     const intended = trimmed ? continueAddressee(before, this.compiled.playerId, trimmed, lastAddresseeId(this.store, worldId, this.compiled.playerId)) : null;
-    const rawForCommit = strategy?.kind === "follow_route" ? { ...safeInterpretation, proposals: safeInterpretation.proposals.filter((row) => row.type !== "character_move") } : safeInterpretation;
+    const rawForCommit = strategy?.kind === "follow_route"
+      ? (() => {
+        const proposals = safeInterpretation.proposals.filter((row) => row.type !== "character_move");
+        return proposals.length > 0 ? { ...safeInterpretation, proposals } : { ...safeInterpretation, futureCausal: false, outcome: "ephemeral" as const, proposals: [] };
+      })()
+      : safeInterpretation;
     const interpretation = applyInterpretation(this.store, { worldId, playerId: this.compiled.playerId, addresseeId: intended?.id ?? null, parsed: interpreted.parsed, interpretation: rawForCommit, routes: before.routes, idempotencyKey: `turn:${turnId}:player` });
 
     const stepResults: SubmitResult[] = [];
