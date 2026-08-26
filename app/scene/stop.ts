@@ -26,20 +26,32 @@ export interface SceneStopDecider { decide(request: StopRequest): Promise<SceneS
 export function createModelStopDecider(client: ModelClient): SceneStopDecider {
   return {
     async decide(request) {
-      const result = await client.generateStructured({
+      const baseRequest = {
         role: "proposal", purpose: "scene-stop-decision", schema: sceneStopDecisionSchema,
         system: [
           "判断当前场景是否出现了新的、真正属于玩家的决定。只输出 JSON。",
           "普通走路、下楼、收拾、等待、已选路线的继续执行不是新决定。",
           "只有新风险、方向选择、重要信息、重要请求、障碍或抵达目的地才能停止。",
           "停止时给 A-F 六个普通自然语言意图；A-D 有实质差异，E 高风险，F 可执行但荒诞。不得承诺尚未发生的结果。",
-          request.hardStopReason ? `代码已确定必须停止，stopReason 必须为 ${request.hardStopReason}。` : "没有代码硬停；若无新决定则 shouldStop=false。",
+          request.hardStopReason ? `代码已确定必须停止，shouldStop 必须为 true，stopReason 必须为 ${request.hardStopReason}，options 必须有 A-F 六项。` : "没有代码硬停；若无新决定则 shouldStop=false。",
         ].join("\n"),
-        prompt: [request.visibleContext, `证据：${request.evidence.join("；") || "无"}`, `既有策略完成：${request.strategyComplete}`].join("\n"),
+        prompt: [request.visibleContext, `证据：${request.evidence.join("；") || "无"}`, `既有策略完成：${request.strategyComplete}`, request.hardStopReason ? `硬停代码：${request.hardStopReason}。不得返回 shouldStop=false。` : ""].filter(Boolean).join("\n"),
+      } as const;
+      const result = await client.generateStructured(baseRequest);
+      if (!request.hardStopReason || isHardStopDecision(result.object, request.hardStopReason)) return result.object;
+      const repair = await client.generateStructured({
+        ...baseRequest,
+        purpose: "scene-stop-decision-repair",
+        system: `${baseRequest.system}\n上一份决定没有满足硬停合同。只修正 shouldStop、stopReason 和 A-F options；不要改变可见事实。`,
+        prompt: `${baseRequest.prompt}\n上一份结构化决定不合规：${JSON.stringify(result.object)}。请重新输出完整合法 JSON。`,
       });
-      return result.object;
+      return repair.object;
     },
   };
+}
+
+function isHardStopDecision(decision: SceneStopDecision | null, reason: Exclude<StopReason, "none">): decision is SceneStopDecision {
+  return Boolean(decision?.shouldStop && decision.stopReason === reason && decision.options?.map((option) => option.key).join("") === "ABCDEF");
 }
 
 export function fixedStopDecider(): SceneStopDecider {
