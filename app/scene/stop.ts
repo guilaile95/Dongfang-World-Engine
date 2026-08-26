@@ -33,6 +33,7 @@ export function createModelStopDecider(client: ModelClient): SceneStopDecider {
           "普通走路、下楼、收拾、等待、已选路线的继续执行不是新决定。",
           "只有新风险、方向选择、重要信息、重要请求、障碍或抵达目的地才能停止。",
           "停止时给 A-F 六个普通自然语言意图；A-D 有实质差异，E 高风险，F 可执行但荒诞。不得承诺尚未发生的结果。",
+          "A-F 每项只能写玩家此刻可执行的意图；不得出现角色 ID、地点 ID、不可见人物姓名、内部字段、未来承诺或‘已经到达/得到/说服/击败’等完成态。",
           request.hardStopReason ? `代码已确定必须停止，shouldStop 必须为 true，stopReason 必须为 ${request.hardStopReason}，options 必须有 A-F 六项。` : "没有代码硬停；若无新决定则 shouldStop=false。",
         ].join("\n"),
         prompt: [request.visibleContext, `证据：${request.evidence.join("；") || "无"}`, `既有策略完成：${request.strategyComplete}`, request.hardStopReason ? `硬停代码：${request.hardStopReason}。不得返回 shouldStop=false。` : ""].filter(Boolean).join("\n"),
