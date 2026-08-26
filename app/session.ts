@@ -113,8 +113,11 @@ export class Session {
     const declaredStrategy = resolveStrategy(safeInterpretation, before);
     const pendingRoute = routeProgressFrom(recovered?.strategy);
     let routeProgress = routeProgressFrom(resume?.strategy)
-      ?? (declaredStrategy?.kind === "follow_route" ? startRouteProgress(declaredStrategy, before, this.compiled.playerId) : null)
       ?? (declaredStrategy?.kind === "continue_current_task" ? pendingRoute : null);
+    if (!routeProgress && declaredStrategy?.kind === "follow_route" && pendingRoute && pendingRoute.routeId === declaredStrategy.routeId && canResumeRouteProgress(pendingRoute, before, this.compiled.playerId)) {
+      routeProgress = pendingRoute;
+    }
+    routeProgress ??= declaredStrategy?.kind === "follow_route" ? startRouteProgress(declaredStrategy, before, this.compiled.playerId) : null;
     const strategy = routeProgress ?? declaredStrategy;
     if (!resume) this.store.setLifecycleState({ worldId, turnId, strategy, nextStepIndex: 0, elapsedMinutes: 0, terminalReason: null });
     const intended = trimmed ? continueAddressee(before, this.compiled.playerId, trimmed, lastAddresseeId(this.store, worldId, this.compiled.playerId)) : null;
@@ -301,6 +304,13 @@ function startRouteProgress(strategy: NonNullable<SceneInterpretation["strategyI
   if (!route || !locationId) return null;
   const direction = locationId === route.toLocationId && route.bidirectional ? "reverse" : "forward";
   return { kind: "follow_route", targetLocationId: strategy.targetLocationId, routeId: route.id, untilTime: strategy.untilTime, completionCondition: strategy.completionCondition, direction, nextSegmentIndex: 0 };
+}
+
+function canResumeRouteProgress(progress: RouteProgress, snapshot: ReturnType<WorldStore["snapshot"]>, playerId: string): boolean {
+  const route = snapshot.routes.find((row) => row.id === progress.routeId && row.visibility === "public");
+  const player = snapshot.characters.find((row) => row.id === playerId);
+  const segments = route && routeSegments(route, snapshot, progress.direction);
+  return Boolean(route && player && segments && progress.nextSegmentIndex < segments.length && segments[progress.nextSegmentIndex]?.fromLocationId === player.locationId);
 }
 
 function routeProgressFrom(value: unknown): RouteProgress | null {

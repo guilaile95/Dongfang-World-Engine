@@ -30,6 +30,7 @@ export const INTERPRETER_SYSTEM = [
   "proposals 只能是 claim_record、memory_note、character_move、item_place、item_carry。不要 fact_assert，不要拨时间，不要授予 knowledge。",
   "timePolicy 必须描述本句的时间：观察/短答 none；普通动作 bounded_action；明确等待 explicit_wait；选择已有路线 route_travel。",
   "玩家已经明确选定路线、等待或继续当前任务时填写 strategyIntent；不得替玩家发明新路线或新策略。路线 ID 必须来自上下文的【可用路线】。",
+  "如果上下文已有未完成路线且玩家明确说继续当前路线，strategyIntent.kind 用 continue_current_task；若模型仍返回 follow_route，必须复用同一 routeId 表示继续该 pending route，不得从起点重开。",
   "memory_note 合法字段只能是 type, text, 以及可选 characterId。禁止 content、message、value。写日记/自己记下：用 memory_note，不要填别人的 characterId。这是玩家自己的印象，不是 Fact，也不是别人的 Knowledge。",
   "对在场的人明确说「记住」「别忘」「这是我们说定的」且内容之后还用得上：必须 memory_note，characterId 为对方。不要升成 Fact 或 Knowledge。天气、吃饭、闲聊不要因此写 Memory。",
   "claim_record 合法字段只能是 type, subject, predicate, object。禁止 content。",

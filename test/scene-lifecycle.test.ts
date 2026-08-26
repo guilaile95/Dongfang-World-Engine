@@ -36,11 +36,11 @@ function routeInterpreter(routeId: "route-long-home" | "route-short-home") {
   });
 }
 
-function routeThenContinueInterpreter(routeId: "route-long-home" | "route-short-home"): SceneInterpreter {
+function routeThenContinueInterpreter(routeId: "route-long-home" | "route-short-home", continuationKind: "continue_current_task" | "follow_route" = "continue_current_task"): SceneInterpreter {
   return {
     async interpret(request) {
       return request.playerLine.includes("继续")
-        ? { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: { kind: "continue_current_task", targetLocationId: "loc-home", routeId: null, untilTime: null, completionCondition: "到家" } } }
+        ? { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: continuationKind === "follow_route" ? { kind: "route_travel", minutes: null, routeId, untilTime: null } : { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: continuationKind === "follow_route" ? { kind: "follow_route", targetLocationId: "loc-home", routeId, untilTime: null, completionCondition: "到家" } : { kind: "continue_current_task", targetLocationId: "loc-home", routeId: null, untilTime: null, completionCondition: "到家" } } }
         : { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: true, outcome: "candidate", proposals: [{ type: "character_move", location: "家" }], timePolicy: { kind: "route_travel", minutes: null, routeId, untilTime: null }, strategyIntent: { kind: "follow_route", targetLocationId: "loc-home", routeId, untilTime: null, completionCondition: "到家" } } };
     },
   };
@@ -99,6 +99,18 @@ describe("Issue #75 bounded scene lifecycle", () => {
     await noNegationFallback.handlePlayerTurn("我不走远路。", "turn-negated-long");
     expect(noNegationFallback.store.snapshot("longzu").characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-shilan-classroom");
     noNegationFallback.close();
+  });
+
+  it("resumes a pending route when structured continuation repeats its route id", async () => {
+    const session = openWorld(":memory:", stubNarrator(), compiled(), routeThenContinueInterpreter("route-long-home", "follow_route"));
+    session.store.initializePlayerProfile(profile());
+    await session.projectOpening(profile());
+    const first = await session.handlePlayerTurn("我走老街远路回家。", "turn-repeat-route");
+    expect(first.receipt.stopReason).toBe("material_information");
+    const continued = await session.handlePlayerTurn("继续沿原路线回家。", "turn-repeat-route-continue");
+    expect(continued.receipt.elapsedMinutes).toBe(12);
+    expect(session.store.snapshot("longzu").characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-home");
+    session.close();
   });
 
   it("obeys the interpreter's structured final route despite contradictory raw text", async () => {
