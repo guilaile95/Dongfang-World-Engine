@@ -14,8 +14,9 @@ export function advanceDueBackgroundThreads(input: {
   compiled: CompiledWorld;
   playerId: string;
   routeId?: string | null;
+  routeLocationIds?: string[];
 }): { exposures: DeliveredExposure[]; executedBeatIds: string[] } {
-  const { store, compiled, playerId, routeId = null } = input;
+  const { store, compiled, playerId, routeId = null, routeLocationIds } = input;
   const worldId = compiled.seed.world.id;
   const exposures: DeliveredExposure[] = [];
   const executedBeatIds: string[] = [];
@@ -23,22 +24,27 @@ export function advanceDueBackgroundThreads(input: {
     for (const beat of thread.beats) {
       const fresh = store.snapshot(worldId);
       const current = fresh.backgroundThreads.find((row) => row.id === thread.id);
-      if (!current || current.currentStage !== beat.stageFrom || current.executedBeatIds.includes(beat.beatId) || !isDue(current.startsAt, beat.dueAt, beat.afterMinutes, fresh.world.time)) continue;
-      const candidates: Candidate[] = [{
-        type: "background_thread_advance", worldId, expectedRevision: fresh.world.revision,
-        threadId: current.id, beatId: beat.beatId, stageFrom: beat.stageFrom, stageTo: beat.stageTo,
-      }];
-      for (const consequence of beat.consequences) {
-        const expectedRevision = fresh.world.revision + candidates.length;
-        candidates.push(consequence.type === "fact_assert"
-          ? { type: "fact_assert", worldId, expectedRevision, factId: consequence.id, subject: consequence.subject, predicate: consequence.predicate, object: consequence.object, validFrom: fresh.world.time }
-          : { type: "claim_record", worldId, expectedRevision, claimId: consequence.id, subject: consequence.subject, predicate: consequence.predicate, object: consequence.object });
+      if (!current) continue;
+      let executedNow = false;
+      if (current.currentStage === beat.stageFrom && !current.executedBeatIds.includes(beat.beatId) && isDue(current.startsAt, beat.dueAt, beat.afterMinutes, fresh.world.time)) {
+        const candidates: Candidate[] = [{
+          type: "background_thread_advance", worldId, expectedRevision: fresh.world.revision,
+          threadId: current.id, beatId: beat.beatId, stageFrom: beat.stageFrom, stageTo: beat.stageTo,
+        }];
+        for (const consequence of beat.consequences) {
+          const expectedRevision = fresh.world.revision + candidates.length;
+          candidates.push(consequence.type === "fact_assert"
+            ? { type: "fact_assert", worldId, expectedRevision, factId: consequence.id, subject: consequence.subject, predicate: consequence.predicate, object: consequence.object, validFrom: fresh.world.time }
+            : { type: "claim_record", worldId, expectedRevision, claimId: consequence.id, subject: consequence.subject, predicate: consequence.predicate, object: consequence.object });
+        }
+        const result = submitCandidates(store, { producer: "system", candidates, idempotencyKey: `background:${current.id}:${beat.beatId}` });
+        if (!result.accepted) throw new Error(`BACKGROUND_COMMIT_REJECTED:${result.reasons.join(",")}`);
+        executedBeatIds.push(beat.beatId);
+        executedNow = true;
       }
-      const result = submitCandidates(store, { producer: "system", candidates, idempotencyKey: `background:${current.id}:${beat.beatId}` });
-      if (!result.accepted) throw new Error(`BACKGROUND_COMMIT_REJECTED:${result.reasons.join(",")}`);
-      executedBeatIds.push(beat.beatId);
+      if (!executedNow && !current.executedBeatIds.includes(beat.beatId)) continue;
       for (const exposure of beat.exposureRules) {
-        if (exposureVisible(store, compiled, playerId, current.locationScope, exposure.kind, routeId)) exposures.push({ ...exposure, threadId: current.id, beatId: beat.beatId });
+        if ((executedNow || exposure.kind === "route_intersection") && exposureVisible(store, compiled, playerId, current.locationScope, exposure.kind, routeId, routeLocationIds)) exposures.push({ ...exposure, threadId: current.id, beatId: beat.beatId });
       }
     }
   }
@@ -58,6 +64,7 @@ function exposureVisible(
   scope: string[],
   kind: BackgroundExposureRecord["kind"],
   routeId: string | null,
+  routeLocationIds?: string[],
 ): boolean {
   if (kind === "public_broadcast") return true;
   const snapshot = store.snapshot(compiled.seed.world.id);
@@ -65,5 +72,5 @@ function exposureVisible(
   if (!player) return false;
   if (kind === "same_location" || kind === "visible_result") return scope.includes(player.locationId);
   const route = routeId ? snapshot.routes.find((row) => row.id === routeId) : null;
-  return Boolean(route && [route.fromLocationId, ...route.viaLocationIds, route.toLocationId].some((id) => scope.includes(id)));
+  return (routeLocationIds ?? (route ? [route.fromLocationId, ...route.viaLocationIds, route.toLocationId] : [])).some((id) => scope.includes(id));
 }

@@ -9,6 +9,7 @@ import { PlayHost } from "../app/http/host.js";
 import { stubNarrator } from "../app/narrator/client.js";
 import { WorldStore } from "../app/persist/store.js";
 import { fixedInterpreter } from "../app/scene/interpreter.js";
+import type { SceneInterpreter } from "../app/scene/interpreter.js";
 import { advanceDueBackgroundThreads } from "../app/scene/background.js";
 import { fixedStopDecider, groundStopDecision, type SceneStopDecider } from "../app/scene/stop.js";
 import { MAX_AUTO_DURATION_MINUTES, openWorld } from "../app/session.js";
@@ -35,6 +36,16 @@ function routeInterpreter(routeId: "route-long-home" | "route-short-home") {
   });
 }
 
+function routeThenContinueInterpreter(routeId: "route-long-home" | "route-short-home"): SceneInterpreter {
+  return {
+    async interpret(request) {
+      return request.playerLine.includes("继续")
+        ? { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: { kind: "continue_current_task", targetLocationId: "loc-home", routeId: null, untilTime: null, completionCondition: "到家" } } }
+        : { parsed: true, interpretation: { contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "route_travel", minutes: null, routeId, untilTime: null }, strategyIntent: { kind: "follow_route", targetLocationId: "loc-home", routeId, untilTime: null, completionCondition: "到家" } } };
+    },
+  };
+}
+
 async function opened(routeId: "route-long-home" | "route-short-home", path = ":memory:", stop: SceneStopDecider = fixedStopDecider()) {
   const session = openWorld(path, stubNarrator(), compiled(), routeInterpreter(routeId), stubNpcVoice(), stop);
   session.store.initializePlayerProfile(profile());
@@ -44,21 +55,58 @@ async function opened(routeId: "route-long-home" | "route-short-home", path = ":
 
 describe("Issue #75 bounded scene lifecycle", () => {
   it("compiles the dated route graph and advances the long route to a second grounded decision", async () => {
-    const session = await opened("route-long-home");
+    const session = openWorld(":memory:", stubNarrator(), compiled(), routeThenContinueInterpreter("route-long-home"));
+    session.store.initializePlayerProfile(profile());
+    await session.projectOpening(profile());
     const before = session.store.snapshot("longzu");
     expect(before.routes).toHaveLength(6);
     expect(before.backgroundThreads[0]?.currentStage).toBe("approaching");
 
     const turn = await session.handlePlayerTurn("我避开老码头，走老街远路回家。", "turn-long");
-    const after = session.store.snapshot("longzu");
-    expect(after.characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-home");
-    expect(turn.receipt.elapsedMinutes).toBe(37);
-    expect(turn.receipt.autoSteps).toBe(1);
+    const interrupted = session.store.snapshot("longzu");
+    expect(interrupted.characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-pharmacy");
+    expect(turn.receipt.elapsedMinutes).toBe(25);
+    expect(turn.receipt.autoSteps).toBe(3);
     expect(turn.receipt.stopReason).toBe("material_information");
+    expect(turn.receipt.backgroundBeatIds).toContain("pickup-visible");
     expect(turn.stopDecision?.options).toHaveLength(6);
-    expect(after.backgroundThreads[0]?.currentStage).toBe("pickup_visible");
-    expect(new Date(after.world.time).getTime() - new Date(before.world.time).getTime()).toBe(37 * 60_000);
+    expect(interrupted.backgroundThreads[0]?.currentStage).toBe("pickup_visible");
+    expect(new Date(interrupted.world.time).getTime() - new Date(before.world.time).getTime()).toBe(25 * 60_000);
+    expect(session.store.getLifecycleState("longzu")?.strategy).not.toBeNull();
+
+    const continued = await session.handlePlayerTurn("继续沿原路线回家。", "turn-long-continue");
+    const completed = session.store.snapshot("longzu");
+    expect(completed.characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-home");
+    expect(continued.receipt.elapsedMinutes).toBe(12);
+    expect(continued.receipt.autoSteps).toBe(1);
+    expect(continued.receipt.stopReason).toBe("destination_reached");
+    expect(session.store.getLifecycleState("longzu")?.strategy).toBeNull();
+    expect(new Date(completed.world.time).getTime() - new Date(before.world.time).getTime()).toBe(37 * 60_000);
     session.close();
+  });
+
+  it("does not choose the long route from a negated raw-text mention", async () => {
+    const noNegationFallback = openWorld(":memory:", stubNarrator(), compiled(), fixedInterpreter({ contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "none", minutes: null, routeId: null, untilTime: null }, strategyIntent: null }));
+    await noNegationFallback.handlePlayerTurn("我不走远路。", "turn-negated-long");
+    expect(noNegationFallback.store.snapshot("longzu").characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-shilan-classroom");
+    noNegationFallback.close();
+  });
+
+  it("obeys the interpreter's structured final route despite contradictory raw text", async () => {
+    const finalIntent = openWorld(":memory:", stubNarrator(), compiled(), routeInterpreter("route-short-home"));
+    await finalIntent.projectOpening(profile());
+    const short = await finalIntent.handlePlayerTurn("本来想走远路，但还是走老码头。", "turn-final-short");
+    expect(short.receipt.elapsedMinutes).toBe(23);
+    expect(finalIntent.store.snapshot("longzu").characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-home");
+    finalIntent.close();
+  });
+
+  it("does not infer a route from keywords when the structured route id is illegal", async () => {
+    const invalid = openWorld(":memory:", stubNarrator(), compiled(), fixedInterpreter({ contributions: ["world_attempt"], futureCausal: false, outcome: "ephemeral", proposals: [], timePolicy: { kind: "route_travel", minutes: null, routeId: "route-missing", untilTime: null }, strategyIntent: { kind: "follow_route", targetLocationId: "loc-home", routeId: "route-missing", untilTime: null, completionCondition: "到家" } }));
+    const rejected = await invalid.handlePlayerTurn("我走远路回家。", "turn-invalid-route");
+    expect(rejected.receipt.elapsedMinutes).toBe(0);
+    expect(invalid.store.snapshot("longzu").characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-shilan-classroom");
+    invalid.close();
   });
 
   it("keeps stop decisions non-authoritative and rejects hidden or promised options", async () => {
@@ -176,7 +224,7 @@ describe("Issue #75 bounded scene lifecycle", () => {
     const snapshot = second.store.snapshot("longzu");
     expect(snapshot.world.time).toBe(time);
     expect(snapshot.backgroundThreads[0]?.currentStage).toBe("pickup_visible");
-    expect(snapshot.characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-home");
+    expect(snapshot.characters.find((row) => row.id === "char-player")?.locationId).toBe("loc-pharmacy");
     expect(second.store.getLifecycleState("longzu")).toEqual(digest);
     second.close();
   });

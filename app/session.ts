@@ -57,6 +57,16 @@ export interface TurnView {
   receipt: TurnReceipt;
 }
 
+interface RouteProgress {
+  kind: "follow_route";
+  targetLocationId: string | null;
+  routeId: string;
+  untilTime: string | null;
+  completionCondition: string;
+  direction: "forward" | "reverse";
+  nextSegmentIndex: number;
+}
+
 export class Session {
   private ambient: string[] = [];
 
@@ -95,9 +105,14 @@ export class Session {
     const raw = interpreted.interpretation;
     if (trimmed && !interpreted.parsed) return this.failedInterpretation(trimmed, turnId, raw, prompt, initialPack.observer, recentForPlayer);
 
-    const strategy = resolveStrategy(raw, trimmed, before);
     const recovered = this.store.getLifecycleState(worldId);
     const resume = recovered?.turnId === turnId ? recovered : null;
+    const declaredStrategy = resolveStrategy(raw, before);
+    const pendingRoute = routeProgressFrom(recovered?.strategy);
+    let routeProgress = routeProgressFrom(resume?.strategy)
+      ?? (declaredStrategy?.kind === "follow_route" ? startRouteProgress(declaredStrategy, before, this.compiled.playerId) : null)
+      ?? (declaredStrategy?.kind === "continue_current_task" ? pendingRoute : null);
+    const strategy = routeProgress ?? declaredStrategy;
     if (!resume) this.store.setLifecycleState({ worldId, turnId, strategy, nextStepIndex: 0, elapsedMinutes: 0, terminalReason: null });
     const intended = trimmed ? continueAddressee(before, this.compiled.playerId, trimmed, lastAddresseeId(this.store, worldId, this.compiled.playerId)) : null;
     const rawForCommit = strategy?.kind === "follow_route" ? { ...raw, proposals: raw.proposals.filter((row) => row.type !== "character_move") } : raw;
@@ -108,27 +123,45 @@ export class Session {
     let autoSteps = resume?.nextStepIndex ?? 0;
     let terminalReason: TerminalReason = null;
     let routeId: string | null = null;
-    const selectedRoute = strategy?.kind === "follow_route" && strategy.routeId ? before.routes.find((row) => row.id === strategy.routeId) : null;
-    if (selectedRoute) {
+    let routeComplete = false;
+    let checkpointStopDecision: SceneStopDecision | null = null;
+    const background = { exposures: [] as DeliveredExposure[], executedBeatIds: [] as string[] };
+    const routeProgressId = routeProgress?.routeId;
+    const selectedRoute = routeProgressId ? before.routes.find((row) => row.id === routeProgressId && row.visibility === "public") : null;
+    if (selectedRoute && routeProgress) {
       if (selectedRoute.travelMinutes > MAX_AUTO_DURATION_MINUTES) terminalReason = "budget_cap";
-      else if (resume && resume.nextStepIndex > 0) routeId = selectedRoute.id;
       else if (!abortSignal?.aborted) {
+        const segments = routeSegments(selectedRoute, before, routeProgress.direction);
         const player = this.store.snapshot(worldId).characters.find((row) => row.id === this.compiled.playerId);
-        const destination = player?.locationId === selectedRoute.toLocationId && selectedRoute.bidirectional ? selectedRoute.fromLocationId : selectedRoute.toLocationId;
-        if (!player || (player.locationId !== selectedRoute.fromLocationId && !(selectedRoute.bidirectional && player.locationId === selectedRoute.toLocationId))) terminalReason = "no_safe_progress";
-        else {
+        if (!segments || !player || routeProgress.nextSegmentIndex > segments.length || (segments[routeProgress.nextSegmentIndex] && player.locationId !== segments[routeProgress.nextSegmentIndex]!.fromLocationId)) terminalReason = "no_safe_progress";
+        else while (routeProgress.nextSegmentIndex < segments.length && autoSteps < MAX_AUTO_STEPS && !abortSignal?.aborted) {
+          const segment = segments[routeProgress.nextSegmentIndex]!;
+          if (elapsedMinutes + segment.minutes > MAX_AUTO_DURATION_MINUTES) { terminalReason = "budget_cap"; break; }
           const snap = this.store.snapshot(worldId);
-          const result = submitCandidates(this.store, { producer: "system", idempotencyKey: `turn:${turnId}:step:0:route`, candidates: [
-            { type: "character_move", worldId, expectedRevision: snap.world.revision, characterId: this.compiled.playerId, locationId: destination },
-            { type: "time_advance", worldId, expectedRevision: snap.world.revision + 1, toTime: addMinutes(snap.world.time, selectedRoute.travelMinutes) },
+          const result = submitCandidates(this.store, { producer: "system", idempotencyKey: `turn:${turnId}:route:${selectedRoute.id}:segment:${routeProgress.nextSegmentIndex}`, candidates: [
+            { type: "character_move", worldId, expectedRevision: snap.world.revision, characterId: this.compiled.playerId, locationId: segment.toLocationId },
+            { type: "time_advance", worldId, expectedRevision: snap.world.revision + 1, toTime: addMinutes(snap.world.time, segment.minutes) },
           ] });
           stepResults.push(result);
-          if (!result.accepted) terminalReason = "no_safe_progress";
-          else {
-            routeId = selectedRoute.id; elapsedMinutes = selectedRoute.travelMinutes; autoSteps = 1;
-            this.store.setLifecycleState({ worldId, turnId, strategy, nextStepIndex: autoSteps, elapsedMinutes, terminalReason: null });
-          }
+          if (!result.accepted) { terminalReason = "no_safe_progress"; break; }
+          routeId = selectedRoute.id;
+          elapsedMinutes += segment.minutes;
+          autoSteps += 1;
+          routeProgress = { ...routeProgress, nextSegmentIndex: routeProgress.nextSegmentIndex + 1 };
+          this.store.setLifecycleState({ worldId, turnId, strategy: routeProgress, nextStepIndex: autoSteps, elapsedMinutes, terminalReason: null });
+          const advanced = advanceDueBackgroundThreads({ store: this.store, compiled: this.compiled, playerId: this.compiled.playerId, routeId, routeLocationIds: [segment.toLocationId] });
+          background.exposures.push(...advanced.exposures);
+          background.executedBeatIds.push(...advanced.executedBeatIds);
+          const completeAtCheckpoint = routeProgress.nextSegmentIndex === segments.length;
+          const checkpointHardStop = chooseHardStop(advanced.exposures, completeAtCheckpoint, interpretation);
+          const checkpointAmbient = advanced.exposures.map((row) => row.presentationDirective);
+          const checkpointVisible = assemblePrompt({ snapshot: this.store.snapshot(worldId), observerId: this.compiled.playerId, query: trimmed, ambient: checkpointAmbient, recentScenes: recentForPlayer, playerProfile: profile });
+          const decided = await this.stopDecider.decide({ visibleContext: checkpointVisible.prompt, hardStopReason: checkpointHardStop, evidence: [...checkpointAmbient, ...uncommittedProjection(rawForCommit, interpretation)], strategyComplete: completeAtCheckpoint });
+          if (!decided || (checkpointHardStop && (!decided.shouldStop || decided.stopReason !== checkpointHardStop))) { terminalReason = "structured_failure"; break; }
+          if (decided.shouldStop) { checkpointStopDecision = groundStopDecision(decided, this.store.snapshot(worldId), this.compiled, this.compiled.playerId); break; }
         }
+        routeComplete = routeProgress.nextSegmentIndex === segments?.length;
+        if (!routeComplete && !terminalReason && autoSteps >= MAX_AUTO_STEPS && background.exposures.length === 0) terminalReason = "budget_cap";
       }
     } else if (!abortSignal?.aborted) {
       const duration = trimmed ? resolveDuration(raw, interpretation, before) : 0;
@@ -138,7 +171,7 @@ export class Session {
         stepResults.push(result);
         if (result.accepted) elapsedMinutes += duration;
       }
-      if (strategy?.kind === "continue_current_task") {
+      if (declaredStrategy?.kind === "continue_current_task") {
         while (autoSteps < MAX_AUTO_STEPS && elapsedMinutes < MAX_AUTO_DURATION_MINUTES && !abortSignal?.aborted) {
           const snap = this.store.snapshot(worldId);
           const result = submitCandidates(this.store, { producer: "system", idempotencyKey: `turn:${turnId}:step:${autoSteps}:continue`, candidates: [{ type: "time_advance", worldId, expectedRevision: snap.world.revision, toTime: addMinutes(snap.world.time, 1) }] });
@@ -152,7 +185,11 @@ export class Session {
     }
 
     if (abortSignal?.aborted) terminalReason = "cancelled";
-    const background = terminalReason === "cancelled" ? { exposures: [] as DeliveredExposure[], executedBeatIds: [] as string[] } : advanceDueBackgroundThreads({ store: this.store, compiled: this.compiled, playerId: this.compiled.playerId, routeId });
+    if (terminalReason !== "cancelled" && !selectedRoute) {
+      const advanced = advanceDueBackgroundThreads({ store: this.store, compiled: this.compiled, playerId: this.compiled.playerId });
+      background.exposures.push(...advanced.exposures);
+      background.executedBeatIds.push(...advanced.executedBeatIds);
+    }
     this.ambient = background.exposures.map((row) => row.presentationDirective);
     const after = this.store.snapshot(worldId);
     const player = after.characters.find((row) => row.id === this.compiled.playerId);
@@ -164,18 +201,18 @@ export class Session {
       dialogue = { addresseeId: addressee.id, addresseeName: addressee.name, stimulus: trimmed, npcReply, npcPrompt: npcPack.prompt };
     }
 
-    const hardStopReason = chooseHardStop(background.exposures, Boolean(selectedRoute), interpretation);
+    const hardStopReason = chooseHardStop(background.exposures, routeComplete, interpretation);
     const visible = assemblePrompt({ snapshot: after, observerId: this.compiled.playerId, query: trimmed, ambient: this.ambient, recentScenes: recentForPlayer, playerProfile: profile });
-    let stopDecision: SceneStopDecision | null = null;
-    if (terminalReason !== "cancelled" && terminalReason !== "budget_cap") {
-      const decided = await this.stopDecider.decide({ visibleContext: visible.prompt, hardStopReason, evidence: [...this.ambient, ...uncommittedProjection(rawForCommit, interpretation)], strategyComplete: Boolean(selectedRoute) });
+    let stopDecision: SceneStopDecision | null = checkpointStopDecision;
+    if (!stopDecision && terminalReason !== "cancelled" && terminalReason !== "budget_cap" && terminalReason !== "structured_failure") {
+      const decided = await this.stopDecider.decide({ visibleContext: visible.prompt, hardStopReason, evidence: [...this.ambient, ...uncommittedProjection(rawForCommit, interpretation)], strategyComplete: routeComplete });
       if (!decided || (hardStopReason && (!decided.shouldStop || decided.stopReason !== hardStopReason))) terminalReason = "structured_failure";
       else stopDecision = groundStopDecision(decided, after, this.compiled, this.compiled.playerId);
     }
     if (!terminalReason && !stopDecision?.shouldStop) terminalReason = "no_safe_progress";
 
     const committed = committedProjection(interpretation, this.compiled.playerId, after);
-    if (selectedRoute && routeId) committed.push(`你沿已选择的「${selectedRoute.name}」行进 ${selectedRoute.travelMinutes} 分钟，并到达${after.locations.find((row) => row.id === player?.locationId)?.name ?? "目的地"}。`);
+    if (selectedRoute && routeId) committed.push(`你沿已选择的「${selectedRoute.name}」行进 ${elapsedMinutes} 分钟，并到达${after.locations.find((row) => row.id === player?.locationId)?.name ?? "路线节点"}。`);
     const envelope: NarratorEnvelope = { playerContribution: trimmed, observerContext: visible.prompt, committed, uncommitted: uncommittedProjection(rawForCommit, interpretation), npcReply: dialogue ? { name: dialogue.addresseeName, line: dialogue.npcReply } : null, ephemeral: { recentScenes: recentForPlayer, ambient: this.ambient } };
     let text = terminalReason === "cancelled" ? "已在安全边界停止；先前已经完成的行动仍然保留。" : "";
     if (!text) {
@@ -189,7 +226,8 @@ export class Session {
       if (dialogue) recordResolvedScene(this.store, worldId, dialogue.addresseeId, resolved, "npc");
     }
     const receipt: TurnReceipt = { turnId, autoSteps, elapsedMinutes, terminalReason, stopReason: stopDecision?.stopReason ?? "none", cancelled: terminalReason === "cancelled", capReached: terminalReason === "budget_cap", backgroundBeatIds: background.executedBeatIds };
-    this.store.setLifecycleState({ worldId, turnId, strategy: terminalReason === "cancelled" ? strategy : null, nextStepIndex: autoSteps, elapsedMinutes, terminalReason });
+    const pendingStrategy = selectedRoute && !routeComplete ? routeProgress : terminalReason === "cancelled" ? strategy : null;
+    this.store.setLifecycleState({ worldId, turnId, strategy: pendingStrategy, nextStepIndex: autoSteps, elapsedMinutes, terminalReason });
     return { text, observer: visible.observer, prompt: visible.prompt, rawInterpretation: raw, interpretation, dialogue, envelope, parsed: interpreted.parsed, stopDecision, receipt };
   }
 
@@ -243,17 +281,49 @@ export class Session {
   }
 }
 
-function resolveStrategy(raw: SceneInterpretation, line: string, snapshot: ReturnType<WorldStore["snapshot"]>): NonNullable<SceneInterpretation["strategyIntent"]> | null {
+function resolveStrategy(raw: SceneInterpretation, snapshot: ReturnType<WorldStore["snapshot"]>): NonNullable<SceneInterpretation["strategyIntent"]> | null {
   const declared = raw.strategyIntent ?? null;
   if (declared?.kind === "follow_route" && declared.routeId && snapshot.routes.some((row) => row.id === declared.routeId && row.visibility === "public")) return declared;
-  const route = snapshot.routes.find((row) => row.visibility === "public" && ((/远路|老街/.test(line) && /远路|老街/.test(row.name)) || (/近路|老码头/.test(line) && /近路|老码头/.test(row.name))));
-  return route ? { kind: "follow_route", targetLocationId: route.toLocationId, routeId: route.id, untilTime: null, completionCondition: `到达${route.toLocationId}` } : declared;
+  return declared?.kind === "follow_route" ? null : declared;
+}
+
+function startRouteProgress(strategy: NonNullable<SceneInterpretation["strategyIntent"]>, snapshot: ReturnType<WorldStore["snapshot"]>, playerId: string): RouteProgress | null {
+  if (strategy.kind !== "follow_route" || !strategy.routeId) return null;
+  const route = snapshot.routes.find((row) => row.id === strategy.routeId && row.visibility === "public");
+  const locationId = snapshot.characters.find((row) => row.id === playerId)?.locationId;
+  if (!route || !locationId) return null;
+  const direction = locationId === route.toLocationId && route.bidirectional ? "reverse" : "forward";
+  return { kind: "follow_route", targetLocationId: strategy.targetLocationId, routeId: route.id, untilTime: strategy.untilTime, completionCondition: strategy.completionCondition, direction, nextSegmentIndex: 0 };
+}
+
+function routeProgressFrom(value: unknown): RouteProgress | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<RouteProgress>;
+  return row.kind === "follow_route" && typeof row.routeId === "string" && (row.direction === "forward" || row.direction === "reverse") && Number.isInteger(row.nextSegmentIndex) && (row.nextSegmentIndex ?? -1) >= 0
+    ? row as RouteProgress
+    : null;
+}
+
+function routeSegments(route: ReturnType<WorldStore["snapshot"]>["routes"][number], snapshot: ReturnType<WorldStore["snapshot"]>, direction: RouteProgress["direction"]): Array<{ fromLocationId: string; toLocationId: string; minutes: number }> | null {
+  const nodes = [route.fromLocationId, ...route.viaLocationIds, route.toLocationId];
+  if (direction === "reverse") nodes.reverse();
+  const segments = nodes.slice(0, -1).map((fromLocationId, index) => {
+    const toLocationId = nodes[index + 1]!;
+    const edge = snapshot.routes.find((candidate) => candidate.id !== route.id && candidate.visibility === "public" && candidate.viaLocationIds.length === 0 && ((candidate.fromLocationId === fromLocationId && candidate.toLocationId === toLocationId) || (candidate.bidirectional && candidate.toLocationId === fromLocationId && candidate.fromLocationId === toLocationId)));
+    return { fromLocationId, toLocationId, minutes: edge?.travelMinutes ?? 0 };
+  });
+  const missing = segments.filter((row) => row.minutes === 0);
+  const remaining = route.travelMinutes - segments.reduce((sum, row) => sum + row.minutes, 0);
+  if (remaining < missing.length || (missing.length === 0 && remaining !== 0)) return null;
+  missing.forEach((row, index) => { row.minutes = Math.floor(remaining / missing.length) + (index < remaining % missing.length ? 1 : 0); });
+  return segments;
 }
 
 function resolveDuration(raw: SceneInterpretation, interpretation: BoundInterpretation, before: ReturnType<WorldStore["snapshot"]>): number {
   const policy = raw.timePolicy;
   if (policy?.kind === "explicit_wait") return Math.min(policy.minutes ?? 0, MAX_AUTO_DURATION_MINUTES);
   if (policy?.kind === "bounded_action") return Math.min(policy.minutes ?? 1, 10);
+  if (policy?.kind === "route_travel") return 0;
   const move = interpretation.result.events.find((event) => event.type === "character_move");
   if (move && typeof move.payload.locationId === "string") {
     const player = before.characters.find((row) => row.kind === "player");
